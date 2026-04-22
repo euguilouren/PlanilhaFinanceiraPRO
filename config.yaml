@@ -1,0 +1,77 @@
+# ══════════════════════════════════════════════
+# CONFIGURAÇÃO DO MOTOR AUTÔNOMO
+# Edite este arquivo conforme sua necessidade
+# ══════════════════════════════════════════════
+
+# Pastas de trabalho
+pastas:
+  entrada: "pasta_entrada"    # jogue suas planilhas aqui
+  saida:   "pasta_saida"      # relatórios gerados aqui
+  log:     "pasta_saida/log.txt"
+
+# Colunas do seu arquivo (nomes padrão após normalização)
+colunas:
+  valor:      "Valor"
+  categoria:  "Categoria"
+  data:       "Data"
+  vencimento: "Vencimento"
+  chave:      "NF"
+  entidade:   "Cliente"
+
+# Colunas obrigatórias (alerta se vazias)
+colunas_obrigatorias:
+  - "Valor"
+  - "Data"
+  - "NF"
+
+# Thresholds de auditoria
+auditoria:
+  outlier_desvios: 3.0          # nº de desvios padrão para outlier
+  minimo_registros_analise: 5   # mínimo para calcular estatísticas
+
+# Thresholds de aging (dias de atraso)
+aging:
+  faixa_atencao:  30    # dias → ATENÇÃO
+  faixa_critica:  90    # dias → CRÍTICO
+  # PCLD sugerida por faixa (%)
+  pcld:
+    ate_30:  5
+    ate_60:  15
+    ate_90:  30
+    ate_180: 50
+    acima:   100
+
+# Thresholds de indicadores financeiros
+indicadores:
+  liquidez_corrente_min:  1.0
+  liquidez_seca_min:      0.8
+  margem_liquida_min:     5.0   # %
+  endividamento_max:      100.0 # %
+  roe_min:                15.0  # %
+
+# Alertas por e-mail (deixe vazio para desativar)
+email:
+  ativo: false
+  smtp_servidor:  "smtp.gmail.com"
+  smtp_porta:     587
+  remetente:      "seu@email.com"
+  senha:          ""              # use variável de ambiente: EMAIL_SENHA
+  destinatarios:
+    - "voce@email.com"
+  assunto_prefixo: "[Toolkit Financeiro]"
+  # Enviar somente se houver problemas com estas severidades:
+  alertar_se:
+    - "CRÍTICA"
+    - "ALTA"
+
+# Configurações do relatório HTML
+relatorio:
+  titulo:  "Relatório de Análise Financeira"
+  empresa: "Minha Empresa"       # aparece no cabeçalho
+  logo:    ""                    # caminho para logo (opcional)
+  tema:
+    cor_primaria:    "#1F4E79"
+    cor_secundaria:  "#2E75B6"
+    cor_ok:          "#C6EFCE"
+    cor_alerta:      "#FFEB9C"
+    cor_critico:     "#FFC7CE"
