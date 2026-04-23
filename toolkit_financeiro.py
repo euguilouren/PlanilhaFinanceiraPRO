@@ -91,6 +91,10 @@ def validar_config(cfg: dict) -> List[str]:
         porta = email.get('smtp_porta', 587)
         if not isinstance(porta, int) or not (1 <= porta <= 65535):
             avisos.append(f"email.smtp_porta deve ser inteiro 1-65535, recebeu {porta}")
+        _email_re = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
+        for dest in email.get('destinatarios', []):
+            if not _email_re.match(str(dest)):
+                avisos.append(f"Email inválido em destinatarios: '{dest}'")
 
     return avisos
 

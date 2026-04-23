@@ -3,10 +3,10 @@ Gerador de relatório HTML autônomo — sem dependências externas.
 Produz um arquivo .html autocontido que abre em qualquer navegador.
 """
 
+import html
 import logging
 from datetime import datetime
 
-import numpy as np
 import pandas as pd
 
 logger = logging.getLogger(__name__)
@@ -37,8 +37,8 @@ class GeradorHTML:
     ) -> str:
         """Retorna string HTML completa do relatório."""
         logger.info("Gerando relatório HTML para: %s", arquivo_origem)
-        empresa = self.cfg.get('relatorio', {}).get('empresa', 'Empresa')
-        titulo  = self.cfg.get('relatorio', {}).get('titulo',  'Relatório Financeiro')
+        empresa = self._esc(self.cfg.get('relatorio', {}).get('empresa', 'Empresa'))
+        titulo  = self._esc(self.cfg.get('relatorio', {}).get('titulo',  'Relatório Financeiro'))
         agora   = datetime.now().strftime('%d/%m/%Y %H:%M')
 
         # KPIs principais
@@ -101,7 +101,7 @@ class GeradorHTML:
     <h1>{titulo}</h1>
   </div>
   <div class="meta">
-    Arquivo: {arquivo_origem}<br>
+    Arquivo: {self._esc(arquivo_origem)}<br>
     Gerado em: {agora}<br>
     {total_registros:,} registros processados
   </div>
@@ -122,7 +122,7 @@ class GeradorHTML:
     <div class="kpi">
       <div class="label">Total Geral (R$)</div>
       <div class="valor">R$ {total_valor:,.0f}</div>
-      <div class="sub">soma da coluna {col_valor}</div>
+      <div class="sub">soma da coluna {self._esc(col_valor)}</div>
     </div>
     <div class="kpi {kpi_critico_class}">
       <div class="label">Problemas Críticos</div>
@@ -175,15 +175,22 @@ class GeradorHTML:
 
     # ── Seções privadas ───────────────────────────────────────────
 
+    @staticmethod
+    def _esc(val) -> str:
+        return html.escape(str(val))
+
     def _badge(self, sev: str) -> str:
         cls = {'CRÍTICA': 'critica', 'ALTA': 'alta', 'MÉDIA': 'media',
                'BAIXA': 'baixa', 'OK': 'ok'}.get(sev.upper(), 'media')
-        return f'<span class="badge badge-{cls}">{sev}</span>'
+        return f'<span class="badge badge-{cls}">{self._esc(sev)}</span>'
 
     def _secao_diagnostico(self, diag: dict) -> str:
         rows = ''
         for p in diag['problemas_formato']:
-            rows += f"<tr><td>{p.get('aba','')}</td><td>{p.get('coluna','')}</td><td>{self._badge(p.get('severidade',''))}</td><td>{p.get('descricao','')}</td></tr>"
+            rows += (f"<tr><td>{self._esc(p.get('aba',''))}</td>"
+                     f"<td>{self._esc(p.get('coluna',''))}</td>"
+                     f"<td>{self._badge(p.get('severidade',''))}</td>"
+                     f"<td>{self._esc(p.get('descricao',''))}</td></tr>")
         return f"""
   <div class="card">
     <h2>⚠ Problemas de Formato ({len(diag['problemas_formato'])})</h2>
@@ -202,10 +209,10 @@ class GeradorHTML:
             imp = r.get('Impacto R$', '')
             imp_str = f"R$ {float(imp):,.2f}" if imp and str(imp) not in ('', '0', '0.0') else '—'
             rows += (f"<tr><td>{self._badge(sev)}</td>"
-                     f"<td>{r.get('Tipo','')}</td>"
-                     f"<td>{linha}</td>"
-                     f"<td>{r.get('Coluna','')}</td>"
-                     f"<td>{r.get('Descrição','')}</td>"
+                     f"<td>{self._esc(r.get('Tipo',''))}</td>"
+                     f"<td>{self._esc(linha)}</td>"
+                     f"<td>{self._esc(r.get('Coluna',''))}</td>"
+                     f"<td>{self._esc(r.get('Descrição',''))}</td>"
                      f"<td style='text-align:right'>{imp_str}</td></tr>")
         return f"""
   <div class="card">
@@ -232,7 +239,7 @@ class GeradorHTML:
             else:
                 bar_cls = 'bar-critico'
             bar = f'<div class="bar-wrap"><div class="bar {bar_cls}" style="width:{min(pct,100):.1f}%"></div></div>'
-            rows += (f"<tr><td>{faixa}</td><td style='text-align:right'>{qtd}</td>"
+            rows += (f"<tr><td>{self._esc(faixa)}</td><td style='text-align:right'>{qtd}</td>"
                      f"<td style='text-align:right'>R$ {tot:,.2f}</td>"
                      f"<td style='text-align:right'>{pct:.1f}%</td>"
                      f"<td style='width:180px'>{bar}</td></tr>")
@@ -257,7 +264,7 @@ class GeradorHTML:
             av    = f"{float(r['AV_%']):.1f}%" if 'AV_%' in r and pd.notna(r.get('AV_%')) else ''
             cls   = 'dre-total' if linha in totais else ('dre-sub' if linha.startswith('(-)') else '')
             cor   = '#C00000' if valor < 0 and linha in totais else ''
-            rows += (f"<tr class='{cls}'><td>{linha}</td>"
+            rows += (f"<tr class='{cls}'><td>{self._esc(linha)}</td>"
                      f"<td style='text-align:right;color:{cor}'>R$ {valor:,.2f}</td>"
                      f"<td style='text-align:right;color:#888'>{av}</td></tr>")
         return f"""
@@ -278,7 +285,7 @@ class GeradorHTML:
             cor_cls = '#1F4E79' if 'A' in classe else '#aaa'
             bar = f'<div class="bar-wrap"><div class="bar" style="width:{pct_bar:.1f}%;background:{cor_cls}"></div></div>'
             rows += (f"<tr><td style='text-align:center'>{int(r.get('Ranking',0))}</td>"
-                     f"<td>{r[col_ent]}</td>"
+                     f"<td>{self._esc(r[col_ent])}</td>"
                      f"<td style='text-align:right'>R$ {float(r.get('Total_RS',0)):,.2f}</td>"
                      f"<td style='text-align:right'>{float(r.get('Percentual',0)):.1f}%</td>"
                      f"<td style='text-align:right'>{float(r.get('Acumulado_%',0)):.1f}%</td>"
@@ -288,7 +295,7 @@ class GeradorHTML:
   <div class="card">
     <h2>🏆 Análise Pareto — Top {min(15,len(df))} de {len(df)}</h2>
     <table><thead><tr>
-      <th>#</th><th>{col_ent}</th>
+      <th>#</th><th>{self._esc(col_ent)}</th>
       <th style="text-align:right">Total R$</th>
       <th style="text-align:right">%</th>
       <th style="text-align:right">Acumulado</th>
