@@ -5,8 +5,15 @@ __pycache__/
 .coverage
 coverage.xml
 *.egg-info/
+
+# Build Nuitka
 dist/
 build/
+*.build/
+*.dist/
+*.onefile-build/
+
+# Ambiente
 .env
 pasta_entrada/
 pasta_saida/
