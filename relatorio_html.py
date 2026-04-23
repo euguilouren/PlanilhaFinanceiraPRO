@@ -3,10 +3,10 @@ Gerador de relatório HTML autônomo — sem dependências externas.
 Produz um arquivo .html autocontido que abre em qualquer navegador.
 """
 
+import html
 import logging
 from datetime import datetime
 
-import numpy as np
 import pandas as pd
 
 logger = logging.getLogger(__name__)
@@ -18,11 +18,15 @@ class GeradorHTML:
     def __init__(self, config: dict):
         self.cfg = config
         self.tema = config.get('relatorio', {}).get('tema', {})
-        self.COR_P  = self.tema.get('cor_primaria',   '#1F4E79')
-        self.COR_S  = self.tema.get('cor_secundaria', '#2E75B6')
-        self.COR_OK = self.tema.get('cor_ok',         '#C6EFCE')
-        self.COR_AL = self.tema.get('cor_alerta',     '#FFEB9C')
-        self.COR_CR = self.tema.get('cor_critico',    '#FFC7CE')
+        self.COR_P   = self.tema.get('cor_primaria',    '#1A3556')
+        self.COR_S   = self.tema.get('cor_secundaria',  '#C9A227')
+        self.COR_DARK= self.tema.get('cor_dark',         '#0D1B2A')
+        self.COR_OK  = self.tema.get('cor_ok',           '#D1FAE5')
+        self.COR_OK_T= self.tema.get('cor_ok_text',      '#065F46')
+        self.COR_AL  = self.tema.get('cor_alerta',       '#FEF3C7')
+        self.COR_AL_T= self.tema.get('cor_alerta_text',  '#92400E')
+        self.COR_CR  = self.tema.get('cor_critico',      '#FEE2E2')
+        self.COR_CR_T= self.tema.get('cor_critico_text', '#991B1B')
 
     def gerar(
         self,
@@ -37,8 +41,8 @@ class GeradorHTML:
     ) -> str:
         """Retorna string HTML completa do relatório."""
         logger.info("Gerando relatório HTML para: %s", arquivo_origem)
-        empresa = self.cfg.get('relatorio', {}).get('empresa', 'Empresa')
-        titulo  = self.cfg.get('relatorio', {}).get('titulo',  'Relatório Financeiro')
+        empresa = self._esc(self.cfg.get('relatorio', {}).get('empresa', 'Empresa'))
+        titulo  = self._esc(self.cfg.get('relatorio', {}).get('titulo',  'Relatório Financeiro'))
         agora   = datetime.now().strftime('%d/%m/%Y %H:%M')
 
         # KPIs principais
@@ -54,42 +58,46 @@ class GeradorHTML:
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{titulo} — {agora}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   * {{ box-sizing: border-box; margin: 0; padding: 0; }}
-  body {{ font-family: Arial, sans-serif; font-size: 13px; background: #f4f6f9; color: #333; }}
-  .header {{ background: {self.COR_P}; color: white; padding: 20px 32px; display: flex; justify-content: space-between; align-items: center; }}
-  .header h1 {{ font-size: 22px; }}
-  .header .meta {{ font-size: 11px; opacity: .8; text-align: right; }}
-  .container {{ max-width: 1200px; margin: 24px auto; padding: 0 16px; }}
+  body {{ font-family: 'Inter', Arial, sans-serif; font-size: 14px; background: #EEF2F7; color: #0D1B2A; line-height: 1.6; -webkit-font-smoothing: antialiased; }}
+  .header {{ background: linear-gradient(135deg, {self.COR_DARK} 0%, {self.COR_P} 100%); color: white; padding: 22px 36px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 20px rgba(13,27,42,.3); }}
+  .header h1 {{ font-size: 20px; font-weight: 700; letter-spacing: -.3px; }}
+  .header .empresa {{ font-size: 11px; opacity: .6; margin-bottom: 4px; font-weight: 500; text-transform: uppercase; letter-spacing: .5px; }}
+  .header .meta {{ font-size: 11.5px; opacity: .7; text-align: right; font-variant-numeric: tabular-nums; }}
+  .container {{ max-width: 1200px; margin: 28px auto; padding: 0 20px; }}
   .kpis {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }}
-  .kpi {{ background: white; border-radius: 8px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,.1); border-left: 4px solid {self.COR_S}; }}
-  .kpi.critico {{ border-left-color: #C00000; }}
-  .kpi.ok {{ border-left-color: #006100; }}
-  .kpi .label {{ font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: .5px; }}
-  .kpi .valor {{ font-size: 26px; font-weight: bold; color: {self.COR_P}; margin: 6px 0; }}
-  .kpi.critico .valor {{ color: #C00000; }}
-  .kpi.ok .valor {{ color: #006100; }}
-  .kpi .sub {{ font-size: 11px; color: #aaa; }}
-  .card {{ background: white; border-radius: 8px; padding: 24px; margin-bottom: 20px; box-shadow: 0 1px 4px rgba(0,0,0,.1); }}
-  .card h2 {{ font-size: 15px; color: {self.COR_P}; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid {self.COR_P}; }}
-  table {{ width: 100%; border-collapse: collapse; font-size: 12px; }}
-  th {{ background: {self.COR_P}; color: white; padding: 8px 10px; text-align: left; font-weight: 600; }}
-  td {{ padding: 7px 10px; border-bottom: 1px solid #eee; }}
-  tr:hover td {{ background: #f9f9f9; }}
-  .badge {{ display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: bold; }}
-  .badge-critica {{ background: {self.COR_CR}; color: #9C0006; }}
-  .badge-alta    {{ background: #FCE4D6; color: #843C0C; }}
-  .badge-media   {{ background: {self.COR_AL}; color: #9C5700; }}
-  .badge-baixa   {{ background: {self.COR_OK}; color: #276221; }}
-  .badge-ok      {{ background: {self.COR_OK}; color: #276221; }}
-  .bar-wrap {{ background: #eee; border-radius: 4px; height: 14px; width: 100%; }}
-  .bar {{ height: 14px; border-radius: 4px; }}
-  .bar-ok      {{ background: #70AD47; }}
-  .bar-atencao {{ background: #FFC000; }}
-  .bar-critico {{ background: #C00000; }}
-  .dre-total {{ font-weight: bold; background: #EBF3FB; }}
-  .dre-sub   {{ color: #555; padding-left: 20px !important; }}
-  .footer {{ text-align: center; font-size: 11px; color: #aaa; padding: 24px; }}
+  .kpi {{ background: white; border-radius: 12px; padding: 22px 20px; box-shadow: 0 4px 16px rgba(13,27,42,.08); border-left: 3px solid {self.COR_S}; }}
+  .kpi.critico {{ border-left-color: #C0392B; }}
+  .kpi.ok {{ border-left-color: #3A9E5C; }}
+  .kpi .label {{ font-size: 10.5px; color: #8FA3BC; text-transform: uppercase; letter-spacing: .6px; font-weight: 600; }}
+  .kpi .valor {{ font-size: 28px; font-weight: 700; color: {self.COR_P}; margin: 8px 0 4px; letter-spacing: -.5px; font-variant-numeric: tabular-nums; line-height: 1.1; }}
+  .kpi.critico .valor {{ color: #C0392B; }}
+  .kpi.ok .valor {{ color: #065F46; }}
+  .kpi .sub {{ font-size: 11px; color: #9BA8B5; }}
+  .card {{ background: white; border-radius: 12px; padding: 26px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(13,27,42,.06); border: 1px solid #DDE6F0; }}
+  .card h2 {{ font-size: 14px; font-weight: 700; color: {self.COR_P}; margin-bottom: 18px; padding-bottom: 12px; border-bottom: 1px solid #DDE6F0; display: flex; align-items: center; gap: 8px; letter-spacing: -.1px; }}
+  table {{ width: 100%; border-collapse: collapse; font-size: 13px; }}
+  th {{ background: {self.COR_DARK}; color: rgba(255,255,255,.85); padding: 10px 13px; text-align: left; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .4px; }}
+  td {{ padding: 10px 13px; border-bottom: 1px solid #EEF2F7; font-variant-numeric: tabular-nums; }}
+  tbody tr:last-child td {{ border-bottom: none; }}
+  tbody tr:hover td {{ background: #F7FAFD; }}
+  .badge {{ display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; }}
+  .badge-critica {{ background: {self.COR_CR}; color: {self.COR_CR_T}; }}
+  .badge-alta    {{ background: #FFF0E6; color: #7C2D12; }}
+  .badge-media   {{ background: {self.COR_AL}; color: {self.COR_AL_T}; }}
+  .badge-baixa   {{ background: {self.COR_OK}; color: {self.COR_OK_T}; }}
+  .badge-ok      {{ background: {self.COR_OK}; color: {self.COR_OK_T}; }}
+  .bar-wrap {{ background: #E8EEF6; border-radius: 999px; height: 7px; width: 100%; overflow: hidden; }}
+  .bar {{ height: 7px; border-radius: 999px; }}
+  .bar-ok      {{ background: #3A9E5C; }}
+  .bar-atencao {{ background: #E8A020; }}
+  .bar-critico {{ background: #C0392B; }}
+  .dre-total {{ font-weight: 700; background: #F5F8FC; color: {self.COR_P}; }}
+  .dre-sub   {{ color: #4A6080; padding-left: 26px !important; font-weight: 400; }}
+  .footer {{ text-align: center; font-size: 11px; color: #9BA8B5; padding: 28px; border-top: 1px solid #DDE6F0; }}
   @media(max-width:768px){{ .kpis{{grid-template-columns:repeat(2,1fr);}} }}
 </style>
 </head>
@@ -97,11 +105,11 @@ class GeradorHTML:
 
 <div class="header">
   <div>
-    <div style="font-size:12px;opacity:.7;margin-bottom:4px">{empresa}</div>
+    <div class="empresa">{empresa}</div>
     <h1>{titulo}</h1>
   </div>
   <div class="meta">
-    Arquivo: {arquivo_origem}<br>
+    Arquivo: {self._esc(arquivo_origem)}<br>
     Gerado em: {agora}<br>
     {total_registros:,} registros processados
   </div>
@@ -122,7 +130,7 @@ class GeradorHTML:
     <div class="kpi">
       <div class="label">Total Geral (R$)</div>
       <div class="valor">R$ {total_valor:,.0f}</div>
-      <div class="sub">soma da coluna {col_valor}</div>
+      <div class="sub">soma da coluna {self._esc(col_valor)}</div>
     </div>
     <div class="kpi {kpi_critico_class}">
       <div class="label">Problemas Críticos</div>
@@ -147,7 +155,7 @@ class GeradorHTML:
             html += """
   <div class="card">
     <h2>✓ Auditoria</h2>
-    <p style="color:#006100;font-weight:bold">Nenhum problema encontrado nos dados.</p>
+    <p style="color:#065F46;font-weight:600;font-size:14px">Nenhum problema encontrado nos dados.</p>
   </div>
 """
         # ── Aging ─────────────────────────────────────────────────
@@ -175,15 +183,22 @@ class GeradorHTML:
 
     # ── Seções privadas ───────────────────────────────────────────
 
+    @staticmethod
+    def _esc(val) -> str:
+        return html.escape(str(val))
+
     def _badge(self, sev: str) -> str:
         cls = {'CRÍTICA': 'critica', 'ALTA': 'alta', 'MÉDIA': 'media',
                'BAIXA': 'baixa', 'OK': 'ok'}.get(sev.upper(), 'media')
-        return f'<span class="badge badge-{cls}">{sev}</span>'
+        return f'<span class="badge badge-{cls}">{self._esc(sev)}</span>'
 
     def _secao_diagnostico(self, diag: dict) -> str:
         rows = ''
         for p in diag['problemas_formato']:
-            rows += f"<tr><td>{p.get('aba','')}</td><td>{p.get('coluna','')}</td><td>{self._badge(p.get('severidade',''))}</td><td>{p.get('descricao','')}</td></tr>"
+            rows += (f"<tr><td>{self._esc(p.get('aba',''))}</td>"
+                     f"<td>{self._esc(p.get('coluna',''))}</td>"
+                     f"<td>{self._badge(p.get('severidade',''))}</td>"
+                     f"<td>{self._esc(p.get('descricao',''))}</td></tr>")
         return f"""
   <div class="card">
     <h2>⚠ Problemas de Formato ({len(diag['problemas_formato'])})</h2>
@@ -202,10 +217,10 @@ class GeradorHTML:
             imp = r.get('Impacto R$', '')
             imp_str = f"R$ {float(imp):,.2f}" if imp and str(imp) not in ('', '0', '0.0') else '—'
             rows += (f"<tr><td>{self._badge(sev)}</td>"
-                     f"<td>{r.get('Tipo','')}</td>"
-                     f"<td>{linha}</td>"
-                     f"<td>{r.get('Coluna','')}</td>"
-                     f"<td>{r.get('Descrição','')}</td>"
+                     f"<td>{self._esc(r.get('Tipo',''))}</td>"
+                     f"<td>{self._esc(linha)}</td>"
+                     f"<td>{self._esc(r.get('Coluna',''))}</td>"
+                     f"<td>{self._esc(r.get('Descrição',''))}</td>"
                      f"<td style='text-align:right'>{imp_str}</td></tr>")
         return f"""
   <div class="card">
@@ -232,7 +247,7 @@ class GeradorHTML:
             else:
                 bar_cls = 'bar-critico'
             bar = f'<div class="bar-wrap"><div class="bar {bar_cls}" style="width:{min(pct,100):.1f}%"></div></div>'
-            rows += (f"<tr><td>{faixa}</td><td style='text-align:right'>{qtd}</td>"
+            rows += (f"<tr><td>{self._esc(faixa)}</td><td style='text-align:right'>{qtd}</td>"
                      f"<td style='text-align:right'>R$ {tot:,.2f}</td>"
                      f"<td style='text-align:right'>{pct:.1f}%</td>"
                      f"<td style='width:180px'>{bar}</td></tr>")
@@ -256,8 +271,8 @@ class GeradorHTML:
             valor = float(r.get('Valor_RS', 0))
             av    = f"{float(r['AV_%']):.1f}%" if 'AV_%' in r and pd.notna(r.get('AV_%')) else ''
             cls   = 'dre-total' if linha in totais else ('dre-sub' if linha.startswith('(-)') else '')
-            cor   = '#C00000' if valor < 0 and linha in totais else ''
-            rows += (f"<tr class='{cls}'><td>{linha}</td>"
+            cor   = '#C0392B' if valor < 0 and linha in totais else ''
+            rows += (f"<tr class='{cls}'><td>{self._esc(linha)}</td>"
                      f"<td style='text-align:right;color:{cor}'>R$ {valor:,.2f}</td>"
                      f"<td style='text-align:right;color:#888'>{av}</td></tr>")
         return f"""
@@ -275,10 +290,10 @@ class GeradorHTML:
         for _, r in df.head(15).iterrows():
             pct_bar = min(float(r.get('Total_RS', 0)) / max_val * 100, 100)
             classe  = str(r.get('Classe_Pareto', ''))
-            cor_cls = '#1F4E79' if 'A' in classe else '#aaa'
+            cor_cls = '#C9A227' if 'A' in classe else '#9BA8B5'
             bar = f'<div class="bar-wrap"><div class="bar" style="width:{pct_bar:.1f}%;background:{cor_cls}"></div></div>'
             rows += (f"<tr><td style='text-align:center'>{int(r.get('Ranking',0))}</td>"
-                     f"<td>{r[col_ent]}</td>"
+                     f"<td>{self._esc(r[col_ent])}</td>"
                      f"<td style='text-align:right'>R$ {float(r.get('Total_RS',0)):,.2f}</td>"
                      f"<td style='text-align:right'>{float(r.get('Percentual',0)):.1f}%</td>"
                      f"<td style='text-align:right'>{float(r.get('Acumulado_%',0)):.1f}%</td>"
@@ -288,7 +303,7 @@ class GeradorHTML:
   <div class="card">
     <h2>🏆 Análise Pareto — Top {min(15,len(df))} de {len(df)}</h2>
     <table><thead><tr>
-      <th>#</th><th>{col_ent}</th>
+      <th>#</th><th>{self._esc(col_ent)}</th>
       <th style="text-align:right">Total R$</th>
       <th style="text-align:right">%</th>
       <th style="text-align:right">Acumulado</th>

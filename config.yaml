@@ -85,8 +85,12 @@ relatorio:
   empresa: "Minha Empresa"       # aparece no cabeçalho
   logo:    ""                    # caminho para logo (opcional)
   tema:
-    cor_primaria:    "#1F4E79"
-    cor_secundaria:  "#2E75B6"
-    cor_ok:          "#C6EFCE"
-    cor_alerta:      "#FFEB9C"
-    cor_critico:     "#FFC7CE"
+    cor_primaria:     "#1A3556"    # Navy — cabeçalho, bordas e textos principais
+    cor_secundaria:   "#C9A227"    # Dourado — acento premium (bordas KPI, classe A)
+    cor_dark:         "#0D1B2A"    # Navy escuro — fundo do cabeçalho e tabelas
+    cor_ok:           "#D1FAE5"    # Verde suave — fundo status OK
+    cor_ok_text:      "#065F46"    # Verde escuro — texto status OK
+    cor_alerta:       "#FEF3C7"    # Âmbar suave — fundo alerta
+    cor_alerta_text:  "#92400E"    # Âmbar escuro — texto alerta
+    cor_critico:      "#FEE2E2"    # Vermelho suave — fundo crítico
+    cor_critico_text: "#991B1B"    # Vermelho escuro — texto crítico

@@ -434,3 +434,56 @@ class TestValidarConfig:
         }
         avisos = validar_config(cfg)
         assert any('smtp_porta' in a for a in avisos)
+
+    def test_email_invalido_retorna_aviso(self):
+        cfg = {
+            'pastas': {'entrada': 'x', 'saida': 'y'},
+            'colunas': {}, 'colunas_obrigatorias': [],
+            'email': {
+                'ativo': True,
+                'smtp_servidor': 'smtp.gmail.com',
+                'remetente': 'a@b.com',
+                'destinatarios': ['nao-e-email', 'valido@exemplo.com'],
+            },
+        }
+        avisos = validar_config(cfg)
+        assert any('nao-e-email' in a for a in avisos)
+
+    def test_emails_validos_sem_aviso(self):
+        cfg = {
+            'pastas': {'entrada': 'x', 'saida': 'y'},
+            'colunas': {}, 'colunas_obrigatorias': [],
+            'email': {
+                'ativo': True,
+                'smtp_servidor': 'smtp.gmail.com',
+                'remetente': 'a@b.com',
+                'destinatarios': ['usuario@empresa.com', 'outro@dominio.com.br'],
+            },
+        }
+        avisos = validar_config(cfg)
+        assert not any('Email inválido' in a for a in avisos)
+
+
+# ── Edge cases de DataFrames vazios ───────────────────────────────
+
+class TestEdgeCasesVazios:
+    def test_relatorio_auditoria_df_vazio(self):
+        df_resultado = Auditor.relatorio_auditoria([])
+        assert isinstance(df_resultado, pd.DataFrame)
+        assert len(df_resultado) == 0
+
+    def test_pareto_df_vazio(self):
+        df_vazio = pd.DataFrame(columns=['Cliente', 'Valor'])
+        try:
+            resultado = AnalistaComercial.pareto(df_vazio, 'Cliente', 'Valor')
+            assert isinstance(resultado, pd.DataFrame)
+        except (ValueError, ZeroDivisionError):
+            pass  # Acceptable: empty data raises, not crashes silently
+
+    def test_aging_coluna_inexistente_nao_quebra(self):
+        df = pd.DataFrame({'Valor': [100.0, 200.0]})
+        try:
+            resultado = AnalistaFinanceiro.calcular_aging(df, 'Vencimento', 'Valor')
+            assert isinstance(resultado, pd.DataFrame)
+        except (KeyError, ValueError):
+            pass  # Acceptable: missing column raises, not crashes silently

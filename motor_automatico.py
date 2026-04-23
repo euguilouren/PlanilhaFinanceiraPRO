@@ -13,7 +13,6 @@ Execução:
 import os
 import sys
 import time
-import shutil
 import logging
 import smtplib
 import argparse
@@ -111,6 +110,8 @@ class ProcessadorArquivo:
             leitura     = Leitor.ler_arquivo(caminho_arquivo)
             dados       = leitura['dados']
             diagnostico = leitura['diagnostico']
+            if not dados:
+                raise ValueError("Nenhuma aba encontrada no arquivo.")
             nome_aba    = list(dados.keys())[0]
             df          = dados[nome_aba].copy()
             logger.info("      %d registros | %d colunas", len(df), len(df.columns))
@@ -339,9 +340,16 @@ class ProcessadorArquivo:
             smtp   = cfg_email['smtp_servidor']
             porta  = cfg_email.get('smtp_porta', 587)
             rem    = cfg_email['remetente']
-            senha  = os.environ.get('EMAIL_SENHA', cfg_email.get('senha', ''))
-            dests  = cfg_email.get('destinatarios', [])
-            if not dests or not senha:
+            senha = os.environ.get('EMAIL_SENHA', '')
+            if not senha:
+                senha = cfg_email.get('senha', '')
+                if senha:
+                    logger.warning("EMAIL_SENHA lida do config.yaml — prefira a variável de ambiente EMAIL_SENHA")
+            dests = cfg_email.get('destinatarios', [])
+            if not dests:
+                logger.warning("Email ativo mas lista de destinatários vazia.")
+                return
+            if not senha:
                 return
 
             assunto = f"{cfg_email.get('assunto_prefixo','[Toolkit]')} {resultado['total_problemas']} alertas — {Path(resultado['arquivo_origem']).name}"
@@ -369,7 +377,7 @@ class ProcessadorArquivo:
             msg['To']      = ', '.join(dests)
             msg.attach(MIMEText(corpo, 'html'))
 
-            with smtplib.SMTP(smtp, porta) as server:
+            with smtplib.SMTP(smtp, porta, timeout=10) as server:
                 server.starttls()
                 server.login(rem, senha)
                 server.sendmail(rem, dests, msg.as_string())
@@ -443,9 +451,9 @@ def main():
     if args.arquivo:
         # Modo: arquivo específico
         resultado = processador.processar(args.arquivo)
-        print(f"\nHTML:  {resultado['html']}")
-        print(f"Excel: {resultado['xlsx']}")
-        print(f"Críticos: {resultado['criticos']} | Total alertas: {resultado['total_problemas']}")
+        logger.info("HTML:  %s", resultado['html'])
+        logger.info("Excel: %s", resultado['xlsx'])
+        logger.info("Críticos: %d | Total alertas: %d", resultado['criticos'], resultado['total_problemas'])
 
     elif args.once:
         # Modo: varrer pasta uma vez
