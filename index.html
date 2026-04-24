@@ -675,10 +675,17 @@ function normalizarParaPadrao(dados, mapeamento) {
       let val = origKey ? (row[origKey] ?? '') : '';
 
       if (col.tipo === 'moeda') {
-        const num = parseFloat(
-          String(val).replace(/[R$\s]/g,'').replace(/\./g,'').replace(',','.')
-        );
-        val = isNaN(num) ? 0 : num;
+        // Se já é número JS (vem direto do Excel), usa sem converter
+        if (typeof val === 'number' && !isNaN(val)) {
+          // val permanece como está
+        } else {
+          // String em formato BR (1.234,56) ou US (1234.56)
+          const s = String(val).replace(/[R$\s]/g, '').trim();
+          const num = s.includes(',')
+            ? parseFloat(s.replace(/\./g, '').replace(',', '.'))  // BR: remove separador milhar, troca vírgula
+            : parseFloat(s.replace(/,/g, ''));                     // US/puro: remove vírgula de milhar
+          val = isNaN(num) ? 0 : num;
+        }
 
       } else if (col.tipo === 'data') {
         // Tenta formatar como DD/MM/AAAA
