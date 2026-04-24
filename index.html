@@ -647,13 +647,42 @@ function carregarArquivo(file) {
         const wb    = XLSX.read(txt, { type:'string', raw:false });
         const ws    = wb.Sheets[wb.SheetNames[0]];
         const arr   = XLSX.utils.sheet_to_json(ws, { header:1, defval:'' });
-        headers     = arr[0].map(String);
-        dados       = arr.slice(1).map(r => Object.fromEntries(headers.map((h,i)=>[h,r[i]??''])));
+        const rawH  = arr[0].map(String);
+        headers     = rawH.filter(h => h && !h.startsWith('__EMPTY'));
+        dados       = arr.slice(1).map(r => {
+          const obj = {};
+          rawH.forEach((h,i) => { if (h && !h.startsWith('__EMPTY')) obj[h] = r[i] ?? ''; });
+          return obj;
+        });
       } else {
-        const wb    = XLSX.read(e.target.result, { type:'array', cellDates:true });
-        const ws    = wb.Sheets[wb.SheetNames[0]];
-        dados       = XLSX.utils.sheet_to_json(ws, { defval:'' });
-        headers     = dados.length ? Object.keys(dados[0]) : [];
+        const wb  = XLSX.read(e.target.result, { type:'array', cellDates:true });
+        // Escolhe a primeira aba com dados reais (ignora abas vazias)
+        const abaReal = wb.SheetNames.find(n => {
+          const s = wb.Sheets[n];
+          return s && s['!ref'] && s['!ref'] !== 'A1';
+        }) || wb.SheetNames[0];
+        const ws  = wb.Sheets[abaReal];
+        const arr = XLSX.utils.sheet_to_json(ws, { header:1, defval:'' });
+
+        // Detecta a linha de cabeçalho real (pula linhas de título)
+        let headerRow = 0;
+        for (let i = 0; i < Math.min(5, arr.length); i++) {
+          const uteis = arr[i].filter(c => c && !String(c).startsWith('__EMPTY'));
+          if (uteis.length >= 2) { headerRow = i; break; }
+        }
+        const rawHeaders = arr[headerRow].map(String);
+        headers = rawHeaders.filter(h => h && !h.startsWith('__EMPTY'));
+
+        // Constrói dados a partir da linha seguinte, sem colunas __EMPTY
+        dados = arr.slice(headerRow + 1)
+          .filter(row => row.some(c => c !== ''))
+          .map(row => {
+            const obj = {};
+            rawHeaders.forEach((h, i) => {
+              if (h && !h.startsWith('__EMPTY')) obj[h] = row[i] ?? '';
+            });
+            return obj;
+          });
       }
       _dadosOriginais = dados;
       _dadosFiltrados = dados;
