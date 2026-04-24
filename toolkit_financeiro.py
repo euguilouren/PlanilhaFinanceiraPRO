@@ -19,6 +19,8 @@ import warnings
 import zipfile
 from datetime import datetime, timedelta
 from collections import OrderedDict
+from difflib import SequenceMatcher, get_close_matches
+from enum import Enum
 from typing import Union, Optional, List, Dict
 
 import numpy as np
@@ -37,18 +39,26 @@ logger = logging.getLogger(__name__)
 # CONSTANTES DE STATUS
 # ══════════════════════════════════════════════════════════════════
 
-class Status:
-    OK = 'OK'
-    DIVERGENTE = 'DIVERGENTE'
+class Status(str, Enum):
+    """Status de conciliação e severidade de auditoria.
+
+    Herda de str para manter compatibilidade com comparações == 'OK',
+    serialização JSON e uso em f-strings sem alterações nos chamadores.
+    """
+    OK             = 'OK'
+    DIVERGENTE     = 'DIVERGENTE'
     NAO_ENCONTRADO = 'NÃO ENCONTRADO'
-    DUPLICADO = 'DUPLICADO'
-    PARCIAL = 'PARCIAL'
-    PENDENTE = 'PENDENTE'
+    DUPLICADO      = 'DUPLICADO'
+    PARCIAL        = 'PARCIAL'
+    PENDENTE       = 'PENDENTE'
 
     CRITICA = 'CRÍTICA'
-    ALTA = 'ALTA'
-    MEDIA = 'MÉDIA'
-    BAIXA = 'BAIXA'
+    ALTA    = 'ALTA'
+    MEDIA   = 'MÉDIA'
+    BAIXA   = 'BAIXA'
+
+    def __str__(self) -> str:
+        return self.value
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -1007,7 +1017,7 @@ class Util:
         Agrupa entidades com nomes similares.
         Limitado a 5.000 entidades únicas — use amostragem para datasets maiores.
         """
-        from difflib import SequenceMatcher
+
         nomes = series.dropna().unique()
         if len(nomes) > 5000:
             raise ValueError(

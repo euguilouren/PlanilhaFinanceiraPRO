@@ -6,8 +6,11 @@
 <title>Toolkit Financeiro — Dashboard</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<!-- SRI: gerar hashes com:
+     curl -sL <url> | openssl dgst -sha384 -binary | base64
+     Então adicionar integrity="sha384-<HASH>" crossorigin="anonymous" -->
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" crossorigin="anonymous"></script>
 <script>
 /**
  * analise.js — Motor de análise financeira no navegador
@@ -633,6 +636,9 @@ tr:hover td{background:#F7FAFD}
 </div>
 
 <script>
+// ── Helper de escape XSS ──────────────────────────────
+const esc = v => String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+
 // ══════════════════════════════════════════════════════
 // ESTADO GLOBAL
 // ══════════════════════════════════════════════════════
@@ -887,10 +893,11 @@ function carregarArquivo(file) {
             return obj;
           });
       }
-      _dadosOriginais = dados;
-      _dadosFiltrados = dados;
-      _headers        = headers;
-      _cols           = detectarColunas(headers);
+      _dadosOriginais    = dados;
+      _dadosFiltrados    = dados;
+      _dadosNormalizados = null;   // garante estado limpo a cada novo arquivo
+      _headers           = headers;
+      _cols              = detectarColunas(headers);
       mostrarLoader(false);
       mostrarConfigColunas(headers, _cols);
       document.getElementById('header-info').textContent = `${file.name} — ${dados.length.toLocaleString('pt-BR')} registros`;
@@ -1044,10 +1051,10 @@ function renderAuditoria(lista) {
   }
   const rows = lista.map(p => `
     <tr>
-      <td><span class="badge ${BADGE[p.severidade]||'b-baixa'}">${p.severidade}</span></td>
-      <td>${p.tipo}</td><td>${p.linha}</td>
-      <td>${p.coluna}</td><td>${p.valor}</td>
-      <td>${p.descricao}</td>
+      <td><span class="badge ${BADGE[p.severidade]||'b-baixa'}">${esc(p.severidade)}</span></td>
+      <td>${esc(p.tipo)}</td><td>${esc(p.linha)}</td>
+      <td>${esc(p.coluna)}</td><td>${esc(p.valor)}</td>
+      <td>${esc(p.descricao)}</td>
     </tr>`).join('');
   document.getElementById('auditoria-content').innerHTML = `
     <div class="tbl-wrap"><table>
@@ -1068,7 +1075,7 @@ function renderAging(lista) {
   const rows = lista.map(i => {
     const cor = COR[i.faixa] || '#aaa';
     return `<tr>
-      <td>${i.faixa}</td>
+      <td>${esc(i.faixa)}</td>
       <td style="text-align:right">${fmtNum(i.qtd)}</td>
       <td style="text-align:right">${fmtBRL(i.total)}</td>
       <td style="text-align:right">${fmtNum(i.pct,1)}%</td>
@@ -1111,7 +1118,7 @@ function renderDRE(linhas) {
               : l.tipo==='total' ? 'dre-total' : 'dre-sub';
     const corVal = l.valor < 0 ? 'color:var(--danger)' : '';
     const av = isFinite(l.av) ? `${fmtNum(l.av,1)}%` : '—';
-    return `<tr class="${cls}"><td>${l.linha}</td>
+    return `<tr class="${cls}"><td>${esc(l.linha)}</td>
       <td style="text-align:right;${corVal}">${fmtBRL(l.valor)}</td>
       <td style="text-align:right;color:#888">${av}</td></tr>`;
   }).join('');
@@ -1129,8 +1136,8 @@ function renderPareto(lista) {
   if (!lista || !lista.length) return;
   const rows = lista.map(i => `
     <tr>
-      <td style="text-align:center;font-weight:bold">${i.ranking}</td>
-      <td>${i.nome}</td>
+      <td style="text-align:center;font-weight:bold">${esc(i.ranking)}</td>
+      <td>${esc(i.nome)}</td>
       <td style="text-align:right">${fmtBRL(i.total)}</td>
       <td style="text-align:right">${fmtNum(i.pct,1)}%</td>
       <td style="text-align:right">${fmtNum(i.acumulado,1)}%</td>
@@ -1152,10 +1159,10 @@ function renderTabela(dados, headers) {
     `${dados.length.toLocaleString('pt-BR')} registros${dados.length>MAX_ROWS_TABELA?' — mostrando primeiros '+MAX_ROWS_TABELA:''}`;
   const thead = document.getElementById('thead-dados');
   const tbody = document.getElementById('tbody-dados');
-  thead.innerHTML = '<tr>' + headers.map(h=>`<th>${h}</th>`).join('') + '</tr>';
+  thead.innerHTML = '<tr>' + headers.map(h=>`<th>${esc(h)}</th>`).join('') + '</tr>';
   const slice = dados.slice(0, MAX_ROWS_TABELA);
   tbody.innerHTML = slice.map(row =>
-    '<tr>' + headers.map(h => `<td>${row[h]??''}</td>`).join('') + '</tr>'
+    '<tr>' + headers.map(h => `<td>${esc(row[h])}</td>`).join('') + '</tr>'
   ).join('');
 }
 
