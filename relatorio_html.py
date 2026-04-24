@@ -199,6 +199,8 @@ class GeradorHTML:
 
     @staticmethod
     def _esc(val) -> str:
+        if val is None:
+            return ''
         return html.escape(str(val))
 
     def _badge(self, sev: str) -> str:
@@ -273,6 +275,9 @@ class GeradorHTML:
 """
 
     def _secao_aging(self, df: pd.DataFrame) -> str:
+        if 'Total_RS' not in df.columns or 'Faixa_Aging' not in df.columns:
+            logger.warning("_secao_aging: colunas esperadas ausentes no DataFrame de aging.")
+            return ''
         total = df['Total_RS'].sum()
         rows = ''
         for _, r in df.iterrows():

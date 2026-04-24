@@ -472,18 +472,57 @@ class TestEdgeCasesVazios:
         assert isinstance(df_resultado, pd.DataFrame)
         assert len(df_resultado) == 0
 
-    def test_pareto_df_vazio(self):
+    def test_pareto_df_vazio_retorna_dataframe(self):
+        """pareto() com dados vazios deve retornar DataFrame (possivelmente vazio)
+        — sem crash silencioso com TypeError/AttributeError."""
         df_vazio = pd.DataFrame(columns=['Cliente', 'Valor'])
-        try:
-            resultado = AnalistaComercial.pareto(df_vazio, 'Cliente', 'Valor')
-            assert isinstance(resultado, pd.DataFrame)
-        except (ValueError, ZeroDivisionError):
-            pass  # Acceptable: empty data raises, not crashes silently
+        resultado = AnalistaComercial.pareto(df_vazio, 'Cliente', 'Valor')
+        assert isinstance(resultado, pd.DataFrame)
 
-    def test_aging_coluna_inexistente_nao_quebra(self):
+    def test_aging_coluna_inexistente_levanta_ou_retorna_vazio(self):
+        """calcular_aging() sem coluna de vencimento deve levantar KeyError/ValueError
+        — nunca produzir resultado silenciosamente incorreto."""
         df = pd.DataFrame({'Valor': [100.0, 200.0]})
-        try:
+        with pytest.raises((KeyError, ValueError, TypeError)):
             resultado = AnalistaFinanceiro.calcular_aging(df, 'Vencimento', 'Valor')
             assert isinstance(resultado, pd.DataFrame)
-        except (KeyError, ValueError):
-            pass  # Acceptable: missing column raises, not crashes silently
+
+
+class TestInconsistenciasTemporais:
+
+    def test_data_futura_detectada(self):
+        df = pd.DataFrame({'Data': ['01/01/2024', '01/01/2099']})
+        resultado = Auditor.detectar_inconsistencias_temporais(df, 'Data')
+        tipos = [r['tipo'] for r in resultado]
+        assert 'DATA_FUTURA' in tipos
+
+    def test_data_normal_sem_problemas(self):
+        df = pd.DataFrame({'Data': ['01/01/2024', '15/03/2023']})
+        resultado = Auditor.detectar_inconsistencias_temporais(df, 'Data')
+        assert resultado == []
+
+    def test_data_invertida_detectada(self):
+        df = pd.DataFrame({
+            'Emissao':    ['20/01/2024', '01/02/2024'],
+            'Vencimento': ['10/01/2024', '28/02/2024'],  # primeira é invertida
+        })
+        resultado = Auditor.detectar_inconsistencias_temporais(
+            df, 'Emissao', col_data2='Vencimento'
+        )
+        tipos = [r['tipo'] for r in resultado]
+        assert 'DATA_INVERTIDA' in tipos
+
+    def test_coluna_ausente_retorna_lista_vazia(self):
+        df = pd.DataFrame({'Valor': [100.0, 200.0]})
+        resultado = Auditor.detectar_inconsistencias_temporais(df, 'Data')
+        assert resultado == []
+
+    def test_resultado_tem_campos_esperados(self):
+        df = pd.DataFrame({'Data': ['01/01/2099']})
+        resultado = Auditor.detectar_inconsistencias_temporais(df, 'Data')
+        assert len(resultado) == 1
+        r = resultado[0]
+        assert 'tipo' in r
+        assert 'severidade' in r
+        assert 'linha' in r
+        assert 'coluna' in r

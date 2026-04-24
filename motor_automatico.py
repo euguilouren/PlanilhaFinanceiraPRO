@@ -20,7 +20,7 @@ import traceback
 from difflib                import get_close_matches
 from email.mime.text        import MIMEText
 from email.mime.multipart   import MIMEMultipart
-from datetime               import datetime
+from datetime               import datetime, timezone
 from pathlib                import Path
 
 import yaml
@@ -28,7 +28,8 @@ import pandas as pd
 
 from toolkit_financeiro import (
     Leitor, Auditor, AnalistaFinanceiro, AnalistaComercial,
-    MontadorPlanilha, Verificador, Util, Status, validar_config
+    MontadorPlanilha, Verificador, Util, Status, validar_config,
+    Normalizador,
 )
 from relatorio_html import GeradorHTML
 
@@ -50,8 +51,11 @@ def carregar_config(caminho: str = 'config.yaml') -> dict:
     if not os.path.exists(caminho):
         logger.warning("config.yaml não encontrado — usando configuração padrão")
         return {}
-    with open(caminho, encoding='utf-8') as f:
-        cfg = yaml.safe_load(f) or {}
+    try:
+        with open(caminho, encoding='utf-8') as f:
+            cfg = yaml.safe_load(f) or {}
+    except yaml.YAMLError as exc:
+        raise SystemExit(f"config.yaml malformado: {exc}") from exc
     avisos = validar_config(cfg)
     for aviso in avisos:
         logger.warning("config.yaml: %s", aviso)
@@ -76,21 +80,45 @@ class ProcessadorArquivo:
         self.pasta_saida = Path(config.get('pastas', {}).get('saida', 'pasta_saida'))
         self.pasta_saida.mkdir(parents=True, exist_ok=True)
 
-        # Configurar logging para arquivo
+        # Configurar logging para arquivo (guardamos referência para fechar depois)
         log_path = config.get('pastas', {}).get('log', str(self.pasta_saida / 'log.txt'))
-        fh = logging.FileHandler(log_path, encoding='utf-8')
-        fh.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s'))
-        logger.addHandler(fh)
+        # Evitar handlers duplicados se múltiplas instâncias forem criadas
+        if not any(isinstance(h, logging.FileHandler) and h.baseFilename == str(Path(log_path).resolve())
+                   for h in logger.handlers):
+            fh = logging.FileHandler(log_path, encoding='utf-8')
+            fh.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s'))
+            logger.addHandler(fh)
+            self._log_handler: logging.FileHandler = fh
+        else:
+            self._log_handler = None
+
+    def __del__(self):
+        if getattr(self, '_log_handler', None):
+            try:
+                logger.removeHandler(self._log_handler)
+                self._log_handler.close()
+            except Exception:
+                pass
+
+    MAX_TAMANHO_BYTES = 100 * 1024 * 1024  # 100 MB
 
     @staticmethod
-    def _validar_caminho_arquivo(caminho: str) -> Path:
-        """Resolve o caminho e bloqueia symlinks que escapam da pasta monitorada."""
+    def _validar_caminho_arquivo(caminho: str, max_bytes: int = None) -> Path:
+        """Resolve o caminho, bloqueia symlinks e valida tamanho máximo."""
         try:
             p = Path(caminho).resolve()
         except (OSError, ValueError) as exc:
             raise ValueError(f"Caminho inválido: {caminho}") from exc
         if p.suffix.lower() not in ProcessadorArquivo.EXTENSOES_SUPORTADAS:
             raise ValueError(f"Extensão '{p.suffix}' não suportada.")
+        limite = max_bytes or ProcessadorArquivo.MAX_TAMANHO_BYTES
+        try:
+            tamanho = p.stat().st_size
+            if tamanho > limite:
+                mb = tamanho // (1024 * 1024)
+                raise ValueError(f"Arquivo muito grande ({mb} MB). Máximo permitido: {limite // (1024*1024)} MB.")
+        except OSError:
+            pass  # arquivo ainda não existe ou sem permissão de stat — será tratado em processar()
         return p
 
     def processar(self, caminho_arquivo: str) -> dict:
@@ -100,7 +128,7 @@ class ProcessadorArquivo:
         """
         caminho_arquivo = str(self._validar_caminho_arquivo(caminho_arquivo))
         nome_base = Path(caminho_arquivo).stem
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        timestamp = datetime.now(tz=timezone.utc).strftime('%Y%m%d_%H%M%S')
         prefixo   = f"{nome_base}_{timestamp}"
 
         logger.info("=" * 55)
@@ -140,6 +168,42 @@ class ProcessadorArquivo:
             col_chav = self.cols.get('chave',      'NF')
             col_ent  = self.cols.get('entidade',   'Cliente')
             col_obrig = self.cfg.get('colunas_obrigatorias', [col_val, col_data])
+
+            # ── 1b. Conversão para planilha padrão ───────────────
+            logger.info("[1b] Convertendo para formato padrão do sistema...")
+            mapeamento_padrao = {
+                'NF':         col_chav,
+                'Data':       col_data,
+                'Vencimento': col_venc,
+                'Valor':      col_val,
+                'Categoria':  col_cat,
+                'Cliente':    col_ent,
+            }
+            df_padrao = Normalizador.para_padrao(df, mapeamento_padrao)
+
+            # Validar formato padrão antes de continuar
+            problemas_padrao = Normalizador.validar(df_padrao)
+            criticos_padrao  = [p for p in problemas_padrao if p['severidade'] == Status.CRITICA]
+            if criticos_padrao:
+                logger.warning("      %d problema(s) crítico(s) no formato padrão:", len(criticos_padrao))
+                for p in criticos_padrao:
+                    logger.warning("      [%s] %s: %s", p['severidade'], p['tipo'], p['descricao'])
+
+            # Salvar planilha padronizada
+            caminho_padrao = self.pasta_saida / f"padrao_{prefixo}.xlsx"
+            df_padrao.to_excel(str(caminho_padrao), index=False)
+            resultado['padrao'] = str(caminho_padrao)
+            logger.info("      Planilha padrão: %s", caminho_padrao.name)
+
+            # A partir daqui trabalha com o DataFrame padronizado
+            df      = df_padrao
+            col_val  = 'Valor'
+            col_cat  = 'Categoria'
+            col_data = 'Data'
+            col_venc = 'Vencimento'
+            col_chav = 'NF'
+            col_ent  = 'Cliente'
+            col_obrig = ['NF', 'Data', 'Valor']
 
             # ── 2. Auditoria ─────────────────────────────────────
             logger.info("[2/5] Auditoria...")
@@ -599,8 +663,16 @@ class ObservadorPasta:
                 continue
             if arquivo.suffix.lower() in ProcessadorArquivo.EXTENSOES_SUPORTADAS:
                 if arquivo.name not in self._vistos:
+                    # Marca como visto antes de processar para evitar loop infinito.
+                    # Para reprocessar, renomeie ou reimporte o arquivo.
                     self._vistos.add(arquivo.name)
-                    self.processador.processar(str(arquivo))
+                    resultado = self.processador.processar(str(arquivo))
+                    if resultado.get('status') == 'ERRO':
+                        err = resultado.get('erro', '')
+                        # Erro de I/O irrecuperável: remove dos vistos para retry.
+                        if any(kw in err for kw in ('PermissionError', 'OSError', 'IOError')):
+                            self._vistos.discard(arquivo.name)
+                            logger.warning("Arquivo %s será reprocessado na próxima varredura.", arquivo.name)
 
     def monitorar(self, intervalo: int = 5):
         """Loop contínuo: verifica a pasta a cada N segundos."""
