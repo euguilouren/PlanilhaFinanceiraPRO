@@ -1,0 +1,1163 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Planilha Financeira Pro — Dashboard</title>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+/**
+ * analise.js — Motor de análise financeira no navegador
+ * Equivalente JavaScript do toolkit_financeiro.py
+ * Sem dependências externas — puro JavaScript
+ */
+
+// ══════════════════════════════════════════════════════
+// DETECÇÃO DE COLUNAS
+// ══════════════════════════════════════════════════════
+
+const PADROES_COLUNAS = {
+  valor:      /valor|total|amount|price|preco|receita|despesa|saldo|liquido|bruto|montante/i,
+  data:       /^(data|date|emiss[aã]o|lan[cç]amento|compet[eê]ncia|registro)/i,
+  vencimento: /vencimento|vencto|due|prazo|venc\b/i,
+  categoria:  /categoria|category|tipo|type|natureza|hist[oó]rico|descri[cç][aã]o|conta\b/i,
+  entidade:   /cliente|fornecedor|customer|supplier|nome|name|empresa|parceiro|favorecido/i,
+  chave:      /^(nf|nfe|numero|n[uú]mero|id\b|doc|documento|chave|key|c[oó]digo|pedido)/i,
+};
+
+function detectarColunas(headers) {
+  const cols = {};
+  for (const [tipo, regex] of Object.entries(PADROES_COLUNAS)) {
+    cols[tipo] = headers.find(h => regex.test(String(h).trim())) || null;
+  }
+  return cols;
+}
+
+// ══════════════════════════════════════════════════════
+// MAPEAMENTOS DE ERP (20 sistemas brasileiros)
+// ══════════════════════════════════════════════════════
+
+const MAPAS_ERP_JS = {
+  TOTVS:         { sinais:['E1_NUM','E1_CLIENTE','E1_VALOR'],          mapa:{'E1_NUM':'chave','E1_NOMCLI':'entidade','E1_VALOR':'valor','E1_VENCTO':'vencimento','E1_EMISSAO':'data','E1_SITUACA':'status'} },
+  TOTVS_RM:      { sinais:['IDLAN','CODCOLIGADA','DATAVENCIMENTO'],     mapa:{'IDLAN':'chave','VALOR':'valor','DATAEMISSAO':'data','DATAVENCIMENTO':'vencimento','NOMECFO':'entidade','HISTORICO':'categoria'} },
+  TOTVS_DATASUL: { sinais:['nr-docto','nom-clifor','dt-emissao'],       mapa:{'nr-docto':'chave','vl-docto':'valor','dt-emissao':'data','dt-vencto':'vencimento','nom-clifor':'entidade'} },
+  OMIE:          { sinais:['numero_documento','nome_cliente','valor_documento'], mapa:{'numero_documento':'chave','valor_documento':'valor','data_emissao':'data','data_vencimento':'vencimento','nome_cliente':'entidade','descricao_categoria':'categoria'} },
+  QUESTOR:       { sinais:['DT_LANCTO','VL_LANCTO','CD_CONTA_DB'],     mapa:{'NR_NF':'chave','VL_LANCTO':'valor','DT_LANCTO':'data','DS_HISTORICO':'categoria','NM_FORNECEDOR':'entidade'} },
+  SAP_B1:        { sinais:['DocNum','CardName','DocTotal'],             mapa:{'DocNum':'chave','DocTotal':'valor','DocDate':'data','DocDueDate':'vencimento','CardName':'entidade'} },
+  DOMINIO:       { sinais:['Histórico','Débito','Crédito'],             mapa:{'Valor':'valor','Data':'data','Histórico':'categoria','C. Custo':'entidade'} },
+  SANKHYA:       { sinais:['NUMNOTA','NOMEPARC','VLRNOTA'],             mapa:{'NUMNOTA':'chave','VLRNOTA':'valor','DTNEG':'data','DTVENC':'vencimento','NOMEPARC':'entidade','CODTIPOPER':'categoria'} },
+  SENIOR:        { sinais:['NumTit','NomCli','ValTit'],                 mapa:{'NumTit':'chave','ValTit':'valor','DatEmi':'data','DatVen':'vencimento','NomCli':'entidade'} },
+  CIGAM:         { sinais:['NUMERO_TITULO','VALOR_TITULO','DATA_EMISSAO'], mapa:{'NUMERO_TITULO':'chave','VALOR_TITULO':'valor','DATA_EMISSAO':'data','DATA_VENCIMENTO':'vencimento','NOME_CLIENTE':'entidade'} },
+  ALTERDATA:     { sinais:['nr_lancamento','vl_lancamento','dt_lancamento'], mapa:{'nr_lancamento':'chave','vl_lancamento':'valor','dt_lancamento':'data','dt_vencimento':'vencimento','nm_cliente':'entidade','ds_historico':'categoria'} },
+  LINX:          { sinais:['COD_NF','VL_TOTAL','NM_CLIENTE'],          mapa:{'COD_NF':'chave','VL_TOTAL':'valor','DT_EMISSAO':'data','DT_VENCIMENTO':'vencimento','NM_CLIENTE':'entidade'} },
+  MEGA:          { sinais:['num_doc','vl_doc','nm_parceiro'],           mapa:{'num_doc':'chave','vl_doc':'valor','dt_doc':'data','dt_vencto':'vencimento','nm_parceiro':'entidade'} },
+  NIBO:          { sinais:['data_pagamento','valor','categoria'],       mapa:{'valor':'valor','data_pagamento':'data','data_vencimento':'vencimento','categoria':'categoria','descricao':'chave'} },
+  GRANATUM:      { sinais:['data_vencimento','valor','categoria'],      mapa:{'valor':'valor','data_pagamento':'data','data_vencimento':'vencimento','categoria':'categoria','descricao':'chave'} },
+  CONTA_AZUL:    { sinais:['Emissão','Vencimento','Cliente/Fornecedor'], mapa:{'Número':'chave','Valor':'valor','Emissão':'data','Vencimento':'vencimento','Cliente/Fornecedor':'entidade','Categoria':'categoria'} },
+  BLING:         { sinais:['numero','contato','situacao'],              mapa:{'numero':'chave','valor':'valor','data':'data','vencimento':'vencimento','contato':'entidade','categoria':'categoria'} },
+  TINY:          { sinais:['numero_nota','nome_cliente','valor_nota'],  mapa:{'numero_nota':'chave','valor_nota':'valor','data_emissao':'data','data_vencimento':'vencimento','nome_cliente':'entidade'} },
+  GESTAO_CLICK:  { sinais:['Código','Cliente','Vencimento'],            mapa:{'Código':'chave','Valor':'valor','Data':'data','Vencimento':'vencimento','Cliente':'entidade','Categoria':'categoria'} },
+  NFE_XML:       { sinais:['nNF','dhEmi','vNF'],                       mapa:{'nNF':'chave','vNF':'valor','dhEmi':'data','dVenc':'vencimento','xNome_dest':'entidade'} },
+};
+
+const NOMES_ERP = {
+  TOTVS:'TOTVS Protheus', TOTVS_RM:'TOTVS RM', TOTVS_DATASUL:'TOTVS Datasul',
+  OMIE:'Omie ERP', QUESTOR:'Questor', SAP_B1:'SAP Business One',
+  DOMINIO:'Domínio', SANKHYA:'Sankhya', SENIOR:'Senior Sistemas',
+  CIGAM:'Cigam', ALTERDATA:'Alterdata', LINX:'Linx', MEGA:'Mega Sistemas',
+  NIBO:'Nibo', GRANATUM:'Granatum', CONTA_AZUL:'Conta Azul',
+  BLING:'Bling', TINY:'Tiny ERP', GESTAO_CLICK:'GestãoClick', NFE_XML:'NFe XML',
+};
+
+function detectarERP(headers) {
+  const hSet = new Set(headers.map(h => String(h).trim()));
+  let melhorErp = null, melhorScore = 0;
+  for (const [erp, cfg] of Object.entries(MAPAS_ERP_JS)) {
+    const hits = cfg.sinais.filter(s => hSet.has(s)).length;
+    if (hits >= 2 && hits > melhorScore) { melhorScore = hits; melhorErp = erp; }
+  }
+  return melhorErp ? { erp: melhorErp, nome: NOMES_ERP[melhorErp], mapa: MAPAS_ERP_JS[melhorErp].mapa } : null;
+}
+
+// ══════════════════════════════════════════════════════
+// VERIFICAÇÃO DE INTEGRIDADE
+// ══════════════════════════════════════════════════════
+
+function calcularIntegridade(dados, cols, kpis, dre, pareto) {
+  const checks = [];
+  let passed = 0, total = 0;
+
+  // Check 1: registros com valor válido
+  total++;
+  const comValor = dados.filter(r => { const v = toNum(r[cols.valor]); return !isNaN(v) && v !== 0; }).length;
+  const pctVal = dados.length ? comValor / dados.length * 100 : 0;
+  const okVal = pctVal >= 85;
+  if (okVal) passed++;
+  checks.push({ nome:'Valores processados', status: okVal?'OK':'ALERTA',
+    detalhe:`${comValor} de ${dados.length} (${pctVal.toFixed(0)}%)` });
+
+  // Check 2: checksum (informativo)
+  total++;  passed++;
+  const checksum = dados.reduce((s,r)=>{ const v=toNum(r[cols.valor]); return s+(isNaN(v)?0:Math.abs(v)); }, 0);
+  checks.push({ nome:'Checksum (soma |valores|)', status:'INFO',
+    detalhe:`${fmtBRL(checksum)} — confirme com =SOMA() no Excel`, checksum });
+
+  // Check 3: cross-check Pareto × total
+  if (pareto && pareto.length && kpis && kpis.totalValor) {
+    total++;
+    const somaPareto = pareto.reduce((s,i)=>s+i.total,0);
+    const diff = Math.abs(somaPareto - Math.abs(kpis.totalValor));
+    const pctDiff = kpis.totalValor ? diff / Math.abs(kpis.totalValor) * 100 : 0;
+    const okP = pctDiff < 5;
+    if (okP) passed++;
+    checks.push({ nome:'Cross-check Pareto × Total', status: okP?'OK':'DIVERGENTE',
+      detalhe: okP ? `Pareto ${fmtBRL(somaPareto)} ≈ Total ${fmtBRL(kpis.totalValor)}`
+                   : `Diferença de ${pctDiff.toFixed(1)}% (${fmtBRL(diff)})` });
+  }
+
+  // Check 4: cobertura de datas
+  if (cols.data) {
+    total++;
+    const comData = dados.filter(r => toDate(r[cols.data]) !== null).length;
+    const pctData = dados.length ? comData / dados.length * 100 : 0;
+    const okData = pctData >= 80;
+    if (okData) passed++;
+    checks.push({ nome:'Cobertura de datas', status: okData?'OK':'ALERTA',
+      detalhe:`${pctData.toFixed(0)}% dos registros com data válida` });
+  }
+
+  // Check 5: cobertura de categorias
+  if (cols.categoria) {
+    total++;
+    const comCat = dados.filter(r => String(r[cols.categoria]||'').trim()).length;
+    const pctCat = dados.length ? comCat / dados.length * 100 : 0;
+    const nivel = pctCat >= 80 ? 'ALTA' : pctCat >= 50 ? 'MÉDIA' : 'BAIXA';
+    if (pctCat >= 80) passed++;
+    checks.push({ nome:'Cobertura de categorias', status: nivel,
+      detalhe:`${pctCat.toFixed(0)}% categorizados` });
+  }
+
+  const confianca = total ? Math.round(passed / total * 100) : 100;
+  return { checks, confianca, checksum, registros: { total: dados.length, comValor } };
+}
+
+// ══════════════════════════════════════════════════════
+// UTILITÁRIOS
+// ══════════════════════════════════════════════════════
+
+function toNum(v) {
+  if (v === null || v === undefined || v === '') return NaN;
+  if (typeof v === 'number') return v;
+  const s = String(v).replace(/R\$\s?/g,'').replace(/\./g,'').replace(',','.').trim();
+  return parseFloat(s);
+}
+
+function toDate(v) {
+  if (!v) return null;
+  if (v instanceof Date) return isNaN(v) ? null : v;
+  // Número serial do Excel
+  if (typeof v === 'number') {
+    const d = new Date(Math.round((v - 25569) * 86400 * 1000));
+    return isNaN(d) ? null : d;
+  }
+  const s = String(v).trim();
+  // DD/MM/YYYY
+  const br = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (br) return new Date(+br[3], +br[2]-1, +br[1]);
+  const d = new Date(s);
+  return isNaN(d) ? null : d;
+}
+
+function fmtBRL(v) {
+  if (isNaN(v) || v === null) return '—';
+  return new Intl.NumberFormat('pt-BR', { style:'currency', currency:'BRL' }).format(v);
+}
+
+function fmtNum(v, dec=0) {
+  if (isNaN(v) || v === null) return '—';
+  return new Intl.NumberFormat('pt-BR', { minimumFractionDigits:dec, maximumFractionDigits:dec }).format(v);
+}
+
+function fmtData(d) {
+  if (!d) return '—';
+  return d.toLocaleDateString('pt-BR');
+}
+
+// ══════════════════════════════════════════════════════
+// MÓDULO 1: AUDITORIA
+// ══════════════════════════════════════════════════════
+
+function auditoria(dados, cols) {
+  const problemas = [];
+  const hoje = new Date();
+
+  // Duplicatas por chave
+  if (cols.chave) {
+    const contagem = {};
+    dados.forEach((row, i) => {
+      const k = String(row[cols.chave] ?? '').trim();
+      if (!k) return;
+      if (!contagem[k]) contagem[k] = [];
+      contagem[k].push(i + 2);
+    });
+    for (const [k, linhas] of Object.entries(contagem)) {
+      if (linhas.length > 1) {
+        problemas.push({
+          severidade: 'CRÍTICA', tipo: 'DUPLICATA',
+          coluna: cols.chave, linha: linhas.join(', '),
+          valor: k,
+          descricao: `"${k}" aparece ${linhas.length}x — possível lançamento duplicado`,
+        });
+      }
+    }
+  }
+
+  // Campos obrigatórios vazios
+  const obrigatorias = [cols.valor, cols.data, cols.chave].filter(Boolean);
+  for (const col of obrigatorias) {
+    const vazios = dados.map((r, i) => [r, i]).filter(([r]) => {
+      const v = r[col];
+      return v === null || v === undefined || v === '';
+    }).map(([,i]) => i + 2);
+    if (vazios.length > 0) {
+      problemas.push({
+        severidade: 'ALTA', tipo: 'CAMPO_VAZIO',
+        coluna: col, linha: vazios.slice(0,5).join(', ') + (vazios.length > 5 ? '...' : ''),
+        valor: `${vazios.length} registros`,
+        descricao: `${vazios.length} linha(s) sem "${col}" preenchido`,
+      });
+    }
+  }
+
+  // Outliers (±3σ) na coluna de valor
+  if (cols.valor) {
+    const nums = dados.map(r => toNum(r[cols.valor])).filter(n => !isNaN(n));
+    if (nums.length > 4) {
+      const media = nums.reduce((a,b)=>a+b,0) / nums.length;
+      const desvio = Math.sqrt(nums.map(n=>(n-media)**2).reduce((a,b)=>a+b,0)/nums.length);
+      const limSup = media + 3*desvio;
+      const limInf = media - 3*desvio;
+      dados.forEach((row, i) => {
+        const v = toNum(row[cols.valor]);
+        if (!isNaN(v) && (v > limSup || v < limInf)) {
+          problemas.push({
+            severidade: 'MÉDIA', tipo: 'OUTLIER',
+            coluna: cols.valor, linha: i + 2,
+            valor: fmtBRL(v),
+            descricao: `Valor fora do padrão (média ${fmtBRL(media)}, ±3σ = ${fmtBRL(desvio)})`,
+          });
+        }
+      });
+    }
+  }
+
+  // Datas futuras
+  if (cols.data) {
+    dados.forEach((row, i) => {
+      const d = toDate(row[cols.data]);
+      if (d && d > hoje) {
+        problemas.push({
+          severidade: 'ALTA', tipo: 'DATA_FUTURA',
+          coluna: cols.data, linha: i + 2,
+          valor: fmtData(d),
+          descricao: `Data futura: ${fmtData(d)} — possível erro de digitação`,
+        });
+      }
+    });
+  }
+
+  // Receita negativa
+  if (cols.valor && cols.categoria) {
+    dados.forEach((row, i) => {
+      const cat = String(row[cols.categoria] ?? '').toUpperCase();
+      const v   = toNum(row[cols.valor]);
+      if (/RECEITA|VENDA|FATURAMENTO/.test(cat) && v < 0) {
+        problemas.push({
+          severidade: 'ALTA', tipo: 'CLASSIFICAÇÃO_ERRADA',
+          coluna: cols.valor, linha: i + 2,
+          valor: fmtBRL(v),
+          descricao: `Receita com valor negativo — possível estorno não tratado`,
+        });
+      }
+    });
+  }
+
+  // Ordenar: CRÍTICA → ALTA → MÉDIA → BAIXA
+  const ord = { 'CRÍTICA':0, 'ALTA':1, 'MÉDIA':2, 'BAIXA':3 };
+  return problemas.sort((a,b) => (ord[a.severidade]??4) - (ord[b.severidade]??4));
+}
+
+// ══════════════════════════════════════════════════════
+// MÓDULO 2: AGING
+// ══════════════════════════════════════════════════════
+
+function calcularAging(dados, colVenc, colValor) {
+  if (!colVenc || !colValor) return null;
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  const faixas = {
+    'A vencer':         { min:-Infinity, max:-1,  qtd:0, total:0 },
+    'Vencido 1-30d':    { min:0,         max:30,  qtd:0, total:0 },
+    'Vencido 31-60d':   { min:31,        max:60,  qtd:0, total:0 },
+    'Vencido 61-90d':   { min:61,        max:90,  qtd:0, total:0 },
+    'Vencido +90d':     { min:91,        max:Infinity, qtd:0, total:0 },
+    'Sem data':         { min:null,      max:null, qtd:0, total:0 },
+  };
+
+  dados.forEach(row => {
+    const d = toDate(row[colVenc]);
+    const v = toNum(row[colValor]);
+    if (isNaN(v)) return;
+    if (!d) { faixas['Sem data'].qtd++; faixas['Sem data'].total += v; return; }
+    const dias = Math.floor((hoje - d) / 86400000);
+    for (const [nome, f] of Object.entries(faixas)) {
+      if (nome === 'Sem data') continue;
+      if (dias >= f.min && dias <= f.max) {
+        f.qtd++; f.total += v; break;
+      }
+    }
+  });
+
+  const totalGeral = Object.values(faixas).reduce((s,f)=>s+f.total, 0);
+  return Object.entries(faixas)
+    .filter(([,f]) => f.qtd > 0)
+    .map(([nome, f]) => ({
+      faixa: nome, qtd: f.qtd,
+      total: f.total,
+      pct: totalGeral ? (f.total / totalGeral * 100) : 0,
+    }));
+}
+
+// ══════════════════════════════════════════════════════
+// MÓDULO 3: PARETO
+// ══════════════════════════════════════════════════════
+
+function calcularPareto(dados, colEntidade, colValor, top = 15) {
+  if (!colEntidade || !colValor) return null;
+  const mapa = {};
+  dados.forEach(row => {
+    const ent = String(row[colEntidade] ?? '').trim() || '(sem nome)';
+    const v   = toNum(row[colValor]);
+    if (!isNaN(v)) mapa[ent] = (mapa[ent] || 0) + v;
+  });
+  const lista = Object.entries(mapa)
+    .map(([nome, total]) => ({ nome, total }))
+    .sort((a,b) => b.total - a.total);
+  const totalGeral = lista.reduce((s,i)=>s+i.total, 0);
+  let acum = 0;
+  return lista.slice(0, top).map((item, idx) => {
+    const pct = totalGeral ? item.total / totalGeral * 100 : 0;
+    acum += pct;
+    return { ranking: idx+1, nome: item.nome, total: item.total,
+             pct, acumulado: acum, classe: acum <= 80 ? 'A' : 'B' };
+  });
+}
+
+// ══════════════════════════════════════════════════════
+// MÓDULO 4: DRE
+// ══════════════════════════════════════════════════════
+
+const MAPA_DRE = [
+  { linha:'Receita Bruta',              termos:/RECEITA|VENDA|FATURAMENTO/ },
+  { linha:'(-) Deduções',               termos:/DEDU[CÇ]|IMPOSTO.*VENDA|DEVOLU|ABATIMENTO|PIS|COFINS|ISS|ICMS/ },
+  { linha:'(-) CMV/CPV',                termos:/CMV|CPV|CUSTO.*MERCADORIA|CUSTO.*PRODUTO|CUSTO.*VARI/ },
+  { linha:'(-) Despesas Operacionais',  termos:/DESPESA.*(ADM|COMERCIAL|OPERACIONAL|GERAL)|SALARIO|ALUGUEL/ },
+  { linha:'(-/+) Resultado Financeiro', termos:/FINANCEI|JUROS|CAMBIAL/ },
+  { linha:'(-) IR\/CSLL',              termos:/\bIR\b|IRPJ|CSLL|IMPOSTO.*RENDA|CONTRIBUI.*SOCIAL/ },
+];
+
+function construirDRE(dados, colCat, colValor) {
+  if (!colCat || !colValor) return null;
+  const valores = {};
+  MAPA_DRE.forEach(({ linha }) => { valores[linha] = 0; });
+
+  dados.forEach(row => {
+    const cat = String(row[colCat] ?? '').toUpperCase().trim();
+    const v   = toNum(row[colValor]);
+    if (isNaN(v)) return;
+    for (const { linha, termos } of MAPA_DRE) {
+      if (termos.test(cat)) { valores[linha] += v; break; }
+    }
+  });
+
+  const rb  = valores['Receita Bruta'];
+  const ded = Math.abs(valores['(-) Deduções']);
+  const rl  = rb - ded;
+  const cmv = Math.abs(valores['(-) CMV/CPV']);
+  const lb  = rl - cmv;
+  const dop = Math.abs(valores['(-) Despesas Operacionais']);
+  const ebit= lb - dop;
+  const rf  = valores['(-/+) Resultado Financeiro'];
+  const lair= ebit + rf;
+  const ir  = Math.abs(valores['(-) IR/CSLL']);
+  const ll  = lair - ir;
+
+  const linhas = [
+    { linha:'Receita Bruta',                    valor:rb,   tipo:'input' },
+    { linha:'(-) Deduções',                     valor:-ded, tipo:'input' },
+    { linha:'(=) Receita Líquida',              valor:rl,   tipo:'total' },
+    { linha:'(-) CMV/CPV',                      valor:-cmv, tipo:'input' },
+    { linha:'(=) Lucro Bruto',                  valor:lb,   tipo:'total' },
+    { linha:'(-) Despesas Operacionais',        valor:-dop, tipo:'input' },
+    { linha:'(=) EBIT (Resultado Operacional)', valor:ebit, tipo:'total' },
+    { linha:'(-/+) Resultado Financeiro',       valor:rf,   tipo:'input' },
+    { linha:'(=) Resultado antes IR/CSLL',      valor:lair, tipo:'total' },
+    { linha:'(-) IR/CSLL',                      valor:-ir,  tipo:'input' },
+    { linha:'(=) Lucro Líquido',                valor:ll,   tipo:'total lucro' },
+  ];
+  return linhas.map(l => ({ ...l, av: rl ? (l.valor/rl*100) : 0 }));
+}
+
+// ══════════════════════════════════════════════════════
+// MÓDULO 5: KPIs RESUMO
+// ══════════════════════════════════════════════════════
+
+function calcularKPIs(dados, cols) {
+  const valores = dados.map(r => toNum(r[cols.valor])).filter(n => !isNaN(n));
+  const datas   = cols.data ? dados.map(r => toDate(r[cols.data])).filter(Boolean) : [];
+  const total   = valores.reduce((a,b)=>a+b, 0);
+  const ticket  = valores.length ? total / valores.length : 0;
+  const minData = datas.length ? new Date(Math.min(...datas)) : null;
+  const maxData = datas.length ? new Date(Math.max(...datas)) : null;
+
+  return {
+    totalRegistros: dados.length,
+    totalValor:     total,
+    ticketMedio:    ticket,
+    periodoInicio:  minData,
+    periodoFim:     maxData,
+    colsDetectadas: Object.values(cols).filter(Boolean).length,
+  };
+}
+
+// Exportar para uso no app.js
+// (module.exports removido para uso direto no navegador)
+
+</script>
+<style>
+:root{
+  --azul:#1F4E79;--azul2:#2E75B6;--azul3:#D6E4F0;
+  --gold:#C9A84C;
+  --verde:#006100;--verde-bg:#C6EFCE;
+  --amarelo:#9C5700;--amarelo-bg:#FFEB9C;
+  --vermelho:#9C0006;--vermelho-bg:#FFC7CE;
+  --cinza:#f4f6f9;--branco:#fff;
+  --border:#E2E8F0;--text-2:#64748B;--text-3:#94a3b8;
+  --radius:10px;--radius-sm:6px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;font-size:13px;background:var(--cinza);color:#333}
+/* Header */
+.header{background:linear-gradient(135deg,var(--azul),var(--azul2));color:#fff;
+  padding:18px 32px;display:flex;justify-content:space-between;align-items:center;
+  box-shadow:0 2px 8px rgba(0,0,0,.2)}
+.header h1{font-size:20px;letter-spacing:.5px}
+.header .sub{font-size:11px;opacity:.7;margin-top:2px}
+.header-right{text-align:right;font-size:11px;opacity:.8}
+/* Upload */
+#upload-area{max-width:860px;margin:40px auto;padding:0 16px}
+.drop-zone{border:2px dashed var(--gold);border-radius:16px;padding:48px 32px;
+  text-align:center;background:var(--branco);cursor:pointer;transition:.2s;
+  box-shadow:0 2px 12px rgba(0,0,0,.06)}
+.drop-zone:hover,.drop-zone.drag{border-color:var(--azul);background:var(--azul3)}
+.drop-zone .upload-icon{margin-bottom:16px}
+.drop-zone .upload-icon svg{width:64px;height:64px;color:var(--azul2)}
+.drop-zone .upload-title{color:var(--azul);font-size:20px;font-weight:700;margin-bottom:8px}
+.drop-zone .upload-sub{color:#888;font-size:12px;margin-bottom:16px}
+.btn-upload{background:var(--azul);color:#fff;border:none;border-radius:var(--radius-sm);
+  padding:10px 28px;font-size:13px;cursor:pointer;margin-top:4px;transition:.2s;font-weight:600}
+.btn-upload:hover{background:var(--azul2);transform:translateY(-1px)}
+.upload-steps{display:flex;align-items:center;gap:6px;justify-content:center;
+  margin-top:20px;font-size:11px;color:var(--text-3)}
+.upload-steps .step-num{display:inline-flex;width:20px;height:20px;border-radius:50%;
+  background:var(--azul3);color:var(--azul);font-weight:700;font-size:10px;
+  align-items:center;justify-content:center}
+.upload-steps .step-label{font-weight:500;color:var(--text-2)}
+.upload-steps .step-arrow{color:var(--border);font-size:14px}
+.upload-steps .step.done .step-num{background:var(--verde-bg);color:var(--verde)}
+.upload-steps .step.active .step-num{background:var(--azul);color:#fff}
+.upload-steps .step.active .step-label{color:var(--azul);font-weight:700}
+#file-input{display:none}
+/* Config colunas */
+.col-config{background:var(--branco);border-radius:var(--radius);padding:24px;
+  margin-top:20px;box-shadow:0 2px 12px rgba(0,0,0,.07)}
+.col-config h3{color:var(--azul);margin-bottom:12px;font-size:14px;font-weight:700}
+.col-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.col-group label{font-size:11px;color:var(--text-2);display:block;margin-bottom:4px;
+  text-transform:uppercase;letter-spacing:.4px;font-weight:600}
+.col-group select{width:100%;padding:7px 8px;border:1.5px solid var(--border);
+  border-radius:var(--radius-sm);font-size:12px;color:#333;background:#fff;
+  font-family:inherit;outline:none}
+.col-group select:focus{border-color:var(--azul2)}
+.btn-analisar{background:var(--azul);color:#fff;border:none;border-radius:var(--radius-sm);
+  padding:11px 32px;font-size:14px;cursor:pointer;margin-top:18px;font-weight:700;
+  transition:.2s;letter-spacing:.3px}
+.btn-analisar:hover{background:var(--azul2);transform:translateY(-1px)}
+/* ERP selector */
+.erp-selector-wrap{margin-bottom:18px}
+.erp-selector-wrap label{font-size:10.5px;color:var(--text-2);font-weight:700;
+  text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:5px}
+.erp-selector-wrap select{width:100%;max-width:380px;padding:8px 10px;
+  border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:13px;
+  color:var(--azul);background:#fff;font-family:inherit;outline:none;cursor:pointer}
+.erp-selector-wrap select:focus{border-color:var(--azul)}
+.erp-banner{background:linear-gradient(135deg,#EFF6FF,#DBEAFE);
+  border:1px solid #BFDBFE;border-left:4px solid var(--azul2);
+  border-radius:var(--radius-sm);padding:10px 16px;margin-bottom:14px;
+  display:flex;align-items:center;gap:10px;font-size:12.5px;color:#1E40AF;font-weight:600}
+.erp-badge-tag{background:var(--azul2);color:#fff;border-radius:4px;
+  padding:2px 10px;font-size:11px;font-weight:700;letter-spacing:.5px}
+.erp-confianca{font-weight:400;color:#3B82F6;font-size:11.5px}
+/* Dashboard */
+#dashboard{display:none;max-width:1200px;margin:0 auto;padding:16px}
+/* KPIs */
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}
+.kpi{background:var(--branco);border-radius:var(--radius);padding:18px;
+  box-shadow:0 2px 10px rgba(0,0,0,.07);border-left:4px solid var(--azul2)}
+.kpi.critico{border-left-color:#C00000}
+.kpi.ok{border-left-color:var(--verde)}
+.kpi .lbl{font-size:10px;color:var(--text-2);text-transform:uppercase;letter-spacing:.5px;font-weight:600}
+.kpi .val{font-size:clamp(16px,2.2vw,24px);font-weight:700;color:var(--azul);margin:5px 0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kpi.critico .val{color:#C00000}
+.kpi.ok .val{color:var(--verde)}
+.kpi .sub{font-size:10px;color:var(--text-3)}
+/* Cards */
+.card{background:var(--branco);border-radius:var(--radius);padding:22px;
+  margin-bottom:18px;box-shadow:0 2px 12px rgba(0,0,0,.07)}
+.card h2{font-size:13px;color:var(--azul);margin-bottom:14px;
+  padding-bottom:8px;border-bottom:2px solid var(--azul);display:flex;
+  align-items:center;gap:8px;text-transform:uppercase;letter-spacing:.4px;font-weight:700}
+/* Check badges (verificação) */
+.check-badge{display:inline-flex;align-items:center;gap:5px;padding:4px 11px;
+  border-radius:12px;font-size:11px;font-weight:600;margin:3px}
+.check-ok{background:#D1FAE5;color:#065F46}
+.check-info{background:#EFF6FF;color:#1E40AF}
+.check-alerta,.check-media,.check-parcial{background:#FEF3C7;color:#92400E}
+.check-divergente,.check-baixa{background:#FEE2E2;color:#991B1B}
+.check-alta{background:#D1FAE5;color:#065F46}
+/* Tabela */
+.tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{background:var(--azul);color:#fff;padding:9px 12px;text-align:left;
+  white-space:nowrap;font-size:11px;text-transform:uppercase;letter-spacing:.4px}
+td{padding:8px 12px;border-bottom:1px solid #f0f0f0}
+tr:nth-child(even) td{background:#fafafa}
+tr:hover td{background:var(--azul3)}
+/* Badges */
+.badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:bold;white-space:nowrap}
+.b-critica{background:var(--vermelho-bg);color:var(--vermelho)}
+.b-alta{background:#FCE4D6;color:#843C0C}
+.b-media{background:var(--amarelo-bg);color:var(--amarelo)}
+.b-baixa{background:var(--verde-bg);color:var(--verde)}
+/* Barra aging */
+.bar-w{background:#e8e8e8;border-radius:4px;height:10px;min-width:80px}
+.bar-f{height:10px;border-radius:4px;transition:.5s}
+/* Toast */
+#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);
+  background:var(--azul);color:#fff;padding:10px 22px;border-radius:20px;
+  font-size:12.5px;font-weight:600;z-index:1000;transition:.3s;pointer-events:none;opacity:0}
+#toast.show{transform:translateX(-50%) translateY(0);opacity:1}
+/* DRE */
+.dre-total td{font-weight:bold;background:#EBF3FB}
+.dre-lucro td{font-weight:bold;background:#C6EFCE;color:var(--verde)}
+.dre-prejuizo td{font-weight:bold;background:var(--vermelho-bg);color:var(--vermelho)}
+.dre-sub td:first-child{padding-left:24px;color:#555}
+/* Grid 2 colunas */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+/* Botões topo */
+.toolbar{display:flex;gap:10px;margin-bottom:16px;align-items:center;flex-wrap:wrap}
+.btn-sm{background:var(--azul);color:#fff;border:none;border-radius:5px;
+  padding:7px 16px;font-size:12px;cursor:pointer}
+.btn-sm:hover{background:var(--azul2)}
+.btn-outline{background:transparent;color:var(--azul);border:1px solid var(--azul)}
+.btn-outline:hover{background:var(--azul3)}
+.tag-arquivo{background:var(--azul3);color:var(--azul);border-radius:5px;
+  padding:5px 12px;font-size:12px;font-weight:bold}
+/* Gráficos */
+.chart-box{position:relative;height:280px}
+/* Empty state */
+.empty{text-align:center;padding:24px;color:#aaa;font-size:12px}
+/* Loader */
+#loader{display:none;position:fixed;inset:0;background:rgba(255,255,255,.8);
+  z-index:999;justify-content:center;align-items:center;flex-direction:column;gap:12px}
+#loader.show{display:flex}
+.spinner{width:40px;height:40px;border:4px solid var(--azul3);
+  border-top-color:var(--azul);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+/* Print */
+@media print{
+  .header,.toolbar,#upload-area{display:none}
+  #dashboard{display:block!important;padding:0}
+  .card{box-shadow:none;break-inside:avoid}
+}
+@media(max-width:900px){
+  .kpis{grid-template-columns:repeat(3,1fr)}
+}
+@media(max-width:600px){
+  .kpis{grid-template-columns:repeat(2,1fr)}
+  .grid2{grid-template-columns:1fr}
+  .col-grid{grid-template-columns:repeat(2,1fr)}
+  .kpi .val{font-size:14px}
+  .kpi{padding:12px}
+  .card{padding:14px}
+  .erp-selector-wrap select{max-width:100%}
+  .drop-zone{padding:32px 16px}
+  .toolbar .btn-sm{flex:1;min-width:calc(50% - 5px)}
+}
+</style>
+</head>
+<body>
+
+<!-- Loader -->
+<div id="loader"><div class="spinner"></div><span style="color:var(--azul);font-weight:bold">Analisando planilha...</span></div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<!-- Header -->
+<div class="header">
+  <div>
+    <h1>Planilha Financeira Pro</h1>
+    <div class="sub">Análise autônoma de planilhas — 100% no navegador, sem upload</div>
+    <div style="font-size:11px;opacity:0.7;margin-top:3px;">Powered by <strong>Luan Guilherme Lourenço</strong></div>
+  </div>
+  <div class="header-right" id="header-info">Nenhum arquivo carregado</div>
+</div>
+
+<!-- Upload -->
+<div id="upload-area">
+  <div class="drop-zone" id="drop-zone">
+    <div class="upload-icon">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/>
+      </svg>
+    </div>
+    <p class="upload-title">Arraste sua planilha aqui</p>
+    <p class="upload-sub">Excel (.xlsx, .xls) ou CSV — processado 100% no seu navegador</p>
+    <button class="btn-upload" onclick="document.getElementById('file-input').click()">
+      Selecionar arquivo
+    </button>
+    <input type="file" id="file-input" accept=".xlsx,.xls,.csv,.xlsm">
+    <div class="upload-steps">
+      <span class="step active" id="step-1"><span class="step-num">1</span> <span class="step-label">Importe</span></span>
+      <span class="step-arrow">→</span>
+      <span class="step" id="step-2"><span class="step-num">2</span> <span class="step-label">Configure</span></span>
+      <span class="step-arrow">→</span>
+      <span class="step" id="step-3"><span class="step-num">3</span> <span class="step-label">Analise</span></span>
+    </div>
+  </div>
+
+  <div class="col-config" id="col-config" style="display:none">
+    <h3>Configuração de Colunas</h3>
+    <div class="erp-selector-wrap">
+      <label>Sistema de origem</label>
+      <select id="sel-erp-sistema" onchange="aplicarMapeamentoERP(this.value)">
+        <option value="">Detectar automaticamente / Planilha Avulsa</option>
+        <option value="TOTVS">TOTVS Protheus</option>
+        <option value="TOTVS_RM">TOTVS RM</option>
+        <option value="TOTVS_DATASUL">TOTVS Datasul</option>
+        <option value="OMIE">Omie ERP</option>
+        <option value="QUESTOR">Questor</option>
+        <option value="SAP_B1">SAP Business One</option>
+        <option value="DOMINIO">Domínio (Thomson Reuters)</option>
+        <option value="SANKHYA">Sankhya</option>
+        <option value="SENIOR">Senior Sistemas</option>
+        <option value="CIGAM">Cigam</option>
+        <option value="ALTERDATA">Alterdata</option>
+        <option value="LINX">Linx</option>
+        <option value="MEGA">Mega Sistemas</option>
+        <option value="NIBO">Nibo</option>
+        <option value="GRANATUM">Granatum</option>
+        <option value="CONTA_AZUL">Conta Azul</option>
+        <option value="BLING">Bling</option>
+        <option value="TINY">Tiny ERP</option>
+        <option value="GESTAO_CLICK">GestãoClick</option>
+        <option value="NFE_XML">NFe XML exportada</option>
+      </select>
+    </div>
+    <div id="erp-banner" class="erp-banner" style="display:none"></div>
+    <p style="font-size:11px;color:#888;margin-bottom:12px">
+      Ajuste os mapeamentos de colunas se necessário:
+    </p>
+    <div class="col-grid" id="col-selects"></div>
+    <button class="btn-analisar" onclick="executarAnalise()">Analisar</button>
+  </div>
+</div>
+
+<!-- Dashboard -->
+<div id="dashboard">
+  <div class="toolbar">
+    <span class="tag-arquivo" id="tag-arquivo">—</span>
+    <button class="btn-sm" onclick="document.getElementById('upload-area').style.display='block';document.getElementById('dashboard').style.display='none';_atualizarStep(1)">
+      Novo arquivo
+    </button>
+    <button class="btn-sm btn-outline btn-imprimir" onclick="window.print()">Imprimir</button>
+    <button class="btn-sm btn-outline" onclick="exportarJSON()">Exportar JSON</button>
+  </div>
+
+  <!-- KPIs -->
+  <div class="kpis" id="kpis"></div>
+
+  <!-- Verificação de integridade -->
+  <div class="card" id="card-verificacao" style="display:none;border-left:4px solid var(--verde)">
+    <h2>Verificação de Integridade</h2>
+    <div id="verificacao-content"></div>
+  </div>
+
+  <!-- Auditoria -->
+  <div class="card" id="card-auditoria">
+    <h2>Auditoria de Dados <span id="badge-auditoria"></span></h2>
+    <div id="auditoria-content"></div>
+  </div>
+
+  <!-- Grid: Aging + gráfico -->
+  <div class="grid2">
+    <div class="card" id="card-aging"><h2>Aging de Recebíveis</h2><div id="aging-content"><div class="empty">Coluna de vencimento não detectada</div></div></div>
+    <div class="card"><h2>Aging — Distribuição</h2><div class="chart-box"><canvas id="chart-aging"></canvas></div></div>
+  </div>
+
+  <!-- Grid: DRE + Pareto -->
+  <div class="grid2">
+    <div class="card" id="card-dre"><h2>DRE</h2><div id="dre-content"><div class="empty">Categorias não detectadas</div></div></div>
+    <div class="card"><h2>Pareto — Top Entidades</h2><div id="pareto-content"></div></div>
+  </div>
+
+  <!-- Dados brutos -->
+  <div class="card">
+    <h2>Dados <span id="dados-info" style="font-size:11px;font-weight:normal;color:#888;text-transform:none"></span></h2>
+    <div style="margin-bottom:10px">
+      <input id="busca" type="text" placeholder="Buscar em todos os campos..."
+        style="padding:7px 12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:12px;width:300px;outline:none;font-family:inherit"
+        oninput="filtrarTabela()">
+    </div>
+    <div class="tbl-wrap"><table id="tabela-dados"><thead id="thead-dados"></thead><tbody id="tbody-dados"></tbody></table></div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════
+// ESTADO GLOBAL
+// ══════════════════════════════════════════════════════
+let _dadosOriginais = [];
+let _dadosFiltrados = [];
+let _headers        = [];
+let _cols           = {};
+let _nomeArquivo    = '';
+let _chartAging     = null;
+let _erpDetectado   = null;
+let _toastTimer     = null;
+
+function _toast(msg, ms=3000) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => el.classList.remove('show'), ms);
+}
+
+function _atualizarStep(n) {
+  [1,2,3].forEach(i => {
+    const el = document.getElementById(`step-${i}`);
+    if (!el) return;
+    el.classList.toggle('active', i === n);
+    el.classList.toggle('done', i < n);
+  });
+}
+
+// ══════════════════════════════════════════════════════
+// DRAG & DROP
+// ══════════════════════════════════════════════════════
+const dz = document.getElementById('drop-zone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag'));
+dz.addEventListener('drop', e => {
+  e.preventDefault(); dz.classList.remove('drag');
+  const f = e.dataTransfer.files[0];
+  if (f) carregarArquivo(f);
+});
+document.getElementById('file-input').addEventListener('change', e => {
+  if (e.target.files[0]) carregarArquivo(e.target.files[0]);
+});
+
+// ══════════════════════════════════════════════════════
+// CARREGAR ARQUIVO
+// ══════════════════════════════════════════════════════
+function carregarArquivo(file) {
+  _nomeArquivo = file.name;
+  mostrarLoader(true);
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      let dados, headers;
+      if (file.name.toLowerCase().endsWith('.csv')) {
+        const txt   = e.target.result;
+        const wb    = XLSX.read(txt, { type:'string', raw:false });
+        const ws    = wb.Sheets[wb.SheetNames[0]];
+        const arr   = XLSX.utils.sheet_to_json(ws, { header:1, defval:'' });
+        headers     = arr[0].map(String);
+        dados       = arr.slice(1).map(r => Object.fromEntries(headers.map((h,i)=>[h,r[i]??''])));
+      } else {
+        const wb    = XLSX.read(e.target.result, { type:'array', cellDates:true });
+        const ws    = wb.Sheets[wb.SheetNames[0]];
+        dados       = XLSX.utils.sheet_to_json(ws, { defval:'' });
+        headers     = dados.length ? Object.keys(dados[0]) : [];
+      }
+      _dadosOriginais = dados;
+      _dadosFiltrados = dados;
+      _headers        = headers;
+      _cols           = detectarColunas(headers);
+      _erpDetectado   = detectarERP(headers);
+      mostrarLoader(false);
+      _atualizarStep(2);
+      mostrarConfigColunas(headers, _cols, _erpDetectado);
+      document.getElementById('header-info').textContent = `${file.name} — ${dados.length.toLocaleString('pt-BR')} registros`;
+    } catch(err) {
+      mostrarLoader(false);
+      alert('Erro ao ler o arquivo: ' + err.message);
+    }
+  };
+  if (file.name.toLowerCase().endsWith('.csv'))
+    reader.readAsText(file, 'utf-8');
+  else
+    reader.readAsArrayBuffer(file);
+}
+
+// ══════════════════════════════════════════════════════
+// CONFIG COLUNAS
+// ══════════════════════════════════════════════════════
+function mostrarConfigColunas(headers, cols, erpDetectado) {
+  const labels = {
+    valor:'Valor (R$)', data:'Data de Emissão', vencimento:'Vencimento',
+    categoria:'Categoria', entidade:'Cliente / Entidade', chave:'Chave (ID / NF)',
+  };
+
+  // ERP banner
+  const banner = document.getElementById('erp-banner');
+  if (erpDetectado) {
+    banner.style.display = 'flex';
+    banner.innerHTML = `<span class="erp-badge-tag">${erpDetectado.nome}</span>
+      <span>Sistema detectado automaticamente</span>
+      <span class="erp-confianca">— colunas pré-preenchidas</span>`;
+    // Pre-select ERP dropdown
+    const selErp = document.getElementById('sel-erp-sistema');
+    if (selErp) selErp.value = erpDetectado.erp;
+    // Merge ERP column mapping into cols
+    Object.entries(erpDetectado.mapa).forEach(([orig, campo]) => {
+      if (headers.includes(orig) && !cols[campo]) cols[campo] = orig;
+    });
+    _toast(`ERP detectado: ${erpDetectado.nome}`);
+  } else {
+    banner.style.display = 'none';
+  }
+
+  const grid = document.getElementById('col-selects');
+  grid.innerHTML = '';
+  for (const [tipo, label] of Object.entries(labels)) {
+    const div = document.createElement('div');
+    div.className = 'col-group';
+    const sel = headers.map(h =>
+      `<option value="${h}" ${cols[tipo]===h?'selected':''}>${h}</option>`
+    ).join('');
+    div.innerHTML = `<label>${label}</label>
+      <select id="sel-${tipo}"><option value="">(nenhuma)</option>${sel}</select>`;
+    grid.appendChild(div);
+  }
+  document.getElementById('col-config').style.display = 'block';
+}
+
+function aplicarMapeamentoERP(erpKey) {
+  if (!erpKey || !MAPAS_ERP_JS[erpKey]) return;
+  const mapa = MAPAS_ERP_JS[erpKey].mapa;
+  Object.entries(mapa).forEach(([orig, campo]) => {
+    const sel = document.getElementById(`sel-${campo}`);
+    if (sel && _headers.includes(orig)) sel.value = orig;
+  });
+  _toast(`Mapeamento aplicado: ${NOMES_ERP[erpKey]}`);
+}
+
+function lerColsSelecionadas() {
+  const tipos = ['valor','data','vencimento','categoria','entidade','chave'];
+  const c = {};
+  tipos.forEach(t => { c[t] = document.getElementById(`sel-${t}`)?.value || null; });
+  return c;
+}
+
+// ══════════════════════════════════════════════════════
+// EXECUTAR ANÁLISE
+// ══════════════════════════════════════════════════════
+function executarAnalise() {
+  mostrarLoader(true);
+  setTimeout(() => {
+    try {
+      _cols = lerColsSelecionadas();
+      const dados = _dadosOriginais;
+
+      // KPIs
+      const kpis = calcularKPIs(dados, _cols);
+      renderKPIs(kpis);
+
+      // Auditoria
+      const audit = auditoria(dados, _cols);
+      renderAuditoria(audit);
+
+      // Aging
+      const ag = calcularAging(dados, _cols.vencimento, _cols.valor);
+      renderAging(ag);
+
+      // DRE
+      const dre = construirDRE(dados, _cols.categoria, _cols.valor);
+      renderDRE(dre);
+
+      // Pareto
+      const par = calcularPareto(dados, _cols.entidade, _cols.valor);
+      renderPareto(par);
+
+      // Verificação de integridade
+      const integ = calcularIntegridade(dados, _cols, kpis, dre, par);
+      renderVerificacao(integ);
+
+      // Tabela de dados
+      renderTabela(dados, _headers);
+
+      // Mostrar dashboard
+      document.getElementById('upload-area').style.display = 'none';
+      document.getElementById('dashboard').style.display   = 'block';
+      document.getElementById('tag-arquivo').textContent   = _nomeArquivo;
+      _atualizarStep(3);
+    } catch(err) {
+      alert('Erro na análise: ' + err.message);
+      console.error(err);
+    }
+    mostrarLoader(false);
+  }, 50);
+}
+
+// ══════════════════════════════════════════════════════
+// RENDER KPIs
+// ══════════════════════════════════════════════════════
+function renderKPIs(k) {
+  const periodo = (k.periodoInicio && k.periodoFim)
+    ? `${fmtData(k.periodoInicio)} → ${fmtData(k.periodoFim)}` : '—';
+  document.getElementById('kpis').innerHTML = `
+    <div class="kpi"><div class="lbl">Total de Registros</div>
+      <div class="val">${fmtNum(k.totalRegistros)}</div>
+      <div class="sub">${periodo}</div></div>
+    <div class="kpi"><div class="lbl">Total Geral</div>
+      <div class="val" style="font-size:18px">${fmtBRL(k.totalValor)}</div>
+      <div class="sub">soma de ${_cols.valor||'—'}</div></div>
+    <div class="kpi"><div class="lbl">Ticket Médio</div>
+      <div class="val" style="font-size:18px">${fmtBRL(k.ticketMedio)}</div>
+      <div class="sub">por registro</div></div>
+    <div class="kpi"><div class="lbl">Colunas Detectadas</div>
+      <div class="val ok">${k.colsDetectadas}</div>
+      <div class="sub">de 6 configuradas</div></div>`;
+}
+
+// ══════════════════════════════════════════════════════
+// RENDER VERIFICAÇÃO DE INTEGRIDADE
+// ══════════════════════════════════════════════════════
+function renderVerificacao(integ) {
+  const card = document.getElementById('card-verificacao');
+  const cont = document.getElementById('verificacao-content');
+  card.style.display = 'block';
+
+  const corBorda = integ.confianca >= 80 ? 'var(--verde)' : integ.confianca >= 60 ? '#D97706' : '#C00000';
+  const labelConf = integ.confianca >= 80 ? 'VERIFICADO' : integ.confianca >= 60 ? 'PARCIAL' : 'REVISAR';
+  card.style.borderLeftColor = corBorda;
+
+  const badges = integ.checks.map(c => {
+    const cls = `check-badge check-${(c.status||'').toLowerCase().replace(/[^a-z]/g,'')}`;
+    return `<span class="${cls}">${c.status} — ${c.nome}: ${c.detalhe}</span>`;
+  }).join('');
+
+  cont.innerHTML = `
+    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:10px">
+      <div style="background:${corBorda};color:#fff;border-radius:8px;padding:7px 18px;
+          font-weight:700;font-size:13px">${labelConf} — ${integ.confianca}%</div>
+      <div style="font-size:12px;color:var(--text-2)">
+        <strong>${integ.registros.comValor}</strong> de <strong>${integ.registros.total}</strong>
+        registros com valor&nbsp;&nbsp;|&nbsp;&nbsp;Checksum:
+        <strong style="color:var(--azul)">${fmtBRL(integ.checksum)}</strong>
+        <span style="font-size:10px;color:var(--text-3)">&nbsp;(confirme com =SOMA() no Excel)</span>
+      </div>
+    </div>
+    <div>${badges}</div>`;
+}
+
+// ══════════════════════════════════════════════════════
+// RENDER AUDITORIA
+// ══════════════════════════════════════════════════════
+const BADGE = { 'CRÍTICA':'b-critica','ALTA':'b-alta','MÉDIA':'b-media','BAIXA':'b-baixa' };
+function renderAuditoria(lista) {
+  const criticos = lista.filter(p=>p.severidade==='CRÍTICA').length;
+  const badge    = criticos
+    ? `<span class="badge b-critica">${criticos} CRÍTICO${criticos>1?'S':''}</span>` : '';
+  document.getElementById('badge-auditoria').innerHTML = badge;
+
+  if (!lista.length) {
+    document.getElementById('auditoria-content').innerHTML =
+      '<p style="color:var(--verde);font-weight:bold;padding:12px">✓ Nenhum problema encontrado!</p>';
+    return;
+  }
+  const rows = lista.map(p => `
+    <tr>
+      <td><span class="badge ${BADGE[p.severidade]||'b-baixa'}">${p.severidade}</span></td>
+      <td>${p.tipo}</td><td>${p.linha}</td>
+      <td>${p.coluna}</td><td>${p.valor}</td>
+      <td>${p.descricao}</td>
+    </tr>`).join('');
+  document.getElementById('auditoria-content').innerHTML = `
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Severidade</th><th>Tipo</th><th>Linha(s)</th><th>Coluna</th><th>Valor</th><th>Descrição</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>`;
+}
+
+// ══════════════════════════════════════════════════════
+// RENDER AGING
+// ══════════════════════════════════════════════════════
+function renderAging(lista) {
+  if (!lista || !lista.length) return;
+  const total = lista.reduce((s,i)=>s+i.total,0);
+  const COR = { 'A vencer':'#70AD47','Vencido 1-30d':'#FFC000',
+    'Vencido 31-60d':'#ED7D31','Vencido 61-90d':'#FF0000','Vencido +90d':'#7B0000','Sem data':'#aaa' };
+
+  const rows = lista.map(i => {
+    const cor = COR[i.faixa] || '#aaa';
+    return `<tr>
+      <td>${i.faixa}</td>
+      <td style="text-align:right">${fmtNum(i.qtd)}</td>
+      <td style="text-align:right">${fmtBRL(i.total)}</td>
+      <td style="text-align:right">${fmtNum(i.pct,1)}%</td>
+      <td><div class="bar-w"><div class="bar-f" style="width:${Math.min(i.pct,100)}%;background:${cor}"></div></div></td>
+    </tr>`;
+  }).join('');
+  document.getElementById('aging-content').innerHTML = `
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Faixa</th><th>Qtd</th><th>Total R$</th><th>%</th><th>Distribuição</th></tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr style="font-weight:bold;background:#EBF3FB">
+        <td>TOTAL</td><td style="text-align:right">${fmtNum(lista.reduce((s,i)=>s+i.qtd,0))}</td>
+        <td style="text-align:right">${fmtBRL(total)}</td><td style="text-align:right">100%</td><td></td>
+      </tr></tfoot>
+    </table></div>`;
+
+  // Gráfico
+  if (_chartAging) _chartAging.destroy();
+  const ctx = document.getElementById('chart-aging').getContext('2d');
+  _chartAging = new Chart(ctx, {
+    type:'doughnut',
+    data:{
+      labels: lista.map(i=>i.faixa),
+      datasets:[{ data:lista.map(i=>i.total),
+        backgroundColor:lista.map(i=>COR[i.faixa]||'#aaa'),
+        borderWidth:2, borderColor:'#fff' }]
+    },
+    options:{ plugins:{ legend:{ position:'bottom', labels:{ font:{ size:11 }, boxWidth:12 } } },
+      responsive:true, maintainAspectRatio:false }
+  });
+}
+
+// ══════════════════════════════════════════════════════
+// RENDER DRE
+// ══════════════════════════════════════════════════════
+function renderDRE(linhas) {
+  if (!linhas) return;
+  const rows = linhas.map(l => {
+    const cls = l.tipo.includes('lucro') ? (l.valor>=0?'dre-lucro':'dre-prejuizo')
+              : l.tipo==='total' ? 'dre-total' : 'dre-sub';
+    const corVal = l.valor < 0 ? 'color:#C00000' : '';
+    const av = isFinite(l.av) ? `${fmtNum(l.av,1)}%` : '—';
+    return `<tr class="${cls}"><td>${l.linha}</td>
+      <td style="text-align:right;${corVal}">${fmtBRL(l.valor)}</td>
+      <td style="text-align:right;color:#888">${av}</td></tr>`;
+  }).join('');
+  document.getElementById('dre-content').innerHTML = `
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Linha DRE</th><th style="text-align:right">Valor R$</th><th style="text-align:right">AV%</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>
+    <div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:var(--radius-sm);
+        padding:8px 14px;margin-top:10px;font-size:11px;color:#065F46">
+      <strong>Fórmula:</strong> Lucro Líquido = Receita Bruta &minus; Deduções &minus; CMV/CPV &minus; Despesas Operacionais &minus; IR/CSLL
+      <span style="color:var(--text-3)">(conforme CPC 26)</span>
+    </div>`;
+}
+
+// ══════════════════════════════════════════════════════
+// RENDER PARETO
+// ══════════════════════════════════════════════════════
+function renderPareto(lista) {
+  if (!lista || !lista.length) return;
+  const rows = lista.map(i => `
+    <tr>
+      <td style="text-align:center;font-weight:bold">${i.ranking}</td>
+      <td>${i.nome}</td>
+      <td style="text-align:right">${fmtBRL(i.total)}</td>
+      <td style="text-align:right">${fmtNum(i.pct,1)}%</td>
+      <td style="text-align:right">${fmtNum(i.acumulado,1)}%</td>
+      <td><span class="badge" style="background:${i.classe==='A'?'var(--azul3)':'#f0f0f0'};color:${i.classe==='A'?'var(--azul)':'#888'}">${i.classe}</span></td>
+    </tr>`).join('');
+  document.getElementById('pareto-content').innerHTML = `
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>#</th><th>Entidade</th><th>Total R$</th><th>%</th><th>Acum.</th><th>Classe</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>`;
+}
+
+// ══════════════════════════════════════════════════════
+// RENDER TABELA DE DADOS
+// ══════════════════════════════════════════════════════
+const MAX_ROWS_TABELA = 500;
+function renderTabela(dados, headers) {
+  document.getElementById('dados-info').textContent =
+    `${dados.length.toLocaleString('pt-BR')} registros${dados.length>MAX_ROWS_TABELA?' — mostrando primeiros '+MAX_ROWS_TABELA:''}`;
+  const thead = document.getElementById('thead-dados');
+  const tbody = document.getElementById('tbody-dados');
+  thead.innerHTML = '<tr>' + headers.map(h=>`<th>${h}</th>`).join('') + '</tr>';
+  const slice = dados.slice(0, MAX_ROWS_TABELA);
+  tbody.innerHTML = slice.map(row =>
+    '<tr>' + headers.map(h => `<td>${row[h]??''}</td>`).join('') + '</tr>'
+  ).join('');
+}
+
+function filtrarTabela() {
+  const q = document.getElementById('busca').value.toLowerCase();
+  if (!q) { renderTabela(_dadosOriginais, _headers); return; }
+  const filtrado = _dadosOriginais.filter(row =>
+    _headers.some(h => String(row[h]??'').toLowerCase().includes(q))
+  );
+  renderTabela(filtrado, _headers);
+}
+
+// ══════════════════════════════════════════════════════
+// UTILITÁRIOS
+// ══════════════════════════════════════════════════════
+function mostrarLoader(v) { document.getElementById('loader').classList.toggle('show',v); }
+
+function exportarJSON() {
+  const obj = {
+    arquivo:   _nomeArquivo,
+    timestamp: new Date().toISOString(),
+    kpis:      calcularKPIs(_dadosOriginais, _cols),
+    auditoria: auditoria(_dadosOriginais, _cols),
+    aging:     calcularAging(_dadosOriginais, _cols.vencimento, _cols.valor),
+    dre:       construirDRE(_dadosOriginais, _cols.categoria, _cols.valor),
+    pareto:    calcularPareto(_dadosOriginais, _cols.entidade, _cols.valor),
+  };
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(obj,null,2)], {type:'application/json'}));
+  a.download = `analise_${_nomeArquivo.replace(/\.[^.]+$/,'')}_${Date.now()}.json`;
+  a.click();
+}
+</script>
+
+<div style="text-align:center;padding:16px 0 24px;margin-top:8px;border-top:1px solid #e0e0e0;">
+  <span style="display:inline-block;background:#1F4E79;color:#fff;padding:4px 16px;border-radius:20px;font-size:11px;font-weight:600;letter-spacing:0.3px;">Powered by Luan Guilherme Lourenço</span>
+  <br>
+  <span style="font-size:10px;color:#bbb;margin-top:6px;display:inline-block;">Planilha Financeira Pro &mdash; Análise autônoma de planilhas</span>
+</div>
+
+</body>
+</html>

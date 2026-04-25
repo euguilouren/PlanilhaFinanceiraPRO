@@ -10,3 +10,5 @@ build/
 .env
 pasta_entrada/
 pasta_saida/
+node_modules/
+package-lock.json
