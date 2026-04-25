@@ -54,12 +54,19 @@ jobs:
       - name: Verificar branding e estrutura HTML
         run: |
           python -c "
-          with open('index.html', encoding='utf-8') as f:
-              content = f.read()
-          assert '<!DOCTYPE html>' in content, 'DOCTYPE ausente'
-          assert 'Luan Guilherme' in content, 'Branding ausente no index.html'
-          assert 'Toolkit Financeiro' in content, 'Título ausente'
-          print('index.html: OK')
+          import os
+          verificados = 0
+          for fname in ('index.html', 'src/index.html'):
+              if not os.path.exists(fname):
+                  continue
+              with open(fname, encoding='utf-8') as f:
+                  content = f.read()
+              assert '<!DOCTYPE html>' in content, f'DOCTYPE ausente em {fname}'
+              assert 'Luan Guilherme' in content, f'Branding ausente em {fname}'
+              assert 'Planilha Financeira Pro' in content, f'Título ausente em {fname}'
+              print(f'{fname}: OK')
+              verificados += 1
+          assert verificados >= 1, 'Nenhum index.html encontrado'
           "
 
   validate-config:
