@@ -1454,13 +1454,13 @@ function _gerarBriefing() {
 
   if (_ultimoDre && _ultimoDre.length) {
     linhas.push(`\n## DRE Resumido`);
-    _ultimoDre.slice(0, 10).forEach(r => linhas.push(`- ${r.categoria}: ${fmtV(r.valor)}`));
+    _ultimoDre.slice(0, 10).forEach(r => linhas.push(`- ${r.linha}: ${fmtV(r.valor)}`));
   }
 
   if (_ultimoPareto && _ultimoPareto.length) {
     linhas.push(`\n## Top Entidades (Pareto)`);
     _ultimoPareto.slice(0, 5).forEach((r, i) =>
-      linhas.push(`${i + 1}. ${r.entidade}: ${fmtV(r.total)} (${((r.pct || 0) * 100).toFixed(1)}%)`));
+      linhas.push(`${i + 1}. ${r.nome}: ${fmtV(r.total)} (${(r.pct || 0).toFixed(1)}%)`));
   }
 
   return linhas.join('\n');
