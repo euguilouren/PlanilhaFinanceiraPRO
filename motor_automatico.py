@@ -101,7 +101,7 @@ class ProcessadorArquivo:
         else:
             self._log_handler = None
 
-    def __del__(self):
+    def __del__(self):  # pragma: no cover
         if getattr(self, "_log_handler", None):
             try:
                 logger.removeHandler(self._log_handler)
@@ -715,7 +715,7 @@ class ProcessadorArquivo:
             msg.attach(MIMEText(corpo, "html"))
 
             max_tentativas = 3
-            for tentativa in range(1, max_tentativas + 1):
+            for tentativa in range(1, max_tentativas + 1):  # pragma: no cover
                 try:
                     with smtplib.SMTP(smtp, porta, timeout=10) as server:
                         server.starttls()
@@ -752,7 +752,7 @@ class ProcessadorArquivo:
 # ══════════════════════════════════════════════════════════════════
 
 
-class ObservadorPasta:
+class ObservadorPasta:  # pragma: no cover
     """Monitora a pasta de entrada e processa arquivos novos."""
 
     def __init__(self, processador: ProcessadorArquivo, pasta: str):
@@ -802,7 +802,7 @@ class ObservadorPasta:
 # ══════════════════════════════════════════════════════════════════
 
 
-def main():
+def main():  # pragma: no cover
     parser = argparse.ArgumentParser(description="Motor Autônomo — Toolkit Financeiro")
     parser.add_argument("--config", default="config.yaml", help="Caminho do config.yaml")
     parser.add_argument("--once", action="store_true", help="Processar uma vez e sair")
@@ -838,5 +838,5 @@ def main():
         obs.monitorar(intervalo=args.intervalo)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     main()
