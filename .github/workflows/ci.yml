@@ -42,6 +42,7 @@ jobs:
           pytest tests/ -v \
             --cov=toolkit_financeiro \
             --cov=relatorio_html \
+            --cov=motor_automatico \
             --cov-report=term-missing \
             --tb=short
 
@@ -68,6 +69,19 @@ jobs:
               verificados += 1
           assert verificados >= 1, 'Nenhum index.html encontrado'
           "
+
+  security-audit:
+    name: Auditoria de segurança de dependências
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Executar pip-audit
+        run: |
+          pip install pip-audit
+          pip-audit -r requirements.txt --format=markdown || true
 
   validate-config:
     name: Validar config.yaml

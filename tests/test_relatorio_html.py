@@ -77,3 +77,57 @@ class TestGeradorHTML:
         g = GeradorHTML(config_html)
         html = g.gerar('teste.csv', df_dados, df_auditoria_vazia, df_dre=df_dre)
         assert 'Receita Bruta' in html
+
+    # ── Testes de segurança XSS ───────────────────────────────────
+
+    def test_xss_empresa_escapada(self, df_dados, df_auditoria_vazia):
+        cfg = {
+            'relatorio': {'empresa': '<script>alert(1)</script>', 'titulo': 'T', 'tema': {}},
+            'colunas': {'valor': 'Valor'},
+        }
+        g = GeradorHTML(cfg)
+        resultado = g.gerar('arq.xlsx', df_dados, df_auditoria_vazia)
+        assert '<script>alert(1)</script>' not in resultado
+        assert '&lt;script&gt;' in resultado
+
+    def test_xss_titulo_escapado(self, df_dados, df_auditoria_vazia):
+        cfg = {
+            'relatorio': {'empresa': 'Emp', 'titulo': '"><img src=x onerror=alert(1)>', 'tema': {}},
+            'colunas': {'valor': 'Valor'},
+        }
+        g = GeradorHTML(cfg)
+        resultado = g.gerar('arq.xlsx', df_dados, df_auditoria_vazia)
+        assert 'onerror=alert(1)>' not in resultado
+
+    def test_xss_descricao_auditoria_escapada(self, config_html, df_dados):
+        df_audit = pd.DataFrame([{
+            'Severidade': 'MÉDIA',
+            'Tipo': '<img src=x onerror=xss()>',
+            'Linha': 1,
+            'Coluna': '<b>Campo</b>',
+            'Descrição': '<script>xss()</script>',
+            'Impacto R$': 0,
+        }])
+        g = GeradorHTML(config_html)
+        resultado = g.gerar('arq.xlsx', df_dados, df_audit)
+        assert '<script>xss()</script>' not in resultado
+        assert '<img src=x' not in resultado
+        assert '<b>Campo</b>' not in resultado
+
+    def test_xss_cliente_pareto_escapado(self, config_html, df_auditoria_vazia):
+        df_dados = pd.DataFrame({'NF': ['001'], 'Valor': [100.0]})
+        # _secao_pareto usa df.columns[0] como coluna de entidade
+        df_pareto = pd.DataFrame({
+            'Cliente': ['<b>Hack</b>'],
+            'Total_RS': [100.0], 'Percentual': [100.0],
+            'Acumulado_%': [100.0], 'Ranking': [1], 'Classe_Pareto': ['A'],
+        })
+        g = GeradorHTML(config_html)
+        resultado = g.gerar('arq.xlsx', df_dados, df_auditoria_vazia, df_pareto=df_pareto)
+        assert '<b>Hack</b>' not in resultado
+        assert '&lt;b&gt;Hack&lt;/b&gt;' in resultado
+
+    def test_auditoria_vazia_mostra_mensagem_ok(self, config_html, df_dados, df_auditoria_vazia):
+        g = GeradorHTML(config_html)
+        resultado = g.gerar('arq.xlsx', df_dados, df_auditoria_vazia)
+        assert 'Nenhum problema encontrado' in resultado
