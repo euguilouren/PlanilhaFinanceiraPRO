@@ -786,10 +786,14 @@ tr:hover td{background:#F7FAFD}
     <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
       <input id="claude-api-key" type="password" placeholder="sk-ant-api03-..."
         style="flex:1;min-width:200px;padding:8px 12px;border:1px solid #C4B5FD;border-radius:8px;font-size:13px;font-family:inherit;outline:none;color:#1F1B4B"
+        oninput="localStorage.setItem('_cak',this.value)"
         onkeydown="if(event.key==='Enter')analisarComClaude(document.getElementById('btn-analisar-claude'))">
       <button id="btn-analisar-claude"
         style="background:#7C3AED;color:#fff;border:none;padding:8px 20px;border-radius:8px;cursor:pointer;font-weight:600;font-size:13px;white-space:nowrap"
         onclick="analisarComClaude(this)">✨ Analisar</button>
+      <button title="Esquecer chave salva"
+        style="background:#EDE9FE;color:#7C3AED;border:none;padding:8px 12px;border-radius:8px;cursor:pointer;font-size:13px"
+        onclick="localStorage.removeItem('_cak');document.getElementById('claude-api-key').value='';alert('Chave removida.')">🗑</button>
     </div>
     <div id="claude-resultado" style="display:none">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
@@ -1409,10 +1413,13 @@ Destaque valores monetários no formato brasileiro: R$ 1.234,56.
 Máximo de 600 tokens por resposta.`;
 
 function abrirPainelClaude() {
-  const card = document.getElementById('card-claude');
+  const card  = document.getElementById('card-claude');
+  const input = document.getElementById('claude-api-key');
+  const saved = localStorage.getItem('_cak');
+  if (saved) input.value = saved;
   card.style.display = 'block';
   card.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  setTimeout(() => document.getElementById('claude-api-key').focus(), 400);
+  setTimeout(() => { if (!input.value) input.focus(); }, 400);
 }
 
 function _gerarBriefing() {
