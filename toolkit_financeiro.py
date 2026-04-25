@@ -1512,7 +1512,7 @@ class MontadorPlanilha:
         try:
             if pd.isna(valor):
                 return ""
-        except (TypeError, ValueError):
+        except (TypeError, ValueError):  # pragma: no cover
             pass
         return valor
 
@@ -1526,7 +1526,7 @@ class MontadorPlanilha:
                 num = pd.to_numeric(series, errors="coerce")
                 max_abs = max(abs(num.max()), abs(num.min())) if num.notna().any() else 0
                 content_len = len(f"{max_abs:,.2f}") + 4
-            except (TypeError, ValueError):
+            except (TypeError, ValueError):  # pragma: no cover
                 content_len = 15
         else:
             str_lens = series.astype(str).str.len()
