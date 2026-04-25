@@ -1,0 +1,48 @@
+name: Build & Deploy (Obfuscado)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-obfuscated:
+    name: Obfuscar JS e publicar no gh-pages
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Instalar javascript-obfuscator
+        run: npm install -g javascript-obfuscator@4
+
+      - name: Obfuscar HTML
+        run: python3 scripts/obfuscar_html.py src/index.html dist/index.html
+
+      - name: Verificar resultado
+        run: |
+          python3 -c "
+          with open('dist/index.html', encoding='utf-8') as f:
+              c = f.read()
+          assert 'Planilha Financeira Pro' in c, 'Título ausente no dist'
+          assert 'Luan Guilherme' in c, 'Branding ausente no dist'
+          print('dist/index.html: OK')
+          "
+
+      - name: Deploy para gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          publish_branch: gh-pages
+          force_orphan: true
+          commit_message: "deploy: ${{ github.sha }}"

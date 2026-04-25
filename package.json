@@ -1,0 +1,12 @@
+{
+  "name": "planilha-financeira-pro",
+  "version": "1.0.0",
+  "description": "Build pipeline para obfuscação do dashboard financeiro",
+  "private": true,
+  "scripts": {
+    "build": "python3 scripts/obfuscar_html.py src/index.html dist/index.html"
+  },
+  "devDependencies": {
+    "javascript-obfuscator": "^4.1.1"
+  }
+}
