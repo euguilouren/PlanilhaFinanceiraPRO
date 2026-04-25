@@ -733,6 +733,7 @@ tr:hover td{background:#F7FAFD}
     </button>
     <button class="btn-sm btn-outline" onclick="window.print()">Imprimir</button>
     <button class="btn-sm btn-outline" onclick="exportarJSON()">↓ Exportar JSON</button>
+    <button class="btn-sm btn-outline" id="btn-claude" onclick="abrirPainelClaude()" style="border-color:#7C3AED;color:#7C3AED">✨ Análise Claude</button>
   </div>
 
   <!-- KPIs -->
@@ -774,6 +775,31 @@ tr:hover td{background:#F7FAFD}
     </div>
     <div class="tbl-wrap"><table id="tabela-dados"><thead id="thead-dados"></thead><tbody id="tbody-dados"></tbody></table></div>
   </div>
+
+  <!-- Painel Claude AI -->
+  <div class="card" id="card-claude" style="display:none;border:2px solid #C4B5FD">
+    <h2 style="color:#5B21B6">✨ Análise com Claude AI</h2>
+    <p style="font-size:12px;color:#6B7280;margin:0 0 14px">
+      Insira sua chave da API Anthropic para obter uma análise automática dos dados carregados.
+      A chave é usada apenas nesta sessão e nunca é armazenada.
+    </p>
+    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+      <input id="claude-api-key" type="password" placeholder="sk-ant-api03-..."
+        style="flex:1;min-width:200px;padding:8px 12px;border:1px solid #C4B5FD;border-radius:8px;font-size:13px;font-family:inherit;outline:none;color:#1F1B4B"
+        onkeydown="if(event.key==='Enter')analisarComClaude(document.getElementById('btn-analisar-claude'))">
+      <button id="btn-analisar-claude"
+        style="background:#7C3AED;color:#fff;border:none;padding:8px 20px;border-radius:8px;cursor:pointer;font-weight:600;font-size:13px;white-space:nowrap"
+        onclick="analisarComClaude(this)">✨ Analisar</button>
+    </div>
+    <div id="claude-resultado" style="display:none">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <strong style="color:#5B21B6;font-size:13px">Análise gerada</strong>
+        <button onclick="copiarAnalise()" style="background:#EDE9FE;color:#5B21B6;border:none;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600">Copiar</button>
+      </div>
+      <div id="claude-texto" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:8px;padding:14px;font-size:13px;line-height:1.7;white-space:pre-wrap;color:#1F1B4B;max-height:460px;overflow-y:auto"></div>
+    </div>
+    <div id="claude-erro" style="display:none;background:#FEE2E2;border:1px solid #FECACA;border-radius:8px;padding:12px;color:#991B1B;font-size:13px"></div>
+  </div>
 </div>
 
 <script>
@@ -790,6 +816,11 @@ let _headers          = [];
 let _cols             = {};
 let _nomeArquivo      = '';
 let _chartAging       = null;
+let _ultimosKpis     = null;
+let _ultimaAuditoria = [];
+let _ultimoAging     = null;
+let _ultimoDre       = null;
+let _ultimoPareto    = null;
 
 // ══════════════════════════════════════════════════════
 // DEFINIÇÃO DO FORMATO PADRÃO DO SISTEMA
@@ -1149,22 +1180,27 @@ function executarAnalise() {
       // KPIs
       const kpis = calcularKPIs(dados, _cols);
       renderKPIs(kpis);
+      _ultimosKpis = kpis;
 
       // Auditoria
       const audit = auditoria(dados, _cols);
       renderAuditoria(audit);
+      _ultimaAuditoria = audit;
 
       // Aging
       const ag = calcularAging(dados, _cols.vencimento, _cols.valor);
       renderAging(ag);
+      _ultimoAging = ag;
 
       // DRE
       const dre = construirDRE(dados, _cols.categoria, _cols.valor);
       renderDRE(dre);
+      _ultimoDre = dre;
 
       // Pareto
       const par = calcularPareto(dados, _cols.entidade, _cols.valor);
       renderPareto(par);
+      _ultimoPareto = par;
 
       // Fluxo por Período
       renderFluxoPeriodo(dados, _cols);
@@ -1358,6 +1394,141 @@ function filtrarTabela() {
     _headers.some(h => String(row[h]??'').toLowerCase().includes(q))
   );
   renderTabela(filtrado, _headers);
+}
+
+// ══════════════════════════════════════════════════════
+// CLAUDE AI — ANÁLISE AUTOMÁTICA
+// ══════════════════════════════════════════════════════
+const _CLAUDE_SYSTEM = `Você é um Analista Financeiro Sênior especializado em auditoria de planilhas brasileiras.
+Ao receber um briefing de dados financeiros:
+1. TRIAGEM — liste os problemas por severidade (CRÍTICA → ALTA → MÉDIA → BAIXA)
+2. DIAGNÓSTICO — interprete o que os números indicam no contexto do negócio
+3. AÇÕES — sugira 3 a 5 ações concretas e priorizadas
+Seja direto e objetivo. Use tabelas Markdown para comparativos e rankings.
+Destaque valores monetários no formato brasileiro: R$ 1.234,56.
+Máximo de 600 tokens por resposta.`;
+
+function abrirPainelClaude() {
+  const card = document.getElementById('card-claude');
+  card.style.display = 'block';
+  card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  setTimeout(() => document.getElementById('claude-api-key').focus(), 400);
+}
+
+function _gerarBriefing() {
+  const k = _ultimosKpis;
+  if (!k) return 'Nenhum dado carregado.';
+  const fmtV = v => (v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  const linhas = [];
+  linhas.push(`# Briefing — ${_nomeArquivo}`);
+  linhas.push(`\n## KPIs`);
+  linhas.push(`- Receita total: ${fmtV(k.receita)} (${k.nfRec} NFs)`);
+  linhas.push(`- Despesa total: ${fmtV(k.despesa)} (${k.nfDesp} NFs)`);
+  linhas.push(`- Resultado líquido: ${fmtV(k.resultado)}`);
+  linhas.push(`- Margem: ${(k.margem || 0).toFixed(1)}%`);
+  linhas.push(`- Ticket médio (receita): ${fmtV(k.ticket)}`);
+  linhas.push(`- Total registros: ${k.totalRegistros}`);
+  if (k.periodoInicio) linhas.push(`- Período: ${fmtData(k.periodoInicio)} → ${fmtData(k.periodoFim)}`);
+
+  if (_ultimaAuditoria && _ultimaAuditoria.length) {
+    linhas.push(`\n## Auditoria (${_ultimaAuditoria.length} alerta(s))`);
+    _ultimaAuditoria.slice(0, 8).forEach(a => linhas.push(`- [${a.sev}] ${a.tipo}: ${a.msg}`));
+  } else {
+    linhas.push(`\n## Auditoria\n- Nenhum problema encontrado.`);
+  }
+
+  if (_ultimoAging) {
+    const agEntries = Object.entries(_ultimoAging).filter(([, d]) => d && d.total > 0);
+    if (agEntries.length) {
+      linhas.push(`\n## Aging de Recebíveis`);
+      agEntries.forEach(([faixa, d]) => linhas.push(`- ${faixa}: ${fmtV(d.total)} (${d.qtd} registros)`));
+    }
+  }
+
+  if (_ultimoDre && _ultimoDre.length) {
+    linhas.push(`\n## DRE Resumido`);
+    _ultimoDre.slice(0, 10).forEach(r => linhas.push(`- ${r.categoria}: ${fmtV(r.valor)}`));
+  }
+
+  if (_ultimoPareto && _ultimoPareto.length) {
+    linhas.push(`\n## Top Entidades (Pareto)`);
+    _ultimoPareto.slice(0, 5).forEach((r, i) =>
+      linhas.push(`${i + 1}. ${r.entidade}: ${fmtV(r.total)} (${((r.pct || 0) * 100).toFixed(1)}%)`));
+  }
+
+  return linhas.join('\n');
+}
+
+async function analisarComClaude(btn) {
+  const apiKey = (document.getElementById('claude-api-key').value || '').trim();
+  if (!apiKey) { alert('Insira sua chave da API Anthropic.'); return; }
+  if (!_ultimosKpis) { alert('Carregue e analise uma planilha primeiro.'); return; }
+
+  const resultado = document.getElementById('claude-resultado');
+  const erro      = document.getElementById('claude-erro');
+  const texto     = document.getElementById('claude-texto');
+  resultado.style.display = 'none';
+  erro.style.display      = 'none';
+
+  const originalText = btn.textContent;
+  btn.disabled    = true;
+  btn.textContent = '⏳ Analisando...';
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-allow-browser': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-opus-4-5',
+        max_tokens: 1024,
+        system: _CLAUDE_SYSTEM,
+        messages: [{ role: 'user', content: _gerarBriefing() }],
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      const msg = err.error?.message || `Erro HTTP ${res.status}`;
+      if (res.status === 401) throw new Error('Chave de API inválida. Verifique e tente novamente.');
+      if (res.status === 429) throw new Error('Limite de requisições atingido. Aguarde alguns instantes.');
+      throw new Error(msg);
+    }
+
+    const data = await res.json();
+    texto.textContent    = data.content?.[0]?.text || '(sem resposta)';
+    resultado.style.display = 'block';
+    resultado.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  } catch (e) {
+    erro.textContent   = '⚠ ' + e.message;
+    erro.style.display = 'block';
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = originalText;
+  }
+}
+
+function copiarAnalise() {
+  const t = document.getElementById('claude-texto').textContent;
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(t).then(() => alert('Análise copiada!')).catch(() => _copiarFallback(t));
+  } else {
+    _copiarFallback(t);
+  }
+}
+
+function _copiarFallback(t) {
+  const ta = document.createElement('textarea');
+  ta.value = t;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  document.body.removeChild(ta);
+  alert('Análise copiada!');
 }
 
 // ══════════════════════════════════════════════════════
