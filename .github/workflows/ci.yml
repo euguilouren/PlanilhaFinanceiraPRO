@@ -83,6 +83,32 @@ jobs:
           pip install pip-audit
           pip-audit -r requirements.txt --format=markdown || true
 
+  validate-deploy-script:
+    name: Validar pipeline de obfuscação
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Instalar javascript-obfuscator
+        run: npm install -g javascript-obfuscator@4
+
+      - name: Executar obfuscador (smoke test)
+        run: |
+          python3 scripts/obfuscar_html.py index.html /tmp/dist_test.html
+          python3 -c "
+          with open('/tmp/dist_test.html', encoding='utf-8') as f:
+              c = f.read()
+          assert 'Planilha Financeira Pro' in c, 'Título ausente no dist'
+          assert 'Luan Guilherme' in c, 'Branding ausente no dist'
+          assert len(c) > 50000, 'Arquivo dist muito pequeno — obfuscação falhou'
+          print('obfuscar_html.py: OK —', len(c), 'chars')
+          "
+
   validate-config:
     name: Validar config.yaml
     runs-on: ubuntu-latest
