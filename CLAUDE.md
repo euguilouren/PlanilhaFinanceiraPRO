@@ -28,7 +28,7 @@ Análise 100% client-side: SheetJS lê XLSX/CSV, Chart.js renderiza gráfico de 
 | 529–534 | Estado global | `_dadosOriginais`, `_dadosFiltrados`, `_headers`, `_cols`, `_nomeArquivo`, `_chartAging` |
 | 539–549 | Drag & Drop | Eventos `dragover`, `dragleave`, `drop`, `change` no `#file-input` |
 | 554–590 | `carregarArquivo()` | FileReader → SheetJS → `detectarColunas()` → `mostrarConfigColunas()` |
-| 595–621 | `mostrarConfigColunas()` + `lerColsSelecionadas()` | Renderiza 6 selects de mapeamento de colunas |
+| 595–621 | `mostrarConfigColunas()` + `lerColsSelecionadas()` | Renderiza 5 selects de mapeamento de colunas (valor, data, vencimento, entidade, chave) |
 | 625–665 | `executarAnalise()` | Orquestra todos os módulos + chama todos os render |
 | 670–687 | `renderKPIs()` | Renderiza cards KPI |
 | 692–716 | `renderAuditoria()` | Tabela de problemas com badges |
@@ -47,7 +47,7 @@ Análise 100% client-side: SheetJS lê XLSX/CSV, Chart.js renderiza gráfico de 
 let _dadosOriginais = [];  // array de objetos — nunca modificar diretamente
 let _dadosFiltrados = [];  // usado apenas pela busca
 let _headers        = [];  // array de strings: cabeçalhos originais do arquivo
-let _cols           = {};  // { valor, data, vencimento, categoria, entidade, chave }
+let _cols           = {};  // { valor, data, vencimento, entidade, chave } — categoria detectada automaticamente via ERP
 let _nomeArquivo    = '';  // nome do arquivo carregado
 let _chartAging     = null; // instância Chart.js — SEMPRE destruir antes de recriar
 ```
@@ -145,7 +145,7 @@ Adicionar em `ASSINATURAS_ERP`: `'NOME_ERP': ['ColunaTipica1', 'ColunaTipica2', 
 | O que | Por quê |
 |-------|---------|
 | URLs das CDNs (SheetJS, Chart.js) | Versões fixadas — mudança quebra compatibilidade |
-| Nomes das 6 chaves de `_cols` (`valor`, `data`, `vencimento`, `categoria`, `entidade`, `chave`) | Usadas em todas as funções de análise |
+| Nomes das 5 chaves de `_cols` (`valor`, `data`, `vencimento`, `entidade`, `chave`) | Usadas em todas as funções de análise. `categoria` existe internamente mas não é exposta na UI |
 | `MAPA_DRE` (array de `{linha, termos}`) | Qualquer mudança altera o DRE para todos os usuários |
 | `_chartAging.destroy()` antes de `new Chart()` | Sem isso, múltiplos canvas se acumulam na memória |
 | `mostrarLoader(true/false)` nos pontos existentes | Remove feedback visual de carregamento |

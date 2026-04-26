@@ -90,7 +90,6 @@ python motor_automatico.py --arquivo minha.xlsx  # arquivo específico
 | `pastas.entrada` | string | `pasta_entrada` | Pasta monitorada pelo daemon |
 | `pastas.saida` | string | `pasta_saida` | Onde os relatórios são gerados |
 | `colunas.valor` | string | `Valor` | Nome da coluna de valores monetários |
-| `colunas.categoria` | string | `Categoria` | Nome da coluna de categorias DRE |
 | `colunas.data` | string | `Data` | Coluna de data de emissão |
 | `colunas.vencimento` | string | `Vencimento` | Coluna de data de vencimento |
 | `colunas.chave` | string | `NF` | Chave única (nota fiscal, ID) |
