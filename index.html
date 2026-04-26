@@ -140,16 +140,15 @@ function calcularIntegridade(dados, cols, kpis, dre, pareto) {
       como: !okData ? `A coluna "${cols.data||'Data'}" tem registros com data inválida ou em formato de texto. No Excel, selecione a coluna e formate como "Data" (Formato > Células > Data). Datas em texto (ex: "17/01/2024" como texto) não são reconhecidas.` : null });
   }
 
-  // Check 5: cobertura de categorias
-  if (cols.categoria) {
-    total++;
-    const comCat = dados.filter(r => String(r[cols.categoria]||'').trim()).length;
-    const pctCat = dados.length ? comCat / dados.length * 100 : 0;
-    const nivel = pctCat >= 80 ? 'ALTA' : pctCat >= 50 ? 'MÉDIA' : 'BAIXA';
-    if (pctCat >= 80) passed++;
-    checks.push({ nome:'Cobertura de categorias', status: nivel,
-      detalhe:`${pctCat.toFixed(0)}% categorizados`,
-      como: pctCat < 80 ? `${(100-pctCat).toFixed(0)}% das linhas não têm categoria preenchida na coluna "${cols.categoria}". O DRE automático só classifica linhas com categoria. Preencha a coluna com termos como RECEITA, DESPESA, CMV, etc.` : null });
+  // Check 5: modo DRE — informa quando usa fallback por sinal
+  if (!cols.categoria) {
+    const negativos = dados.filter(r => { const v = toNum(r[cols.valor]); return !isNaN(v) && v < 0; }).length;
+    if (negativos > 0) {
+      total++; passed++;
+      checks.push({ nome:'Classificação automática', status:'INFO',
+        detalhe:`${negativos} lançamento(s) negativo(s) → Despesa; demais → Receita`,
+        como: null });
+    }
   }
 
   const confianca = total ? Math.round(passed / total * 100) : 100;
@@ -675,7 +674,7 @@ body{font-family:'Inter',Arial,sans-serif;font-size:13.5px;background:var(--bg);
 .col-config{background:var(--branco);border-radius:var(--radius);padding:24px;
   margin-top:20px;box-shadow:0 2px 12px rgba(0,0,0,.07)}
 .col-config h3{color:var(--azul);margin-bottom:12px;font-size:14px;font-weight:700}
-.col-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.col-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
 .col-group label{font-size:11px;color:var(--text-2);display:block;margin-bottom:4px;
   text-transform:uppercase;letter-spacing:.4px;font-weight:600}
 .col-group select{width:100%;padding:7px 8px;border:1.5px solid var(--border);
@@ -810,6 +809,7 @@ tr:hover td{background:var(--azul3)}
 }
 @media(max-width:900px){
   .kpis{grid-template-columns:repeat(3,1fr)}
+  .col-grid{grid-template-columns:repeat(3,1fr)}
 }
 @media(max-width:600px){
   .kpis{grid-template-columns:repeat(2,1fr)}
@@ -1136,7 +1136,7 @@ function carregarArquivo(file) {
 function mostrarConfigColunas(headers, cols, erpDetectado) {
   const labels = {
     valor:'Valor (R$)', data:'Data de Emissão', vencimento:'Vencimento',
-    categoria:'Categoria', entidade:'Cliente / Entidade', chave:'Chave (ID / NF)',
+    entidade:'Cliente / Entidade', chave:'Chave (ID / NF)',
   };
 
   // ERP banner
@@ -1184,7 +1184,7 @@ function aplicarMapeamentoERP(erpKey) {
 }
 
 function lerColsSelecionadas() {
-  const tipos = ['valor','data','vencimento','categoria','entidade','chave'];
+  const tipos = ['valor','data','vencimento','entidade','chave'];
   const c = {};
   tipos.forEach(t => { c[t] = document.getElementById(`sel-${t}`)?.value || null; });
   return c;
@@ -1197,7 +1197,10 @@ function executarAnalise() {
   mostrarLoader(true);
   setTimeout(() => {
     try {
+      // Preserva a categoria detectada automaticamente pelo ERP (não exposta na UI)
+      const catErp = _cols.categoria || null;
       _cols = lerColsSelecionadas();
+      if (catErp) _cols.categoria = catErp;
       const dados = _dadosOriginais;
 
       // KPIs
@@ -1409,22 +1412,7 @@ function renderAging(lista) {
 function renderDRE(dre) {
   const el = document.getElementById('dre-content');
   if (!dre) {
-    el.innerHTML = `
-      <div style="padding:14px;background:#FFF7ED;border-left:4px solid #F59E0B;border-radius:0 8px 8px 0">
-        <strong style="color:#92400E">⚠ Coluna de categoria não mapeada</strong>
-        <p style="margin:6px 0 0;font-size:12px;color:#78350F;line-height:1.6">
-          O DRE automático precisa de uma coluna <strong>Categoria</strong> em cada linha, com termos como:<br>
-          <code style="background:#FEF3C7;padding:1px 5px;border-radius:3px">RECEITA</code>
-          <code style="background:#FEF3C7;padding:1px 5px;border-radius:3px">VENDA</code>
-          <code style="background:#FEF3C7;padding:1px 5px;border-radius:3px">DESPESA</code>
-          <code style="background:#FEF3C7;padding:1px 5px;border-radius:3px">CMV</code>
-          <code style="background:#FEF3C7;padding:1px 5px;border-radius:3px">ALUGUEL</code>
-          <code style="background:#FEF3C7;padding:1px 5px;border-radius:3px">SALARIO</code><br>
-          <strong>Como ativar:</strong> Adicione uma coluna "Categoria" na sua planilha, preencha o tipo de cada lançamento
-          e mapeie-a no campo <em>Categoria</em> ao importar. Com apenas uma coluna de valores,
-          o sistema usa o sinal: <strong>positivo = Receita, negativo = Despesa</strong>.
-        </p>
-      </div>`;
+    el.innerHTML = `<div class="empty">Coluna de valor não mapeada — selecione a coluna de valores para gerar o DRE.</div>`;
     return;
   }
   const { linhas, modo } = dre;
@@ -1438,11 +1426,10 @@ function renderDRE(dre) {
       <td style="text-align:right;color:#888">${av}</td></tr>`;
   }).join('');
   const bannerModo = modo === 'sinal'
-    ? `<div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:var(--radius-sm);
-          padding:8px 14px;margin-bottom:10px;font-size:11px;color:#1E40AF">
-        <strong>ℹ DRE simplificado por sinal de valor</strong> — valores positivos foram classificados como
-        Receita Bruta e negativos como Despesas Operacionais. Para um DRE completo com CMV, Deduções e IR,
-        adicione uma coluna "Categoria" na planilha e mapeie-a ao importar.
+    ? `<div style="background:#F0F9FF;border:1px solid #BAE6FD;border-radius:var(--radius-sm);
+          padding:6px 12px;margin-bottom:10px;font-size:11px;color:#0369A1">
+        <strong>(+) Receita &nbsp;·&nbsp; (−) Despesa</strong> — classificação automática pelo sinal do valor.
+        Para DRE com CMV, Deduções e IR, adicione uma coluna "Categoria" na planilha com os tipos de cada lançamento.
       </div>`
     : '';
   el.innerHTML = `
