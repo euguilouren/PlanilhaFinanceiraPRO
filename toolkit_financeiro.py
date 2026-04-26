@@ -19,7 +19,7 @@ import warnings
 import zipfile
 from datetime import datetime, timedelta
 from collections import OrderedDict
-from difflib import SequenceMatcher, get_close_matches
+from difflib import SequenceMatcher
 from enum import Enum
 from typing import Union, Optional, List, Dict
 

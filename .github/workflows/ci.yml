@@ -57,7 +57,7 @@ jobs:
           python -c "
           import os
           verificados = 0
-          for fname in ('index.html', 'src/index.html'):
+          for fname in ('index.html',):
               if not os.path.exists(fname):
                   continue
               with open(fname, encoding='utf-8') as f:

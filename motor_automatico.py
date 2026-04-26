@@ -17,7 +17,6 @@ import logging
 import smtplib
 import argparse
 import traceback
-from difflib                import get_close_matches
 from email.mime.text        import MIMEText
 from email.mime.multipart   import MIMEMultipart
 from datetime               import datetime, timezone

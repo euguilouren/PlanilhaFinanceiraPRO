@@ -496,6 +496,8 @@ function calcularFluxoPeriodo(dados, colData, colValor, colTipo, freq) {
 function renderFluxoPeriodo(dados, cols) {
   const el = document.getElementById('fluxo-content');
   if (!el) return;
+  const card = document.getElementById('card-fluxo');
+  if (card) card.style.display = 'block';
   const colData  = cols.data   || 'Data';
   const colValor = cols.valor  || 'Valor';
   const colTipo  = cols.tipo   || 'Tipo';
@@ -585,6 +587,9 @@ window.switchFluxo = function(id, btn) {
   --surface:#fff;--surface-2:#f4f6f9;
   --success:#006100;--success-bg:#C6EFCE;
   --danger:#9C0006;--danger-bg:#FFC7CE;
+  --alta-bg:#FEF3C7;--alta-text:#92400E;
+  --warning:#9C5700;--warning-bg:#FFEB9C;
+  --shadow-sm:0 1px 3px rgba(0,0,0,.1);
 }
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Inter',Arial,sans-serif;font-size:13.5px;background:var(--bg);color:var(--text);line-height:1.5;-webkit-font-smoothing:antialiased}
@@ -791,6 +796,7 @@ tr:hover td{background:var(--azul3)}
     <div class="sub">Análise autônoma de planilhas — 100% no navegador, sem upload</div>
     <div style="font-size:11px;opacity:0.7;margin-top:3px;">Powered by <strong>Luan Guilherme Lourenço</strong></div>
   </div>
+  <div id="header-info" class="header-right" style="font-size:11px;opacity:0.8;text-align:right">Nenhum arquivo carregado</div>
 </div>
 
 <!-- Upload -->
@@ -877,6 +883,12 @@ tr:hover td{background:var(--azul3)}
 
   <!-- KPIs -->
   <div class="kpis" id="kpis"></div>
+
+  <!-- Fluxo por Período -->
+  <div class="card" id="card-fluxo" style="display:none">
+    <h2>Fluxo por Período</h2>
+    <div id="fluxo-content"></div>
+  </div>
 
   <!-- Verificação de integridade -->
   <div class="card" id="card-verificacao" style="display:none;border-left:4px solid var(--verde)">
