@@ -355,17 +355,20 @@ function calcularPareto(dados, colEntidade, colValor, top = 15) {
   const lista = Object.entries(mapa)
     .map(([nome, total]) => ({ nome, total }))
     .sort((a,b) => b.total - a.total);
-  const totalGeral = lista.reduce((s,i)=>s+i.total, 0);
+  const totalGeral     = lista.reduce((s,i)=>s+i.total, 0);
   const totalEntidades = lista.length;
+  // Base para % = soma dos valores positivos (receitas); se não há positivos usa abs total
+  const totalPos = lista.filter(i=>i.total>0).reduce((s,i)=>s+i.total, 0);
+  const totalBase = totalPos > 0 ? totalPos : lista.reduce((s,i)=>s+Math.abs(i.total), 0);
   let acum = 0;
   const items = lista.slice(0, top).map((item, idx) => {
-    const pct = totalGeral ? item.total / totalGeral * 100 : 0;
-    acum += pct;
+    const pct = totalBase ? Math.abs(item.total) / totalBase * 100 : 0;
+    acum += (item.total > 0 ? pct : 0);
     return { ranking: idx+1, nome: item.nome, total: item.total,
              pct, acumulado: acum, classe: acum <= 80 ? 'A' : 'B' };
   });
   items.totalEntidades = totalEntidades;
-  items.totalGeral = totalGeral;
+  items.totalGeral     = totalGeral;
   return items;
 }
 
