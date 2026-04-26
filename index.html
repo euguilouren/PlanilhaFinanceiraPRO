@@ -1633,29 +1633,50 @@ function _copiarFallback(t) {
 function mostrarLoader(v) { document.getElementById('loader').classList.toggle('show',v); }
 
 function baixarTemplate() {
-  if (typeof XLSX === 'undefined') { alert('Aguarde o carregamento da página e tente novamente.'); return; }
+  if (typeof XLSX === 'undefined') {
+    document.getElementById('erros-cdn').textContent = 'SheetJS não carregado — verifique sua conexão e recarregue a página.';
+    document.getElementById('erros-cdn').style.display = 'block';
+    return;
+  }
   const wb = XLSX.utils.book_new();
-  const dados = [
-    ['Planilha Financeira Pro — Template Padrão', '', '', '', ''],
-    ['Preencha com seus dados. Valores positivos = Receita  |  Valores negativos = Despesa', '', '', '', ''],
-    ['', '', '', '', ''],
+
+  // ── Aba 1: DADOS ──────────────────────────────────────
+  const wsData = XLSX.utils.aoa_to_sheet([
     ['Nome / Razão Social', 'Nota Fiscal', 'Data de Emissão', 'Vencimento', 'Valor (R$)'],
-    ['Empresa Exemplo Ltda',   'NF-00001', '2024-01-15', '2024-02-15',  15000.00],
-    ['Fornecedor ABC S.A.',    'NF-00002', '2024-01-20', '2024-02-20', -4500.00],
-    ['Cliente XYZ ME',         'NF-00003', '2024-02-01', '2024-03-01',  28000.00],
-    ['Locadora Predial Ltda',  'NF-00004', '2024-02-05', '',           -3200.00],
-    ['Distribuidora Norte',    'NF-00005', '2024-02-10', '2024-03-10',  9800.00],
-    ['Serviços Tech Ltda',     'NF-00006', '2024-02-15', '2024-03-15', -1200.00],
+    ['Empresa Alpha Ltda',    'NF-2024-001', '15/01/2024', '15/02/2024',  15000.00],
+    ['Fornecedor Beta S/A',   'NF-2024-002', '20/01/2024', '20/02/2024',  -4500.00],
+    ['Cliente Gamma ME',      'NF-2024-003', '01/02/2024', '01/03/2024',  28000.00],
+    ['Locadora Delta Ltda',   'NF-2024-004', '05/02/2024', '',            -3200.00],
+    ['Distribuidora Epsilon', 'NF-2024-005', '10/02/2024', '10/03/2024',   9800.00],
+    ['Serviços Zeta Ltda',    'NF-2024-006', '15/02/2024', '15/03/2024',  -1200.00],
+    ['Importadora Eta S.A.',  'NF-2024-007', '20/02/2024', '20/03/2024',  42000.00],
+    ['Consultoria Theta ME',  'NF-2024-008', '28/02/2024', '',            -8500.00],
+  ]);
+  wsData['!cols'] = [{wch:28},{wch:16},{wch:16},{wch:16},{wch:14}];
+  XLSX.utils.book_append_sheet(wb, wsData, 'DADOS');
+
+  // ── Aba 2: INSTRUÇÕES ─────────────────────────────────
+  const COLUNAS = [
+    { nome:'Nome / Razão Social', tipo:'Texto',    obrig:'SIM', descricao:'Nome do cliente ou fornecedor. Usado no Pareto e ranking de entidades.' },
+    { nome:'Nota Fiscal',         tipo:'Texto',    obrig:'não', descricao:'Número da NF ou ID único do lançamento. Usado para detectar duplicatas.' },
+    { nome:'Data de Emissão',     tipo:'Data',     obrig:'SIM', descricao:'Data da emissão ou lançamento. Formato: DD/MM/AAAA ou AAAA-MM-DD.' },
+    { nome:'Vencimento',          tipo:'Data',     obrig:'não', descricao:'Data de vencimento. Quando preenchida, habilita o Aging de Recebíveis.' },
+    { nome:'Valor (R$)',          tipo:'Número',   obrig:'SIM', descricao:'Valor do lançamento. POSITIVO = Receita · NEGATIVO = Despesa. Não use R$ ou pontos como separador milhar.' },
   ];
-  const ws = XLSX.utils.aoa_to_sheet(dados);
-  ws['!merges'] = [
-    { s:{r:0,c:0}, e:{r:0,c:4} },
-    { s:{r:1,c:0}, e:{r:1,c:4} },
-  ];
-  ws['!cols'] = [
-    {wch:30}, {wch:14}, {wch:16}, {wch:16}, {wch:14},
-  ];
-  XLSX.utils.book_append_sheet(wb, ws, 'Lançamentos');
+  const wsInst = XLSX.utils.aoa_to_sheet([
+    ['Coluna', 'Tipo', 'Obrigatório', 'Descrição'],
+    ...COLUNAS.map(c => [c.nome, c.tipo, c.obrig, c.descricao]),
+    ['', '', '', ''],
+    ['DICAS', '', '', ''],
+    ['Valor positivo', '', '', 'Ex: 15000 → classificado como Receita automaticamente'],
+    ['Valor negativo', '', '', 'Ex: -4500 → classificado como Despesa automaticamente'],
+    ['Aging de Recebíveis', '', '', 'Preencha a coluna Vencimento para habilitar a análise de inadimplência'],
+    ['ERPs', '', '', 'Exportações de TOTVS, Omie, SAP, Sankhya, Bling etc. são detectadas automaticamente'],
+    ['Colunas extras', '', '', 'Colunas adicionais (CNPJ, Status, Observação etc.) são ignoradas — não causam erro'],
+  ]);
+  wsInst['!cols'] = [{wch:22},{wch:10},{wch:14},{wch:70}];
+  XLSX.utils.book_append_sheet(wb, wsInst, 'INSTRUÇÕES');
+
   XLSX.writeFile(wb, 'template_planilha_financeira_pro.xlsx');
   _toast('Template baixado! Preencha e importe aqui.');
 }
