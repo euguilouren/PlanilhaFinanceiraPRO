@@ -621,6 +621,63 @@ window.switchFluxo = function(id, btn) {
   if (btn) btn.classList.add('active');
 };
 
+// ══════════════════════════════════════════════════════
+// SCORE FINANCEIRO (0–100)
+// ══════════════════════════════════════════════════════
+function calcularScoreFinanceiro(kpis, aging, pareto, auditProblemas) {
+  const pilares = {};
+
+  // Margem líquida (30 pts)
+  const margem = kpis ? kpis.margem : 0;
+  let ptsMargem = margem >= 30 ? 30 : margem >= 15 ? 20 : margem >= 5 ? 10 : 0;
+  pilares.margem = { pts: ptsMargem, max: 30, label: 'Margem Líquida', detalhe: `${(margem||0).toFixed(1)}%` };
+
+  // Inadimplência aging (25 pts)
+  let ptsAging = 25, detalheAging = 'Sem dados';
+  if (aging && aging.length) {
+    const totalAging = aging.reduce((s,f) => s + f.total, 0);
+    const vencido = aging.filter(f => f.faixa !== 'A vencer' && f.faixa !== 'Sem data').reduce((s,f) => s + f.total, 0);
+    const pct = totalAging > 0 ? vencido / totalAging * 100 : 0;
+    ptsAging = pct === 0 ? 25 : pct < 10 ? 18 : pct < 25 ? 10 : 0;
+    detalheAging = `${pct.toFixed(1)}% vencido`;
+  }
+  pilares.aging = { pts: ptsAging, max: 25, label: 'Inadimplência', detalhe: detalheAging };
+
+  // Concentração Pareto (20 pts)
+  let ptsPareto = 20, detalhePareto = 'Sem dados';
+  if (pareto && pareto.length >= 3) {
+    const totalPos = pareto.filter(i => i.total > 0).reduce((s,i) => s + i.total, 0);
+    const top3 = pareto.slice(0,3).filter(i => i.total > 0).reduce((s,i) => s + i.total, 0);
+    const pct = totalPos > 0 ? top3 / totalPos * 100 : 0;
+    ptsPareto = pct < 40 ? 20 : pct < 60 ? 12 : pct < 80 ? 6 : 0;
+    detalhePareto = `Top 3: ${pct.toFixed(1)}%`;
+  }
+  pilares.pareto = { pts: ptsPareto, max: 20, label: 'Concentração', detalhe: detalhePareto };
+
+  // Auditoria críticos (25 pts)
+  const criticos = (auditProblemas || []).filter(p => p.severidade === 'CRÍTICA').length;
+  const ptsAudit = criticos === 0 ? 25 : criticos <= 2 ? 18 : criticos <= 5 ? 10 : 0;
+  pilares.auditoria = { pts: ptsAudit, max: 25, label: 'Auditoria', detalhe: `${criticos} crítico(s)` };
+
+  const score = pilares.margem.pts + pilares.aging.pts + pilares.pareto.pts + pilares.auditoria.pts;
+  return { score, classe: score >= 80 ? 'verde' : score >= 60 ? 'amarelo' : 'vermelho', pilares };
+}
+
+// ══════════════════════════════════════════════════════
+// COMPARATIVO DE PERÍODOS
+// ══════════════════════════════════════════════════════
+function calcularKPIsComparativo(kpisA, kpisB) {
+  function delta(a, b) { return { abs: b - a, pct: a !== 0 ? (b - a) / Math.abs(a) * 100 : null }; }
+  return {
+    receita:        { a: kpisA.receita,        b: kpisB.receita,        ...delta(kpisA.receita,        kpisB.receita) },
+    despesa:        { a: kpisA.despesa,        b: kpisB.despesa,        ...delta(kpisA.despesa,        kpisB.despesa) },
+    resultado:      { a: kpisA.resultado,      b: kpisB.resultado,      ...delta(kpisA.resultado,      kpisB.resultado) },
+    margem:         { a: kpisA.margem,         b: kpisB.margem,         ...delta(kpisA.margem,         kpisB.margem) },
+    ticket:         { a: kpisA.ticket,         b: kpisB.ticket,         ...delta(kpisA.ticket,         kpisB.ticket) },
+    totalRegistros: { a: kpisA.totalRegistros, b: kpisB.totalRegistros, ...delta(kpisA.totalRegistros, kpisB.totalRegistros) },
+  };
+}
+
 // Exportar para uso no app.js
 // (module.exports removido para uso direto no navegador)
 
@@ -883,6 +940,31 @@ tr:hover td{background:var(--azul3);transition:background .15s}
 .badge-verificado{animation:pulse-verde 2s ease-in-out 3}
 /* ── Search icon ── */
 .search-icon{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-2);pointer-events:none;display:flex}
+/* ── Score Financeiro ── */
+.score-card{background:var(--branco);border-radius:var(--radius);padding:22px;
+  margin-bottom:20px;box-shadow:0 4px 20px rgba(0,0,0,.10);
+  border-left:6px solid var(--azul2);display:flex;flex-direction:column;gap:14px}
+.score-card.score-verde{border-left-color:#006100}
+.score-card.score-amarelo{border-left-color:#C9A84C}
+.score-card.score-vermelho{border-left-color:#9C0006}
+.score-numero{font-size:clamp(36px,5vw,56px);font-weight:800;line-height:1;letter-spacing:-2px}
+.score-verde .score-numero{color:#006100}
+.score-amarelo .score-numero{color:#C9A84C}
+.score-vermelho .score-numero{color:#9C0006}
+.score-label{font-size:11px;text-transform:uppercase;letter-spacing:.8px;font-weight:700;color:var(--text-2)}
+.score-pilares{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:4px}
+.score-pilar{background:var(--surface-2);border-radius:var(--radius-sm);padding:10px 12px;
+  text-align:center;border:1px solid var(--border)}
+.score-pilar-val{font-size:18px;font-weight:700;color:var(--azul)}
+.score-pilar-lbl{font-size:10px;color:var(--text-3);margin-top:2px;line-height:1.3}
+.score-pilar-max{font-size:10px;color:var(--text-3)}
+/* ── Comparativo de Períodos ── */
+.delta-pos{color:#006100;font-weight:700}
+.delta-neg{color:#9C0006;font-weight:700}
+.delta-neu{color:var(--text-2)}
+.chart-box-sm{position:relative;height:200px;margin-top:14px}
+@media(max-width:900px){.score-pilares{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:600px){.score-pilares{grid-template-columns:repeat(2,1fr)}}
 </style>
 </head>
 <body>
@@ -1012,6 +1094,28 @@ tr:hover td{background:var(--azul3);transition:background .15s}
     </button>
     <button class="btn-sm btn-outline btn-imprimir" onclick="window.print()">Imprimir</button>
     <button class="btn-sm btn-outline" onclick="exportarJSON()">Exportar JSON</button>
+    <button class="btn-sm btn-outline" id="btn-comparar" style="display:none" onclick="abrirComparativo()">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+      Comparar período
+    </button>
+  </div>
+
+  <!-- Score Financeiro -->
+  <div class="card score-card" id="card-score" style="display:none">
+    <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">
+      <div>
+        <div class="score-label">Score Financeiro</div>
+        <div id="score-numero" class="score-numero">—</div>
+        <div id="score-classificacao" style="font-size:13px;font-weight:600;margin-top:2px">—</div>
+      </div>
+      <div style="flex:1;min-width:200px">
+        <div style="background:#e2e8f0;border-radius:6px;height:12px;overflow:hidden;margin-bottom:6px">
+          <div id="score-barra" style="height:100%;border-radius:6px;transition:width .8s ease-out;width:0%"></div>
+        </div>
+        <div style="font-size:11px;color:var(--text-3)">0 (crítico) → 100 (excelente)</div>
+      </div>
+    </div>
+    <div class="score-pilares" id="score-pilares"></div>
   </div>
 
   <!-- KPIs -->
@@ -1057,6 +1161,13 @@ tr:hover td{background:var(--azul3);transition:background .15s}
       </div>
     </div>
     <div class="tbl-wrap"><table id="tabela-dados"><thead id="thead-dados"></thead><tbody id="tbody-dados"></tbody></table></div>
+  </div>
+
+  <!-- Comparativo de Períodos -->
+  <div class="card" id="card-comparativo" style="display:none">
+    <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex-shrink:0"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>Comparativo de Períodos <span id="comparativo-labels" style="font-size:11px;font-weight:400;color:var(--text-2);text-transform:none;letter-spacing:0"></span></h2>
+    <div id="comparativo-content"></div>
+    <div class="chart-box-sm"><canvas id="chart-comparativo"></canvas></div>
   </div>
 
   <!-- Painel Claude AI -->
@@ -1113,6 +1224,11 @@ let _ultimaAnaliseClaude = '';
 let _auditConfirmados    = new Set();
 let _dashboardVisivel    = false;
 let _deferredInstallPrompt = null;
+let _dadosComparativos   = null;
+let _colsComparativos    = null;
+let _kpisComparativos    = null;
+let _nomeArquivoComp     = '';
+let _chartComparativo    = null;
 
 window.addEventListener('beforeinstallprompt', e => {
   e.preventDefault();
@@ -1260,6 +1376,64 @@ function carregarArquivo(file) {
 }
 
 // ══════════════════════════════════════════════════════
+// COMPARATIVO — CARREGAR SEGUNDO ARQUIVO
+// ══════════════════════════════════════════════════════
+function abrirComparativo() {
+  const inp = document.createElement('input');
+  inp.type = 'file';
+  inp.accept = '.xlsx,.xls,.csv,.xlsm';
+  inp.onchange = e => { if (e.target.files[0]) carregarArquivoComparativo(e.target.files[0]); };
+  inp.click();
+}
+
+function carregarArquivoComparativo(file) {
+  if (typeof XLSX === 'undefined') return;
+  mostrarLoader(true);
+  _nomeArquivoComp = file.name;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      let dados, headers;
+      if (file.name.toLowerCase().endsWith('.csv')) {
+        const wb  = XLSX.read(e.target.result, { type:'string', raw:false });
+        const ws  = wb.Sheets[wb.SheetNames[0]];
+        const arr = XLSX.utils.sheet_to_json(ws, { header:1, defval:'' });
+        const rawH = arr[0].map(String);
+        headers = rawH.filter(h => h && !h.startsWith('__EMPTY'));
+        dados   = arr.slice(1).map(r => {
+          const obj = {}; rawH.forEach((h,i) => { if (h && !h.startsWith('__EMPTY')) obj[h] = r[i] ?? ''; }); return obj;
+        });
+      } else {
+        const wb = XLSX.read(e.target.result, { type:'array', cellDates:true });
+        const abaReal = wb.SheetNames.find(n => { const s = wb.Sheets[n]; return s && s['!ref'] && s['!ref'] !== 'A1'; }) || wb.SheetNames[0];
+        const ws  = wb.Sheets[abaReal];
+        const arr = XLSX.utils.sheet_to_json(ws, { header:1, defval:'' });
+        let headerRow = 0;
+        for (let i = 0; i < Math.min(5, arr.length); i++) {
+          if (arr[i].filter(c => c && !String(c).startsWith('__EMPTY')).length >= 2) { headerRow = i; break; }
+        }
+        const rawH = arr[headerRow].map(String);
+        headers = rawH.filter(h => h && !h.startsWith('__EMPTY'));
+        dados   = arr.slice(headerRow + 1).filter(row => row.some(c => c !== '')).map(row => {
+          const obj = {}; rawH.forEach((h,i) => { if (h && !h.startsWith('__EMPTY')) obj[h] = row[i] ?? ''; }); return obj;
+        });
+      }
+      _colsComparativos = Object.assign({}, _cols);
+      const det = detectarColunas(headers);
+      Object.entries(det).forEach(([k,v]) => { if (v && headers.includes(v)) _colsComparativos[k] = v; });
+      _kpisComparativos = calcularKPIs(dados, _colsComparativos);
+      mostrarLoader(false);
+      renderComparativo();
+    } catch(err) {
+      mostrarLoader(false);
+      alert('Erro ao ler arquivo comparativo: ' + err.message);
+    }
+  };
+  if (file.name.toLowerCase().endsWith('.csv')) reader.readAsText(file, 'utf-8');
+  else reader.readAsArrayBuffer(file);
+}
+
+// ══════════════════════════════════════════════════════
 // CONFIG COLUNAS
 // ══════════════════════════════════════════════════════
 function mostrarConfigColunas(headers, cols, erpDetectado) {
@@ -1357,6 +1531,10 @@ function executarAnalise() {
       renderPareto(par);
       _ultimoPareto = par;
 
+      // Score Financeiro
+      const _scoreData = calcularScoreFinanceiro(kpis, ag, par, audit);
+      renderScoreFinanceiro(_scoreData);
+
       // Fluxo por Período
       renderFluxoPeriodo(dados, _cols);
 
@@ -1371,6 +1549,7 @@ function executarAnalise() {
       document.getElementById('upload-area').style.display = 'none';
       document.getElementById('dashboard').style.display   = 'block';
       _dashboardVisivel = true;
+      document.getElementById('btn-comparar').style.display = 'inline-block';
       document.getElementById('tag-arquivo').textContent   = _nomeArquivo;
       _atualizarStep(3);
     } catch(err) {
@@ -1434,6 +1613,33 @@ function renderKPIs(k) {
    {id:'kpi-resultado',val:k.resultado,tipo:'brl'},{id:'kpi-ticket',val:k.ticket,tipo:'brl'},
    {id:'kpi-registros',val:k.totalRegistros,tipo:'num'}
   ].forEach(({id,val,tipo}) => { const el=document.getElementById(id); if(el) _animarContador(el,val,tipo); });
+}
+
+// ══════════════════════════════════════════════════════
+// RENDER SCORE FINANCEIRO
+// ══════════════════════════════════════════════════════
+function renderScoreFinanceiro(s) {
+  const card = document.getElementById('card-score');
+  if (!card) return;
+  card.className = `card score-card score-${s.classe}`;
+  card.style.display = 'block';
+  const label = s.score >= 80 ? 'Saúde Excelente' : s.score >= 60 ? 'Saúde Moderada' : 'Atenção Necessária';
+  const cor = s.classe === 'verde' ? '#006100' : s.classe === 'amarelo' ? '#C9A84C' : '#9C0006';
+  const numEl = document.getElementById('score-numero');
+  const claEl = document.getElementById('score-classificacao');
+  claEl.textContent = label;
+  claEl.style.color = cor;
+  const barra = document.getElementById('score-barra');
+  barra.style.background = cor;
+  barra.style.width = '0%';
+  requestAnimationFrame(() => { barra.style.width = s.score + '%'; });
+  _animarContador(numEl, s.score, 'num', 600);
+  document.getElementById('score-pilares').innerHTML = Object.values(s.pilares).map(p => `
+    <div class="score-pilar">
+      <div class="score-pilar-val">${p.pts}<span class="score-pilar-max">/${p.max}</span></div>
+      <div class="score-pilar-lbl">${esc(p.label)}</div>
+      <div style="font-size:10px;color:var(--text-3)">${esc(p.detalhe)}</div>
+    </div>`).join('');
 }
 
 // ══════════════════════════════════════════════════════
@@ -1652,6 +1858,81 @@ function renderPareto(lista) {
       <thead><tr><th>#</th><th>Entidade</th><th>Total R$</th><th>%</th><th>Acum.</th><th>Classe</th></tr></thead>
       <tbody>${rows}</tbody>
     </table></div>`;
+}
+
+// ══════════════════════════════════════════════════════
+// RENDER COMPARATIVO DE PERÍODOS
+// ══════════════════════════════════════════════════════
+function renderComparativo() {
+  const card = document.getElementById('card-comparativo');
+  if (!card || !_ultimosKpis || !_kpisComparativos) return;
+  card.style.display = 'block';
+
+  const kA = _ultimosKpis, kB = _kpisComparativos;
+  const comp = calcularKPIsComparativo(kA, kB);
+
+  const labelA = (kA.periodoInicio && kA.periodoFim)
+    ? `${fmtData(kA.periodoInicio)} – ${fmtData(kA.periodoFim)}` : _nomeArquivo;
+  const labelB = (kB.periodoInicio && kB.periodoFim)
+    ? `${fmtData(kB.periodoInicio)} – ${fmtData(kB.periodoFim)}` : _nomeArquivoComp;
+  document.getElementById('comparativo-labels').textContent = `${labelA}  ×  ${labelB}`;
+
+  const fmtDelta = (d, isBRL=true, isPP=false) => {
+    if (d.pct === null) return '<span class="delta-neu">—</span>';
+    const sinal = d.abs >= 0 ? '↑' : '↓';
+    const cls   = d.abs >= 0 ? 'delta-pos' : 'delta-neg';
+    const abs   = isPP ? `${d.abs >= 0 ? '+' : ''}${d.abs.toFixed(1)}pp`
+                : isBRL ? fmtBRL(d.abs) : fmtNum(Math.round(d.abs));
+    const pct   = !isPP && d.pct !== null ? ` (${d.pct >= 0 ? '+' : ''}${d.pct.toFixed(1)}%)` : '';
+    return `<span class="${cls}">${sinal} ${abs}${pct}</span>`;
+  };
+
+  const linhas = [
+    { label:'Receitas',        a:fmtBRL(comp.receita.a),        b:fmtBRL(comp.receita.b),        d:fmtDelta(comp.receita) },
+    { label:'Despesas',        a:fmtBRL(comp.despesa.a),        b:fmtBRL(comp.despesa.b),        d:fmtDelta(comp.despesa) },
+    { label:'Resultado',       a:fmtBRL(comp.resultado.a),      b:fmtBRL(comp.resultado.b),      d:fmtDelta(comp.resultado) },
+    { label:'Margem %',        a:`${comp.margem.a.toFixed(1)}%`,b:`${comp.margem.b.toFixed(1)}%`,d:fmtDelta(comp.margem, false, true) },
+    { label:'Ticket Médio',    a:fmtBRL(comp.ticket.a),         b:fmtBRL(comp.ticket.b),         d:fmtDelta(comp.ticket) },
+    { label:'Total Registros', a:fmtNum(comp.totalRegistros.a), b:fmtNum(comp.totalRegistros.b), d:fmtDelta(comp.totalRegistros, false) },
+  ];
+
+  document.getElementById('comparativo-content').innerHTML = `
+    <div class="tbl-wrap"><table>
+      <thead><tr>
+        <th>KPI</th>
+        <th style="text-align:right">${esc(labelA)}</th>
+        <th style="text-align:right">${esc(labelB)}</th>
+        <th style="text-align:right">Variação</th>
+      </tr></thead>
+      <tbody>${linhas.map(l=>`<tr>
+        <td style="font-weight:600">${esc(l.label)}</td>
+        <td style="text-align:right">${l.a}</td>
+        <td style="text-align:right">${l.b}</td>
+        <td style="text-align:right">${l.d}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>`;
+
+  if (_chartComparativo) _chartComparativo.destroy();
+  const canvas = document.getElementById('chart-comparativo');
+  if (!canvas) return;
+  _chartComparativo = new Chart(canvas.getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: [labelA, labelB],
+      datasets: [
+        { label:'Receita', data:[kA.receita, kB.receita], backgroundColor:['rgba(0,97,0,.7)','rgba(0,97,0,.4)'] },
+        { label:'Despesa', data:[kA.despesa, kB.despesa], backgroundColor:['rgba(156,0,6,.7)','rgba(156,0,6,.4)'] },
+      ]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ position:'bottom', labels:{ font:{size:11}, boxWidth:12 } } },
+      scales:{ y:{ ticks:{ callback: v => fmtBRL(v) } } }
+    }
+  });
+
+  card.scrollIntoView({ behavior:'smooth', block:'nearest' });
+  _toast('Comparativo carregado — ' + _nomeArquivoComp);
 }
 
 // ══════════════════════════════════════════════════════
