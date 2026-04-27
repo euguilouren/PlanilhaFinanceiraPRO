@@ -28,6 +28,9 @@ jobs:
       - name: Obfuscar HTML
         run: python3 scripts/obfuscar_html.py index.html dist/index.html
 
+      - name: Copiar assets PWA
+        run: cp manifest.json dist/manifest.json && cp sw.js dist/sw.js
+
       - name: Verificar resultado
         run: |
           python3 -c "

@@ -1,0 +1,26 @@
+{
+  "name": "Planilha Financeira Pro",
+  "short_name": "Planilha Pro",
+  "description": "Dashboard financeiro 100% no navegador — análise de planilhas Excel e CSV",
+  "start_url": "/Planilhas/",
+  "scope": "/Planilhas/",
+  "display": "standalone",
+  "background_color": "#1F4E79",
+  "theme_color": "#1F4E79",
+  "orientation": "any",
+  "lang": "pt-BR",
+  "icons": [
+    {
+      "src": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxOTIgMTkyIj48cmVjdCB3aWR0aD0iMTkyIiBoZWlnaHQ9IjE5MiIgZmlsbD0iIzFGNEU3OSIgcng9IjM2Ii8+PHJlY3QgeD0iMjQiIHk9IjExMiIgd2lkdGg9IjM2IiBoZWlnaHQ9IjYwIiByeD0iNiIgZmlsbD0iI0M5QTg0QyIvPjxyZWN0IHg9Ijc4IiB5PSI3MiIgd2lkdGg9IjM2IiBoZWlnaHQ9IjEwMCIgcng9IjYiIGZpbGw9InJnYmEoMjU1LDI1NSwyNTUsLjg1KSIvPjxyZWN0IHg9IjEzMiIgeT0iMzIiIHdpZHRoPSIzNiIgaGVpZ2h0PSIxNDAiIHJ4PSI2IiBmaWxsPSJyZ2JhKDI1NSwyNTUsMjU1LC42KSIvPjwvc3ZnPg==",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MTIgNTEyIj48cmVjdCB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiIgZmlsbD0iIzFGNEU3OSIgcng9Ijg0Ii8+PHJlY3QgeD0iNjQiIHk9IjI5NiIgd2lkdGg9Ijk2IiBoZWlnaHQ9IjE2MCIgcng9IjEyIiBmaWxsPSIjQzlBODRDIi8+PHJlY3QgeD0iMjA4IiB5PSIxOTIiIHdpZHRoPSI5NiIgaGVpZ2h0PSIyNjQiIHJ4PSIxMiIgZmlsbD0icmdiYSgyNTUsMjU1LDI1NSwuODUpIi8+PHJlY3QgeD0iMzUyIiB5PSI4NiIgd2lkdGg9Ijk2IiBoZWlnaHQ9IjM3MCIgcng9IjEyIiBmaWxsPSJyZ2JhKDI1NSwyNTUsMjU1LC42KSIvPjwvc3ZnPg==",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
