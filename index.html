@@ -1003,7 +1003,7 @@ tr:hover td{background:var(--azul3);transition:background .15s}
 <div id="dashboard">
   <div class="toolbar">
     <span class="tag-arquivo" id="tag-arquivo">—</span>
-    <button class="btn-sm" onclick="document.getElementById('upload-area').style.display='block';document.getElementById('dashboard').style.display='none';_atualizarStep(1)">
+    <button class="btn-sm" onclick="document.getElementById('upload-area').style.display='block';document.getElementById('dashboard').style.display='none';_dashboardVisivel=false;_atualizarStep(1)">
       Novo arquivo
     </button>
     <button class="btn-sm btn-outline btn-imprimir" onclick="window.print()">Imprimir</button>
@@ -1107,6 +1107,7 @@ let _ultimoDre       = null;
 let _ultimoPareto    = null;
 let _ultimaAnaliseClaude = '';
 let _auditConfirmados    = new Set();
+let _dashboardVisivel    = false;
 let _deferredInstallPrompt = null;
 
 window.addEventListener('beforeinstallprompt', e => {
@@ -1127,17 +1128,19 @@ function instalarApp() {
   _deferredInstallPrompt.userChoice.then(() => { _deferredInstallPrompt = null; });
 }
 
-function _animarContador(el, valorFinal, duracao) {
+function _animarContador(el, valorFinal, tipo, duracao) {
   if (!el || isNaN(valorFinal)) return;
   duracao = duracao || 800;
-  const ehBRL = el.dataset.tipo === 'brl';
+  const ehBRL = (tipo || el.dataset.tipo) === 'brl';
+  const fmt = v => ehBRL ? fmtBRL(v) : fmtNum(Math.round(v));
+  if (el._rafId) cancelAnimationFrame(el._rafId);
   const inicio = performance.now();
   (function tick(now) {
     const t = Math.min((now - inicio) / duracao, 1);
     const eased = 1 - (1 - t) * (1 - t);
-    el.textContent = ehBRL ? fmtBRL(valorFinal * eased) : fmtNum(Math.round(valorFinal * eased));
-    if (t < 1) requestAnimationFrame(tick);
-    else el.textContent = ehBRL ? fmtBRL(valorFinal) : fmtNum(valorFinal);
+    el.textContent = fmt(valorFinal * eased);
+    if (t < 1) el._rafId = requestAnimationFrame(tick);
+    else { el.textContent = fmt(valorFinal); el._rafId = null; }
   })(performance.now());
 }
 
@@ -1363,6 +1366,7 @@ function executarAnalise() {
       // Mostrar dashboard
       document.getElementById('upload-area').style.display = 'none';
       document.getElementById('dashboard').style.display   = 'block';
+      _dashboardVisivel = true;
       document.getElementById('tag-arquivo').textContent   = _nomeArquivo;
       _atualizarStep(3);
     } catch(err) {
@@ -1371,14 +1375,14 @@ function executarAnalise() {
     }
     mostrarLoader(false);
     // Stagger de entrada dos cards e KPIs
-    document.querySelectorAll('#dashboard .card').forEach((el,i) => {
-      el.classList.remove('card-animate'); void el.offsetWidth;
-      el.style.animationDelay = (i*70)+'ms'; el.classList.add('card-animate');
-    });
-    document.querySelectorAll('#kpis .kpi').forEach((el,i) => {
-      el.classList.remove('card-animate'); void el.offsetWidth;
-      el.style.animationDelay = (i*55)+'ms'; el.classList.add('card-animate');
-    });
+    const _sc = [...document.querySelectorAll('#dashboard .card')];
+    _sc.forEach(el => el.classList.remove('card-animate'));
+    void document.body.offsetWidth;
+    _sc.forEach((el,i) => { el.style.animationDelay=(i*70)+'ms'; el.classList.add('card-animate'); });
+    const _sk = [...document.querySelectorAll('#kpis .kpi')];
+    _sk.forEach(el => el.classList.remove('card-animate'));
+    void document.body.offsetWidth;
+    _sk.forEach((el,i) => { el.style.animationDelay=(i*55)+'ms'; el.classList.add('card-animate'); });
   }, 50);
 }
 
@@ -1425,7 +1429,7 @@ function renderKPIs(k) {
   [{id:'kpi-receita',val:k.receita,tipo:'brl'},{id:'kpi-despesa',val:k.despesa,tipo:'brl'},
    {id:'kpi-resultado',val:k.resultado,tipo:'brl'},{id:'kpi-ticket',val:k.ticket,tipo:'brl'},
    {id:'kpi-registros',val:k.totalRegistros,tipo:'num'}
-  ].forEach(({id,val,tipo}) => { const el=document.getElementById(id); if(el){el.dataset.tipo=tipo;_animarContador(el,val);} });
+  ].forEach(({id,val,tipo}) => { const el=document.getElementById(id); if(el) _animarContador(el,val,tipo); });
 }
 
 // ══════════════════════════════════════════════════════
@@ -1470,6 +1474,9 @@ function renderVerificacao(integ) {
 // RENDER AUDITORIA
 // ══════════════════════════════════════════════════════
 const BADGE = { 'CRÍTICA':'b-critica','ALTA':'b-alta','MÉDIA':'b-media','BAIXA':'b-baixa' };
+function _auditoriaPendentes(lista) {
+  return (lista || []).filter((_, i) => !_auditConfirmados.has(i));
+}
 function confirmarAuditoria(idx) {
   if (_auditConfirmados.has(idx)) _auditConfirmados.delete(idx);
   else _auditConfirmados.add(idx);
@@ -1477,7 +1484,7 @@ function confirmarAuditoria(idx) {
 }
 
 function renderAuditoria(lista) {
-  const pendentes = lista.filter((_,i) => !_auditConfirmados.has(i));
+  const pendentes = _auditoriaPendentes(lista);
   const criticos  = pendentes.filter(p=>p.severidade==='CRÍTICA').length;
   const badge     = criticos
     ? `<span class="badge b-critica">${criticos} CRÍTICO${criticos>1?'S':''}</span>` : '';
@@ -1703,7 +1710,7 @@ function _gerarBriefing() {
   if (k.periodoInicio) linhas.push(`- Período: ${fmtData(k.periodoInicio)} → ${fmtData(k.periodoFim)}`);
 
   if (_ultimaAuditoria && _ultimaAuditoria.length) {
-    const pendentes = _ultimaAuditoria.filter((_,i) => !_auditConfirmados.has(i));
+    const pendentes = _auditoriaPendentes(_ultimaAuditoria);
     const confirmados = _auditConfirmados.size;
     linhas.push(`\n## Auditoria (${pendentes.length} alerta(s) pendente(s)${confirmados ? `, ${confirmados} confirmado(s) como correto(s)` : ''})`);
     pendentes.slice(0, 8).forEach(a => linhas.push(`- [${a.severidade}] ${a.tipo}: ${a.descricao}`));
@@ -1850,11 +1857,7 @@ function _copiarFallback(t) {
 function mostrarLoader(v) {
   document.getElementById('loader').classList.toggle('show', v);
   const skel = document.getElementById('loader-skeleton');
-  if (skel) {
-    if (v && document.getElementById('dashboard').style.display !== 'none')
-      skel.classList.add('show');
-    else skel.classList.remove('show');
-  }
+  if (skel) skel.classList.toggle('show', v && _dashboardVisivel);
 }
 
 function baixarTemplate() {
