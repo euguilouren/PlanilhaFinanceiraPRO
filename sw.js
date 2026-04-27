@@ -1,8 +1,8 @@
 const CACHE_NAME = 'pfp-v1';
 const PRECACHE_URLS = [
-  '/Planilhas/',
-  '/Planilhas/index.html',
-  '/Planilhas/manifest.json'
+  '/PlanilhaFinanceiraPRO/',
+  '/PlanilhaFinanceiraPRO/index.html',
+  '/PlanilhaFinanceiraPRO/manifest.json'
 ];
 
 self.addEventListener('install', event => {
