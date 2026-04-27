@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Planilha Financeira Pro — Dashboard</title>
+<title>Planilha Financeira Pro — por Luan Guilherme Lourenço</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -104,25 +104,35 @@ function calcularIntegridade(dados, cols, kpis, dre, pareto) {
   const okVal = pctVal >= 85;
   if (okVal) passed++;
   checks.push({ nome:'Valores processados', status: okVal?'OK':'ALERTA',
-    detalhe:`${comValor} de ${dados.length} (${pctVal.toFixed(0)}%)` });
+    detalhe:`${comValor} de ${dados.length} (${pctVal.toFixed(0)}%)`,
+    como: okVal ? null : `Verifique as linhas com célula em branco ou texto não-numérico na coluna "${cols.valor||'Valor'}". No Excel: use Ctrl+End para ver o intervalo de dados e filtre pela coluna buscando células vazias.` });
 
   // Check 2: checksum (informativo)
   total++;  passed++;
   const checksum = dados.reduce((s,r)=>{ const v=toNum(r[cols.valor]); return s+(isNaN(v)?0:Math.abs(v)); }, 0);
   checks.push({ nome:'Checksum (soma |valores|)', status:'INFO',
-    detalhe:`${fmtBRL(checksum)} — confirme com =SOMA() no Excel`, checksum });
+    detalhe:`${fmtBRL(checksum)} — confirme com =SOMA() no Excel`,
+    como: `No Excel, clique em uma célula vazia e digite =SOMA(${cols.valor||'coluna'}1:${cols.valor||'coluna'}9999). O resultado deve ser ${fmtBRL(checksum)}.`,
+    checksum });
 
-  // Check 3: cross-check Pareto × total
-  if (pareto && pareto.length && kpis && kpis.totalValor) {
+  // Check 3: cross-check Pareto — consistência interna
+  if (pareto && pareto.length) {
     total++;
-    const somaPareto = pareto.reduce((s,i)=>s+i.total,0);
-    const diff = Math.abs(somaPareto - Math.abs(kpis.totalValor));
-    const pctDiff = kpis.totalValor ? diff / Math.abs(kpis.totalValor) * 100 : 0;
-    const okP = pctDiff < 5;
+    const somaPareto    = pareto.reduce((s,i)=>s+i.total, 0);
+    const totalGeral    = pareto.totalGeral ?? somaPareto;
+    const totalEntidades = pareto.totalEntidades || pareto.length;
+    const exibidos      = pareto.length;
+    const truncado      = totalEntidades > exibidos;
+    const fora          = totalEntidades - exibidos;
+    const diff          = Math.abs(somaPareto - totalGeral);
+    const pctDiff       = totalGeral ? diff / Math.abs(totalGeral) * 100 : 0;
+    const okP           = truncado || pctDiff < 0.1;
     if (okP) passed++;
-    checks.push({ nome:'Cross-check Pareto × Total', status: okP?'OK':'DIVERGENTE',
-      detalhe: okP ? `Pareto ${fmtBRL(somaPareto)} ≈ Total ${fmtBRL(kpis.totalValor)}`
-                   : `Diferença de ${pctDiff.toFixed(1)}% (${fmtBRL(diff)})` });
+    checks.push({ nome:'Pareto — consistência interna', status: okP ? (truncado ? 'INFO' : 'OK') : 'DIVERGENTE',
+      detalhe: truncado
+        ? `Top ${exibidos} de ${totalEntidades} entidades exibidas. As ${fora} restantes não aparecem no ranking (esperado no Pareto).`
+        : `Todas as ${totalEntidades} entidades exibidas. Total líquido: ${fmtBRL(totalGeral)}.`,
+      como: !okP ? `Inconsistência nos dados agrupados. Tente reimportar o arquivo.` : null });
   }
 
   // Check 4: cobertura de datas
@@ -133,18 +143,19 @@ function calcularIntegridade(dados, cols, kpis, dre, pareto) {
     const okData = pctData >= 80;
     if (okData) passed++;
     checks.push({ nome:'Cobertura de datas', status: okData?'OK':'ALERTA',
-      detalhe:`${pctData.toFixed(0)}% dos registros com data válida` });
+      detalhe:`${pctData.toFixed(0)}% dos registros com data válida`,
+      como: !okData ? `A coluna "${cols.data||'Data'}" tem registros com data inválida ou em formato de texto. No Excel, selecione a coluna e formate como "Data" (Formato > Células > Data). Datas em texto (ex: "17/01/2024" como texto) não são reconhecidas.` : null });
   }
 
-  // Check 5: cobertura de categorias
-  if (cols.categoria) {
-    total++;
-    const comCat = dados.filter(r => String(r[cols.categoria]||'').trim()).length;
-    const pctCat = dados.length ? comCat / dados.length * 100 : 0;
-    const nivel = pctCat >= 80 ? 'ALTA' : pctCat >= 50 ? 'MÉDIA' : 'BAIXA';
-    if (pctCat >= 80) passed++;
-    checks.push({ nome:'Cobertura de categorias', status: nivel,
-      detalhe:`${pctCat.toFixed(0)}% categorizados` });
+  // Check 5: modo DRE — informa quando usa fallback por sinal
+  if (!cols.categoria) {
+    const negativos = dados.filter(r => { const v = toNum(r[cols.valor]); return !isNaN(v) && v < 0; }).length;
+    if (negativos > 0) {
+      total++; passed++;
+      checks.push({ nome:'Classificação automática', status:'INFO',
+        detalhe:`${negativos} lançamento(s) negativo(s) → Despesa; demais → Receita`,
+        como: null });
+    }
   }
 
   const confianca = total ? Math.round(passed / total * 100) : 100;
@@ -173,7 +184,11 @@ function toDate(v) {
   const s = String(v).trim();
   // DD/MM/YYYY
   const br = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-  if (br) return new Date(+br[3], +br[2]-1, +br[1]);
+  if (br) {
+    const d = new Date(+br[3], +br[2]-1, +br[1]);
+    if (d.getDate() !== +br[1] || d.getMonth() !== +br[2]-1) return null;
+    return d;
+  }
   const d = new Date(s);
   return isNaN(d) ? null : d;
 }
@@ -352,14 +367,21 @@ function calcularPareto(dados, colEntidade, colValor, top = 15) {
   const lista = Object.entries(mapa)
     .map(([nome, total]) => ({ nome, total }))
     .sort((a,b) => b.total - a.total);
-  const totalGeral = lista.reduce((s,i)=>s+i.total, 0);
+  const totalGeral     = lista.reduce((s,i)=>s+i.total, 0);
+  const totalEntidades = lista.length;
+  // Base para % = soma dos valores positivos (receitas); se não há positivos usa abs total
+  const totalPos = lista.filter(i=>i.total>0).reduce((s,i)=>s+i.total, 0);
+  const totalBase = totalPos > 0 ? totalPos : lista.reduce((s,i)=>s+Math.abs(i.total), 0);
   let acum = 0;
-  return lista.slice(0, top).map((item, idx) => {
-    const pct = totalGeral ? item.total / totalGeral * 100 : 0;
-    acum += pct;
+  const items = lista.slice(0, top).map((item, idx) => {
+    const pct = totalBase ? Math.abs(item.total) / totalBase * 100 : 0;
+    acum += (item.total > 0 ? pct : 0);
     return { ranking: idx+1, nome: item.nome, total: item.total,
              pct, acumulado: acum, classe: acum <= 80 ? 'A' : 'B' };
   });
+  items.totalEntidades = totalEntidades;
+  items.totalGeral     = totalGeral;
+  return items;
 }
 
 // ══════════════════════════════════════════════════════
@@ -376,18 +398,42 @@ const MAPA_DRE = [
 ];
 
 function construirDRE(dados, colCat, colValor) {
-  if (!colCat || !colValor) return null;
+  if (!colValor) return null;
+
   const valores = {};
   MAPA_DRE.forEach(({ linha }) => { valores[linha] = 0; });
+  let modo = 'categoria';
 
-  dados.forEach(row => {
-    const cat = String(row[colCat] ?? '').toUpperCase().trim();
-    const v   = toNum(row[colValor]);
-    if (isNaN(v)) return;
-    for (const { linha, termos } of MAPA_DRE) {
-      if (termos.test(cat)) { valores[linha] += v; break; }
+  if (!colCat) {
+    // Fallback: classifica pelo sinal do valor (sem coluna Categoria)
+    modo = 'sinal';
+    dados.forEach(row => {
+      const v = toNum(row[colValor]);
+      if (isNaN(v)) return;
+      if (v >= 0) valores['Receita Bruta'] += v;
+      else valores['(-) Despesas Operacionais'] += v;
+    });
+  } else {
+    dados.forEach(row => {
+      const cat = String(row[colCat] ?? '').toUpperCase().trim();
+      const v   = toNum(row[colValor]);
+      if (isNaN(v)) return;
+      for (const { linha, termos } of MAPA_DRE) {
+        if (termos.test(cat)) { valores[linha] += v; break; }
+      }
+    });
+    // Se nenhuma linha foi classificada, aplica fallback por sinal
+    const totalClassificado = Object.values(valores).reduce((a,b)=>a+Math.abs(b),0);
+    if (totalClassificado === 0) {
+      modo = 'sinal';
+      dados.forEach(row => {
+        const v = toNum(row[colValor]);
+        if (isNaN(v)) return;
+        if (v >= 0) valores['Receita Bruta'] += v;
+        else valores['(-) Despesas Operacionais'] += v;
+      });
     }
-  });
+  }
 
   const rb  = valores['Receita Bruta'];
   const ded = Math.abs(valores['(-) Deduções']);
@@ -414,7 +460,7 @@ function construirDRE(dados, colCat, colValor) {
     { linha:'(-) IR/CSLL',                      valor:-ir,  tipo:'input' },
     { linha:'(=) Lucro Líquido',                valor:ll,   tipo:'total lucro' },
   ];
-  return linhas.map(l => ({ ...l, av: rl ? (l.valor/rl*100) : 0 }));
+  return { linhas: linhas.map(l => ({ ...l, av: rl ? (l.valor/rl*100) : 0 })), modo };
 }
 
 // ══════════════════════════════════════════════════════
@@ -427,8 +473,8 @@ function calcularKPIs(dados, cols) {
   const colData = cols.data   || 'Data';
 
   const datas = dados.map(r => toDate(r[colData])).filter(Boolean);
-  const minData = datas.length ? new Date(Math.min(...datas)) : null;
-  const maxData = datas.length ? new Date(Math.max(...datas)) : null;
+  const minData = datas.length ? datas.reduce((a,b) => a < b ? a : b) : null;
+  const maxData = datas.length ? datas.reduce((a,b) => a > b ? a : b) : null;
 
   let receita = 0, despesa = 0, nfRec = 0, nfDesp = 0;
   dados.forEach(r => {
@@ -504,6 +550,8 @@ function calcularFluxoPeriodo(dados, colData, colValor, colTipo, freq) {
 function renderFluxoPeriodo(dados, cols) {
   const el = document.getElementById('fluxo-content');
   if (!el) return;
+  const card = document.getElementById('card-fluxo');
+  if (card) card.style.display = 'block';
   const colData  = cols.data   || 'Data';
   const colValor = cols.valor  || 'Valor';
   const colTipo  = cols.tipo   || 'Tipo';
@@ -573,6 +621,66 @@ window.switchFluxo = function(id, btn) {
   if (btn) btn.classList.add('active');
 };
 
+// ══════════════════════════════════════════════════════
+// SCORE FINANCEIRO (0–100)
+// ══════════════════════════════════════════════════════
+function calcularScoreFinanceiro(kpis, aging, pareto, auditProblemas) {
+  const pilares = {};
+
+  // Margem líquida (30 pts)
+  const margem = kpis ? kpis.margem : 0;
+  let ptsMargem = margem >= 30 ? 30 : margem >= 15 ? 20 : margem >= 5 ? 10 : 0;
+  pilares.margem = { pts: ptsMargem, max: 30, label: 'Margem Líquida', detalhe: `${(margem||0).toFixed(1)}%` };
+
+  // Inadimplência aging (25 pts)
+  let ptsAging = 25, detalheAging = 'Sem dados';
+  if (aging && aging.length) {
+    const totalAging = aging.reduce((s,f) => s + f.total, 0);
+    const vencido = aging.filter(f => f.faixa !== 'A vencer' && f.faixa !== 'Sem data').reduce((s,f) => s + f.total, 0);
+    const pct = totalAging > 0 ? vencido / totalAging * 100 : 0;
+    ptsAging = pct === 0 ? 25 : pct < 10 ? 18 : pct < 25 ? 10 : 0;
+    detalheAging = `${pct.toFixed(1)}% vencido`;
+  }
+  pilares.aging = { pts: ptsAging, max: 25, label: 'Inadimplência', detalhe: detalheAging };
+
+  // Concentração Pareto (20 pts)
+  let ptsPareto = 20, detalhePareto = 'Sem dados';
+  if (pareto && pareto.length >= 3) {
+    const totalPos = pareto.filter(i => i.total > 0).reduce((s,i) => s + i.total, 0);
+    const top3 = pareto.slice(0,3).filter(i => i.total > 0).reduce((s,i) => s + i.total, 0);
+    const pct = totalPos > 0 ? top3 / totalPos * 100 : 0;
+    ptsPareto = pct < 40 ? 20 : pct < 60 ? 12 : pct < 80 ? 6 : 0;
+    detalhePareto = `Top 3: ${pct.toFixed(1)}%`;
+  }
+  pilares.pareto = { pts: ptsPareto, max: 20, label: 'Concentração', detalhe: detalhePareto };
+
+  // Auditoria críticos (25 pts)
+  const criticos = (auditProblemas || []).filter(p => p.severidade === 'CRÍTICA').length;
+  const ptsAudit = criticos === 0 ? 25 : criticos <= 2 ? 18 : criticos <= 5 ? 10 : 0;
+  pilares.auditoria = { pts: ptsAudit, max: 25, label: 'Auditoria', detalhe: `${criticos} crítico(s)` };
+
+  const score = pilares.margem.pts + pilares.aging.pts + pilares.pareto.pts + pilares.auditoria.pts;
+  return { score, classe: score >= 80 ? 'verde' : score >= 60 ? 'amarelo' : 'vermelho', pilares };
+}
+
+// ══════════════════════════════════════════════════════
+// COMPARATIVO DE PERÍODOS
+// ══════════════════════════════════════════════════════
+function calcularKPIsComparativo(kpisA, kpisB) {
+  function delta(a, b) {
+    if (isNaN(a) || isNaN(b)) return { abs: 0, pct: null };
+    return { abs: b - a, pct: a !== 0 ? (b - a) / Math.abs(a) * 100 : null };
+  }
+  return {
+    receita:        { a: kpisA.receita,        b: kpisB.receita,        ...delta(kpisA.receita,        kpisB.receita) },
+    despesa:        { a: kpisA.despesa,        b: kpisB.despesa,        ...delta(kpisA.despesa,        kpisB.despesa) },
+    resultado:      { a: kpisA.resultado,      b: kpisB.resultado,      ...delta(kpisA.resultado,      kpisB.resultado) },
+    margem:         { a: kpisA.margem,         b: kpisB.margem,         ...delta(kpisA.margem,         kpisB.margem) },
+    ticket:         { a: kpisA.ticket,         b: kpisB.ticket,         ...delta(kpisA.ticket,         kpisB.ticket) },
+    totalRegistros: { a: kpisA.totalRegistros, b: kpisB.totalRegistros, ...delta(kpisA.totalRegistros, kpisB.totalRegistros) },
+  };
+}
+
 // Exportar para uso no app.js
 // (module.exports removido para uso direto no navegador)
 
@@ -580,13 +688,22 @@ window.switchFluxo = function(id, btn) {
 <style>
 :root{
   --azul:#1F4E79;--azul2:#2E75B6;--azul3:#D6E4F0;
-  --gold:#C9A84C;
+  --gold:#C9A84C;--gold-2:#D4A843;--gold-bg:rgba(201,168,76,.15);
   --verde:#006100;--verde-bg:#C6EFCE;
   --amarelo:#9C5700;--amarelo-bg:#FFEB9C;
   --vermelho:#9C0006;--vermelho-bg:#FFC7CE;
   --cinza:#f4f6f9;--branco:#fff;
   --border:#E2E8F0;--text-2:#64748B;--text-3:#94a3b8;
   --radius:10px;--radius-sm:6px;
+  /* aliases usados no CSS */
+  --navy:#1F4E79;--navy-2:#2E75B6;--navy-3:#1a4068;
+  --bg:#f4f6f9;--text:#1a1a2e;
+  --surface:#fff;--surface-2:#f4f6f9;
+  --success:#006100;--success-bg:#C6EFCE;
+  --danger:#9C0006;--danger-bg:#FFC7CE;
+  --alta-bg:#FEF3C7;--alta-text:#92400E;
+  --warning:#9C5700;--warning-bg:#FFEB9C;
+  --shadow-sm:0 1px 3px rgba(0,0,0,.1);
 }
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Inter',Arial,sans-serif;font-size:13.5px;background:var(--bg);color:var(--text);line-height:1.5;-webkit-font-smoothing:antialiased}
@@ -604,6 +721,11 @@ body{font-family:'Inter',Arial,sans-serif;font-size:13.5px;background:var(--bg);
 .header-meta{text-align:right}
 .header-right{font-size:11.5px;opacity:.75;font-weight:500}
 .header-badge{font-size:10px;opacity:.45;margin-top:3px;font-weight:500;letter-spacing:.5px;text-transform:uppercase}
+#btn-instalar-app{display:none;align-items:center;gap:6px;background:var(--gold);color:#1a1a2e;
+  border:none;border-radius:20px;padding:7px 16px;font-size:12px;font-weight:700;
+  cursor:pointer;white-space:nowrap;transition:.2s;letter-spacing:.2px}
+#btn-instalar-app:hover{background:var(--gold-2);transform:translateY(-1px);box-shadow:0 4px 12px rgba(201,168,76,.4)}
+#btn-instalar-app:active{transform:scale(0.97)}
 /* Upload */
 #upload-area{max-width:860px;margin:40px auto;padding:0 16px}
 .drop-zone{border:2px dashed var(--gold);border-radius:16px;padding:48px 32px;
@@ -632,7 +754,7 @@ body{font-family:'Inter',Arial,sans-serif;font-size:13.5px;background:var(--bg);
 .col-config{background:var(--branco);border-radius:var(--radius);padding:24px;
   margin-top:20px;box-shadow:0 2px 12px rgba(0,0,0,.07)}
 .col-config h3{color:var(--azul);margin-bottom:12px;font-size:14px;font-weight:700}
-.col-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.col-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
 .col-group label{font-size:11px;color:var(--text-2);display:block;margin-bottom:4px;
   text-transform:uppercase;letter-spacing:.4px;font-weight:600}
 .col-group select{width:100%;padding:7px 8px;border:1.5px solid var(--border);
@@ -659,7 +781,7 @@ body{font-family:'Inter',Arial,sans-serif;font-size:13.5px;background:var(--bg);
   padding:2px 10px;font-size:11px;font-weight:700;letter-spacing:.5px}
 .erp-confianca{font-weight:400;color:#3B82F6;font-size:11.5px}
 /* Dashboard */
-#dashboard{display:none;max-width:1240px;margin:0 auto;padding:20px}
+#dashboard{display:none;max-width:1240px;margin:0 auto;padding:20px;animation:fadeUp .4s ease-out both}
 /* KPIs */
 .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}
 .kpi{background:var(--branco);border-radius:var(--radius);padding:18px;
@@ -688,6 +810,9 @@ body{font-family:'Inter',Arial,sans-serif;font-size:13.5px;background:var(--bg);
 .check-alerta,.check-media,.check-parcial{background:#FEF3C7;color:#92400E}
 .check-divergente,.check-baixa{background:#FEE2E2;color:#991B1B}
 .check-alta{background:#D1FAE5;color:#065F46}
+.check-item{margin-bottom:6px}
+.check-como{font-size:11px;color:#64748B;background:#F8FAFC;border-left:3px solid #CBD5E1;
+  padding:6px 10px;margin-bottom:4px;border-radius:0 6px 6px 0;line-height:1.5}
 /* Tabela */
 .tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
 table{width:100%;border-collapse:collapse;font-size:12px}
@@ -766,8 +891,13 @@ tr:hover td{background:var(--azul3);transition:background .15s}
 }
 @media(max-width:900px){
   .kpis{grid-template-columns:repeat(3,1fr)}
+  .col-grid{grid-template-columns:repeat(3,1fr)}
 }
 @media(max-width:600px){
+  .header{padding:10px 14px;flex-direction:column;align-items:flex-start;gap:4px}
+  .header h1{font-size:15px}
+  .header .sub{display:none}
+  #header-info{display:none}
   .kpis{grid-template-columns:repeat(2,1fr)}
   .grid2{grid-template-columns:1fr}
   .col-grid{grid-template-columns:repeat(2,1fr)}
@@ -787,6 +917,9 @@ tr:hover td{background:var(--azul3);transition:background .15s}
 /* ── Animações de entrada ── */
 @keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}
 .card-animate{animation:fadeUp .45s ease-out both}
+@keyframes floatIcon{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+.drop-zone .upload-icon svg{animation:floatIcon 3s ease-in-out infinite}
+#upload-area{animation:fadeUp .5s ease-out both}
 /* ── KPI premium ── */
 .kpi{position:relative;transition:transform .2s,box-shadow .2s}
 .kpi:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,.12)}
@@ -813,6 +946,31 @@ tr:hover td{background:var(--azul3);transition:background .15s}
 .badge-verificado{animation:pulse-verde 2s ease-in-out 3}
 /* ── Search icon ── */
 .search-icon{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-2);pointer-events:none;display:flex}
+/* ── Score Financeiro ── */
+.score-card{background:var(--branco);border-radius:var(--radius);padding:22px;
+  margin-bottom:20px;box-shadow:0 4px 20px rgba(0,0,0,.10);
+  border-left:6px solid var(--azul2);display:flex;flex-direction:column;gap:14px}
+.score-card.score-verde{border-left-color:#006100}
+.score-card.score-amarelo{border-left-color:#C9A84C}
+.score-card.score-vermelho{border-left-color:#9C0006}
+.score-numero{font-size:clamp(36px,5vw,56px);font-weight:800;line-height:1;letter-spacing:-2px}
+.score-verde .score-numero{color:#006100}
+.score-amarelo .score-numero{color:#C9A84C}
+.score-vermelho .score-numero{color:#9C0006}
+.score-label{font-size:11px;text-transform:uppercase;letter-spacing:.8px;font-weight:700;color:var(--text-2)}
+.score-pilares{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:4px}
+.score-pilar{background:var(--surface-2);border-radius:var(--radius-sm);padding:10px 12px;
+  text-align:center;border:1px solid var(--border)}
+.score-pilar-val{font-size:18px;font-weight:700;color:var(--azul)}
+.score-pilar-lbl{font-size:10px;color:var(--text-3);margin-top:2px;line-height:1.3}
+.score-pilar-max{font-size:10px;color:var(--text-3)}
+/* ── Comparativo de Períodos ── */
+.delta-pos{color:#006100;font-weight:700}
+.delta-neg{color:#9C0006;font-weight:700}
+.delta-neu{color:var(--text-2)}
+.chart-box-sm{position:relative;height:200px;margin-top:14px}
+@media(max-width:900px){.score-pilares{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:600px){.score-pilares{grid-template-columns:repeat(2,1fr)}}
 </style>
 </head>
 <body>
@@ -850,8 +1008,15 @@ tr:hover td{background:var(--azul3);transition:background .15s}
     <div>
       <h1>Planilha Financeira Pro</h1>
       <div class="sub">Análise autônoma de planilhas — 100% no navegador, sem upload</div>
-      <div style="font-size:11px;opacity:0.55;margin-top:2px;">Powered by <strong>Luan Guilherme Lourenço</strong></div>
+      <div style="font-size:11px;opacity:0.75;margin-top:2px;letter-spacing:.3px;">por <strong style="color:#C9A84C">Luan Guilherme Lourenço</strong></div>
     </div>
+  </div>
+  <div style="display:flex;align-items:center;gap:12px">
+    <button id="btn-instalar-app" onclick="instalarApp()" style="display:none" title="Instalar como app no celular">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v13"/><path d="M7 9l5 6 5-6"/><rect x="3" y="17" width="18" height="4" rx="2"/></svg>
+      Baixar no celular
+    </button>
+    <div id="header-info" class="header-right" style="font-size:11px;opacity:0.8;text-align:right">Nenhum arquivo carregado</div>
   </div>
 </div>
 
@@ -873,6 +1038,7 @@ tr:hover td{background:var(--azul3);transition:background .15s}
     </div>
     <p class="upload-title">Arraste sua planilha aqui</p>
     <p class="upload-sub">Excel (.xlsx, .xls) ou CSV — processado 100% no seu navegador</p>
+    <p style="font-size:10px;color:#94A3B8;margin-top:-4px;margin-bottom:8px;">Desenvolvido por <strong style="color:#64748B">Luan Guilherme Lourenço</strong></p>
     <button class="btn-upload" onclick="document.getElementById('file-input').click()">
       Selecionar arquivo
     </button>
@@ -930,11 +1096,33 @@ tr:hover td{background:var(--azul3);transition:background .15s}
 <div id="dashboard">
   <div class="toolbar">
     <span class="tag-arquivo" id="tag-arquivo">—</span>
-    <button class="btn-sm" onclick="document.getElementById('upload-area').style.display='block';document.getElementById('dashboard').style.display='none';_atualizarStep(1)">
+    <button class="btn-sm" onclick="document.getElementById('upload-area').style.display='block';document.getElementById('dashboard').style.display='none';_dashboardVisivel=false;document.getElementById('btn-comparar').style.display='none';const _cc=document.getElementById('card-comparativo');if(_cc)_cc.style.display='none';_atualizarStep(1)">
       Novo arquivo
     </button>
     <button class="btn-sm btn-outline btn-imprimir" onclick="window.print()">Imprimir</button>
     <button class="btn-sm btn-outline" onclick="exportarJSON()">Exportar JSON</button>
+    <button class="btn-sm btn-outline" id="btn-comparar" style="display:none" onclick="abrirComparativo()">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+      Comparar período
+    </button>
+  </div>
+
+  <!-- Score Financeiro -->
+  <div class="card score-card" id="card-score" style="display:none">
+    <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">
+      <div>
+        <div class="score-label">Score Financeiro</div>
+        <div id="score-numero" class="score-numero">—</div>
+        <div id="score-classificacao" style="font-size:13px;font-weight:600;margin-top:2px">—</div>
+      </div>
+      <div style="flex:1;min-width:200px">
+        <div style="background:#e2e8f0;border-radius:6px;height:12px;overflow:hidden;margin-bottom:6px">
+          <div id="score-barra" style="height:100%;border-radius:6px;transition:width .8s ease-out;width:0%"></div>
+        </div>
+        <div style="font-size:11px;color:var(--text-3)">0 (crítico) → 100 (excelente)</div>
+      </div>
+    </div>
+    <div class="score-pilares" id="score-pilares"></div>
   </div>
 
   <!-- KPIs -->
@@ -982,12 +1170,19 @@ tr:hover td{background:var(--azul3);transition:background .15s}
     <div class="tbl-wrap"><table id="tabela-dados"><thead id="thead-dados"></thead><tbody id="tbody-dados"></tbody></table></div>
   </div>
 
+  <!-- Comparativo de Períodos -->
+  <div class="card" id="card-comparativo" style="display:none">
+    <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex-shrink:0"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>Comparativo de Períodos <span id="comparativo-labels" style="font-size:11px;font-weight:400;color:var(--text-2);text-transform:none;letter-spacing:0"></span></h2>
+    <div id="comparativo-content"></div>
+    <div class="chart-box-sm"><canvas id="chart-comparativo"></canvas></div>
+  </div>
+
   <!-- Painel Claude AI -->
   <div class="card" id="card-claude" style="display:none;border:2px solid #C4B5FD">
     <h2 style="color:#5B21B6">Análise com Claude — IA</h2>
     <p style="font-size:12px;color:#6B7280;margin:0 0 14px">
       Insira sua chave da API Anthropic para obter uma análise automática dos dados carregados.
-      A chave é usada apenas nesta sessão e nunca é armazenada.
+      A chave é salva <strong>apenas neste navegador</strong> (localStorage) para sua conveniência — nunca enviada a servidores próprios. Use "Limpar" para removê-la.
     </p>
     <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
       <input id="claude-api-key" type="password" placeholder="sk-ant-api03-..."
@@ -1033,18 +1228,45 @@ let _ultimoAging     = null;
 let _ultimoDre       = null;
 let _ultimoPareto    = null;
 let _ultimaAnaliseClaude = '';
+let _auditConfirmados    = new Set();
+let _dashboardVisivel    = false;
+let _deferredInstallPrompt = null;
+let _colsComparativos    = null;
+let _kpisComparativos    = null;
+let _nomeArquivoComp     = '';
+let _chartComparativo    = null;
 
-function _animarContador(el, valorFinal, duracao) {
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  _deferredInstallPrompt = e;
+  const btn = document.getElementById('btn-instalar-app');
+  if (btn) btn.style.display = 'inline-flex';
+});
+window.addEventListener('appinstalled', () => {
+  const btn = document.getElementById('btn-instalar-app');
+  if (btn) btn.style.display = 'none';
+  _deferredInstallPrompt = null;
+});
+
+function instalarApp() {
+  if (!_deferredInstallPrompt) return;
+  _deferredInstallPrompt.prompt();
+  _deferredInstallPrompt.userChoice.then(() => { _deferredInstallPrompt = null; });
+}
+
+function _animarContador(el, valorFinal, tipo, duracao) {
   if (!el || isNaN(valorFinal)) return;
   duracao = duracao || 800;
-  const ehBRL = el.dataset.tipo === 'brl';
+  const ehBRL = (tipo || el.dataset.tipo) === 'brl';
+  const fmt = v => ehBRL ? fmtBRL(v) : fmtNum(Math.round(v));
+  if (el._rafId) cancelAnimationFrame(el._rafId);
   const inicio = performance.now();
   (function tick(now) {
     const t = Math.min((now - inicio) / duracao, 1);
     const eased = 1 - (1 - t) * (1 - t);
-    el.textContent = ehBRL ? fmtBRL(valorFinal * eased) : fmtNum(Math.round(valorFinal * eased));
-    if (t < 1) requestAnimationFrame(tick);
-    else el.textContent = ehBRL ? fmtBRL(valorFinal) : fmtNum(valorFinal);
+    el.textContent = fmt(valorFinal * eased);
+    if (t < 1) el._rafId = requestAnimationFrame(tick);
+    else { el.textContent = fmt(valorFinal); el._rafId = null; }
   })(performance.now());
 }
 
@@ -1138,11 +1360,19 @@ function carregarArquivo(file) {
             return obj;
           });
       }
-      _dadosOriginais = dados;
-      _dadosFiltrados = dados;
-      _headers        = headers;
-      _cols           = detectarColunas(headers);
-      _erpDetectado   = detectarERP(headers);
+      _dadosOriginais  = dados;
+      _dadosFiltrados  = dados;
+      _headers         = headers;
+      _cols            = detectarColunas(headers);
+      _erpDetectado    = detectarERP(headers);
+      _auditConfirmados.clear();
+      _colsComparativos = null;
+      _kpisComparativos = null;
+      _nomeArquivoComp  = '';
+      if (_chartComparativo) { _chartComparativo.destroy(); _chartComparativo = null; }
+      const _ccReset = document.getElementById('card-comparativo');
+      if (_ccReset) _ccReset.style.display = 'none';
+      document.getElementById('btn-comparar').style.display = 'none';
       mostrarLoader(false);
       _atualizarStep(2);
       mostrarConfigColunas(headers, _cols, _erpDetectado);
@@ -1159,12 +1389,70 @@ function carregarArquivo(file) {
 }
 
 // ══════════════════════════════════════════════════════
+// COMPARATIVO — CARREGAR SEGUNDO ARQUIVO
+// ══════════════════════════════════════════════════════
+function abrirComparativo() {
+  const inp = document.createElement('input');
+  inp.type = 'file';
+  inp.accept = '.xlsx,.xls,.csv,.xlsm';
+  inp.onchange = e => { if (e.target.files[0]) carregarArquivoComparativo(e.target.files[0]); };
+  inp.click();
+}
+
+function carregarArquivoComparativo(file) {
+  if (typeof XLSX === 'undefined') return;
+  mostrarLoader(true);
+  _nomeArquivoComp = file.name;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      let dados, headers;
+      if (file.name.toLowerCase().endsWith('.csv')) {
+        const wb  = XLSX.read(e.target.result, { type:'string', raw:false });
+        const ws  = wb.Sheets[wb.SheetNames[0]];
+        const arr = XLSX.utils.sheet_to_json(ws, { header:1, defval:'' });
+        const rawH = arr[0].map(String);
+        headers = rawH.filter(h => h && !h.startsWith('__EMPTY'));
+        dados   = arr.slice(1).map(r => {
+          const obj = {}; rawH.forEach((h,i) => { if (h && !h.startsWith('__EMPTY')) obj[h] = r[i] ?? ''; }); return obj;
+        });
+      } else {
+        const wb = XLSX.read(e.target.result, { type:'array', cellDates:true });
+        const abaReal = wb.SheetNames.find(n => { const s = wb.Sheets[n]; return s && s['!ref'] && s['!ref'] !== 'A1'; }) || wb.SheetNames[0];
+        const ws  = wb.Sheets[abaReal];
+        const arr = XLSX.utils.sheet_to_json(ws, { header:1, defval:'' });
+        let headerRow = 0;
+        for (let i = 0; i < Math.min(5, arr.length); i++) {
+          if (arr[i].filter(c => c && !String(c).startsWith('__EMPTY')).length >= 2) { headerRow = i; break; }
+        }
+        const rawH = arr[headerRow].map(String);
+        headers = rawH.filter(h => h && !h.startsWith('__EMPTY'));
+        dados   = arr.slice(headerRow + 1).filter(row => row.some(c => c !== '')).map(row => {
+          const obj = {}; rawH.forEach((h,i) => { if (h && !h.startsWith('__EMPTY')) obj[h] = row[i] ?? ''; }); return obj;
+        });
+      }
+      _colsComparativos = Object.assign({}, _cols);
+      const det = detectarColunas(headers);
+      Object.entries(det).forEach(([k,v]) => { if (v && headers.includes(v)) _colsComparativos[k] = v; });
+      _kpisComparativos = calcularKPIs(dados, _colsComparativos);
+      mostrarLoader(false);
+      renderComparativo();
+    } catch(err) {
+      mostrarLoader(false);
+      alert('Erro ao ler arquivo comparativo: ' + err.message);
+    }
+  };
+  if (file.name.toLowerCase().endsWith('.csv')) reader.readAsText(file, 'utf-8');
+  else reader.readAsArrayBuffer(file);
+}
+
+// ══════════════════════════════════════════════════════
 // CONFIG COLUNAS
 // ══════════════════════════════════════════════════════
 function mostrarConfigColunas(headers, cols, erpDetectado) {
   const labels = {
     valor:'Valor (R$)', data:'Data de Emissão', vencimento:'Vencimento',
-    categoria:'Categoria', entidade:'Cliente / Entidade', chave:'Chave (ID / NF)',
+    entidade:'Cliente / Entidade', chave:'Chave (ID / NF)',
   };
 
   // ERP banner
@@ -1212,7 +1500,7 @@ function aplicarMapeamentoERP(erpKey) {
 }
 
 function lerColsSelecionadas() {
-  const tipos = ['valor','data','vencimento','categoria','entidade','chave'];
+  const tipos = ['valor','data','vencimento','entidade','chave'];
   const c = {};
   tipos.forEach(t => { c[t] = document.getElementById(`sel-${t}`)?.value || null; });
   return c;
@@ -1225,7 +1513,10 @@ function executarAnalise() {
   mostrarLoader(true);
   setTimeout(() => {
     try {
+      // Preserva a categoria detectada automaticamente pelo ERP (não exposta na UI)
+      const catErp = _cols.categoria || null;
       _cols = lerColsSelecionadas();
+      if (catErp) _cols.categoria = catErp;
       const dados = _dadosOriginais;
 
       // KPIs
@@ -1253,6 +1544,10 @@ function executarAnalise() {
       renderPareto(par);
       _ultimoPareto = par;
 
+      // Score Financeiro
+      const _scoreData = calcularScoreFinanceiro(kpis, ag, par, audit);
+      renderScoreFinanceiro(_scoreData);
+
       // Fluxo por Período
       renderFluxoPeriodo(dados, _cols);
 
@@ -1266,6 +1561,8 @@ function executarAnalise() {
       // Mostrar dashboard
       document.getElementById('upload-area').style.display = 'none';
       document.getElementById('dashboard').style.display   = 'block';
+      _dashboardVisivel = true;
+      document.getElementById('btn-comparar').style.display = 'inline-block';
       document.getElementById('tag-arquivo').textContent   = _nomeArquivo;
       _atualizarStep(3);
     } catch(err) {
@@ -1274,14 +1571,14 @@ function executarAnalise() {
     }
     mostrarLoader(false);
     // Stagger de entrada dos cards e KPIs
-    document.querySelectorAll('#dashboard .card').forEach((el,i) => {
-      el.classList.remove('card-animate'); void el.offsetWidth;
-      el.style.animationDelay = (i*70)+'ms'; el.classList.add('card-animate');
-    });
-    document.querySelectorAll('#kpis .kpi').forEach((el,i) => {
-      el.classList.remove('card-animate'); void el.offsetWidth;
-      el.style.animationDelay = (i*55)+'ms'; el.classList.add('card-animate');
-    });
+    const _sc = [...document.querySelectorAll('#dashboard .card')];
+    _sc.forEach(el => el.classList.remove('card-animate'));
+    void document.body.offsetWidth;
+    _sc.forEach((el,i) => { el.style.animationDelay=(i*70)+'ms'; el.classList.add('card-animate'); });
+    const _sk = [...document.querySelectorAll('#kpis .kpi')];
+    _sk.forEach(el => el.classList.remove('card-animate'));
+    void document.body.offsetWidth;
+    _sk.forEach((el,i) => { el.style.animationDelay=(i*55)+'ms'; el.classList.add('card-animate'); });
   }, 50);
 }
 
@@ -1328,7 +1625,34 @@ function renderKPIs(k) {
   [{id:'kpi-receita',val:k.receita,tipo:'brl'},{id:'kpi-despesa',val:k.despesa,tipo:'brl'},
    {id:'kpi-resultado',val:k.resultado,tipo:'brl'},{id:'kpi-ticket',val:k.ticket,tipo:'brl'},
    {id:'kpi-registros',val:k.totalRegistros,tipo:'num'}
-  ].forEach(({id,val,tipo}) => { const el=document.getElementById(id); if(el){el.dataset.tipo=tipo;_animarContador(el,val);} });
+  ].forEach(({id,val,tipo}) => { const el=document.getElementById(id); if(el) _animarContador(el,val,tipo); });
+}
+
+// ══════════════════════════════════════════════════════
+// RENDER SCORE FINANCEIRO
+// ══════════════════════════════════════════════════════
+function renderScoreFinanceiro(s) {
+  const card = document.getElementById('card-score');
+  if (!card) return;
+  card.className = `card score-card score-${s.classe}`;
+  card.style.display = 'block';
+  const label = s.score >= 80 ? 'Saúde Excelente' : s.score >= 60 ? 'Saúde Moderada' : 'Atenção Necessária';
+  const cor = s.classe === 'verde' ? '#006100' : s.classe === 'amarelo' ? '#C9A84C' : '#9C0006';
+  const numEl = document.getElementById('score-numero');
+  const claEl = document.getElementById('score-classificacao');
+  claEl.textContent = label;
+  claEl.style.color = cor;
+  const barra = document.getElementById('score-barra');
+  barra.style.background = cor;
+  barra.style.width = '0%';
+  requestAnimationFrame(() => { barra.style.width = s.score + '%'; });
+  _animarContador(numEl, s.score, 'num', 600);
+  document.getElementById('score-pilares').innerHTML = Object.values(s.pilares).map(p => `
+    <div class="score-pilar">
+      <div class="score-pilar-val">${p.pts}<span class="score-pilar-max">/${p.max}</span></div>
+      <div class="score-pilar-lbl">${esc(p.label)}</div>
+      <div style="font-size:10px;color:var(--text-3)">${esc(p.detalhe)}</div>
+    </div>`).join('');
 }
 
 // ══════════════════════════════════════════════════════
@@ -1345,7 +1669,10 @@ function renderVerificacao(integ) {
 
   const badges = integ.checks.map(c => {
     const cls = `check-badge check-${(c.status||'').toLowerCase().replace(/[^a-z]/g,'')}`;
-    return `<span class="${cls}">${c.status} — ${c.nome}: ${c.detalhe}</span>`;
+    const como = c.como
+      ? `<div class="check-como"><strong>Como investigar:</strong> ${esc(c.como)}</div>`
+      : '';
+    return `<div class="check-item">${como}<span class="${cls}">${c.status} — ${c.nome}: ${c.detalhe}</span></div>`;
   }).join('');
 
   cont.innerHTML = `
@@ -1370,9 +1697,19 @@ function renderVerificacao(integ) {
 // RENDER AUDITORIA
 // ══════════════════════════════════════════════════════
 const BADGE = { 'CRÍTICA':'b-critica','ALTA':'b-alta','MÉDIA':'b-media','BAIXA':'b-baixa' };
+function _auditoriaPendentes(lista) {
+  return (lista || []).filter((_, i) => !_auditConfirmados.has(i));
+}
+function confirmarAuditoria(idx) {
+  if (_auditConfirmados.has(idx)) _auditConfirmados.delete(idx);
+  else _auditConfirmados.add(idx);
+  renderAuditoria(_ultimaAuditoria);
+}
+
 function renderAuditoria(lista) {
-  const criticos = lista.filter(p=>p.severidade==='CRÍTICA').length;
-  const badge    = criticos
+  const pendentes = _auditoriaPendentes(lista);
+  const criticos  = pendentes.filter(p=>p.severidade==='CRÍTICA').length;
+  const badge     = criticos
     ? `<span class="badge b-critica">${criticos} CRÍTICO${criticos>1?'S':''}</span>` : '';
   document.getElementById('badge-auditoria').innerHTML = badge;
 
@@ -1381,16 +1718,38 @@ function renderAuditoria(lista) {
       '<p style="color:var(--verde);font-weight:bold;padding:12px">✓ Nenhum problema encontrado!</p>';
     return;
   }
-  const rows = lista.map(p => `
-    <tr>
-      <td><span class="badge ${BADGE[p.severidade]||'b-baixa'}">${esc(p.severidade)}</span></td>
+
+  const rows = lista.map((p, idx) => {
+    const confirmado = _auditConfirmados.has(idx);
+    const rowStyle   = confirmado ? 'opacity:0.45;background:#f7fdf7' : '';
+    const sevCell    = confirmado
+      ? `<span class="badge" style="background:#d1fae5;color:#065f46;border:1px solid #6ee7b7">✓ Verificado</span>`
+      : `<span class="badge ${BADGE[p.severidade]||'b-baixa'}">${esc(p.severidade)}</span>`;
+    const btnLabel   = confirmado ? 'Desfazer' : 'Confirmar ✓';
+    const btnStyle   = confirmado
+      ? 'background:#e5e7eb;color:#6b7280;border:1px solid #d1d5db'
+      : 'background:#d1fae5;color:#065f46;border:1px solid #6ee7b7';
+    return `<tr style="${rowStyle}">
+      <td>${sevCell}</td>
       <td>${esc(p.tipo)}</td><td>${esc(p.linha)}</td>
       <td>${esc(p.coluna)}</td><td>${esc(p.valor)}</td>
       <td>${esc(p.descricao)}</td>
-    </tr>`).join('');
+      <td><button onclick="confirmarAuditoria(${idx})"
+        style="font-size:11px;padding:3px 10px;border-radius:6px;cursor:pointer;font-weight:600;white-space:nowrap;${btnStyle}">${btnLabel}</button></td>
+    </tr>`;
+  }).join('');
+
+  const totalPend = pendentes.length;
+  const totalConf = _auditConfirmados.size;
+  const resumo    = totalConf > 0
+    ? `<div style="margin-bottom:10px;font-size:12px;color:#065f46;background:#d1fae5;padding:6px 12px;border-radius:6px;display:inline-block">
+        ✓ ${totalConf} item(ns) verificado(s) e confirmado(s) — ${totalPend} pendente(s)
+       </div>` : '';
+
   document.getElementById('auditoria-content').innerHTML = `
+    ${resumo}
     <div class="tbl-wrap"><table>
-      <thead><tr><th>Severidade</th><th>Tipo</th><th>Linha(s)</th><th>Coluna</th><th>Valor</th><th>Descrição</th></tr></thead>
+      <thead><tr><th>Severidade</th><th>Tipo</th><th>Linha(s)</th><th>Coluna</th><th>Valor</th><th>Descrição</th><th>Ação</th></tr></thead>
       <tbody>${rows}</tbody>
     </table></div>`;
 }
@@ -1399,7 +1758,19 @@ function renderAuditoria(lista) {
 // RENDER AGING
 // ══════════════════════════════════════════════════════
 function renderAging(lista) {
-  if (!lista || !lista.length) return;
+  if (!lista || !lista.length) {
+    document.getElementById('aging-content').innerHTML = `
+      <div style="padding:14px;background:#FFF7ED;border-left:4px solid #F59E0B;border-radius:0 8px 8px 0">
+        <strong style="color:#92400E">⚠ Coluna de vencimento não mapeada</strong>
+        <p style="margin:6px 0 0;font-size:12px;color:#78350F;line-height:1.6">
+          O Aging de Recebíveis precisa de uma coluna com a <strong>data de vencimento</strong> de cada registro.<br>
+          <strong>Como ativar:</strong> Clique em <em>"Novo arquivo"</em>, reimporte a planilha e no passo de
+          <em>"Configuração de Colunas"</em> selecione a coluna correta no campo <strong>Vencimento</strong>.
+          Se sua planilha não tem essa coluna, adicione uma com o nome "Vencimento" e preencha as datas.
+        </p>
+      </div>`;
+    return;
+  }
   const total = lista.reduce((s,i)=>s+i.total,0);
   const COR = { 'A vencer':'#3A9E5C','Vencido 1-30d':'#E8A020',
     'Vencido 31-60d':'#CC6C1A','Vencido 61-90d':'#C0392B','Vencido +90d':'#6B0D0D','Sem data':'#9BA8B5' };
@@ -1426,7 +1797,9 @@ function renderAging(lista) {
 
   // Gráfico
   if (_chartAging) _chartAging.destroy();
-  const ctx = document.getElementById('chart-aging').getContext('2d');
+  const _canvAging = document.getElementById('chart-aging');
+  if (!_canvAging) return;
+  const ctx = _canvAging.getContext('2d');
   _chartAging = new Chart(ctx, {
     type:'doughnut',
     data:{
@@ -1443,8 +1816,13 @@ function renderAging(lista) {
 // ══════════════════════════════════════════════════════
 // RENDER DRE
 // ══════════════════════════════════════════════════════
-function renderDRE(linhas) {
-  if (!linhas) return;
+function renderDRE(dre) {
+  const el = document.getElementById('dre-content');
+  if (!dre) {
+    el.innerHTML = `<div class="empty">Coluna de valor não mapeada — selecione a coluna de valores para gerar o DRE.</div>`;
+    return;
+  }
+  const { linhas, modo } = dre;
   const rows = linhas.map(l => {
     const cls = l.tipo.includes('lucro') ? (l.valor>=0?'dre-lucro':'dre-prejuizo')
               : l.tipo==='total' ? 'dre-total' : 'dre-sub';
@@ -1454,7 +1832,15 @@ function renderDRE(linhas) {
       <td style="text-align:right;${corVal}">${fmtBRL(l.valor)}</td>
       <td style="text-align:right;color:#888">${av}</td></tr>`;
   }).join('');
-  document.getElementById('dre-content').innerHTML = `
+  const bannerModo = modo === 'sinal'
+    ? `<div style="background:#F0F9FF;border:1px solid #BAE6FD;border-radius:var(--radius-sm);
+          padding:6px 12px;margin-bottom:10px;font-size:11px;color:#0369A1">
+        <strong>(+) Receita &nbsp;·&nbsp; (−) Despesa</strong> — classificação automática pelo sinal do valor.
+        Para DRE com CMV, Deduções e IR, adicione uma coluna "Categoria" na planilha com os tipos de cada lançamento.
+      </div>`
+    : '';
+  el.innerHTML = `
+    ${bannerModo}
     <div class="tbl-wrap"><table>
       <thead><tr><th>Linha DRE</th><th style="text-align:right">Valor R$</th><th style="text-align:right">AV%</th></tr></thead>
       <tbody>${rows}</tbody>
@@ -1485,6 +1871,81 @@ function renderPareto(lista) {
       <thead><tr><th>#</th><th>Entidade</th><th>Total R$</th><th>%</th><th>Acum.</th><th>Classe</th></tr></thead>
       <tbody>${rows}</tbody>
     </table></div>`;
+}
+
+// ══════════════════════════════════════════════════════
+// RENDER COMPARATIVO DE PERÍODOS
+// ══════════════════════════════════════════════════════
+function renderComparativo() {
+  const card = document.getElementById('card-comparativo');
+  if (!card || !_ultimosKpis || !_kpisComparativos) return;
+  card.style.display = 'block';
+
+  const kA = _ultimosKpis, kB = _kpisComparativos;
+  const comp = calcularKPIsComparativo(kA, kB);
+
+  const labelA = (kA.periodoInicio && kA.periodoFim)
+    ? `${fmtData(kA.periodoInicio)} – ${fmtData(kA.periodoFim)}` : _nomeArquivo;
+  const labelB = (kB.periodoInicio && kB.periodoFim)
+    ? `${fmtData(kB.periodoInicio)} – ${fmtData(kB.periodoFim)}` : _nomeArquivoComp;
+  document.getElementById('comparativo-labels').textContent = `${labelA}  ×  ${labelB}`;
+
+  const fmtDelta = (d, isBRL=true, isPP=false) => {
+    if (d.pct === null) return '<span class="delta-neu">—</span>';
+    const sinal = d.abs >= 0 ? '↑' : '↓';
+    const cls   = d.abs >= 0 ? 'delta-pos' : 'delta-neg';
+    const abs   = isPP ? `${d.abs >= 0 ? '+' : ''}${d.abs.toFixed(1)}pp`
+                : isBRL ? fmtBRL(d.abs) : fmtNum(Math.round(d.abs));
+    const pct   = !isPP && d.pct !== null ? ` (${d.pct >= 0 ? '+' : ''}${d.pct.toFixed(1)}%)` : '';
+    return `<span class="${cls}">${sinal} ${abs}${pct}</span>`;
+  };
+
+  const linhas = [
+    { label:'Receitas',        a:fmtBRL(comp.receita.a),        b:fmtBRL(comp.receita.b),        d:fmtDelta(comp.receita) },
+    { label:'Despesas',        a:fmtBRL(comp.despesa.a),        b:fmtBRL(comp.despesa.b),        d:fmtDelta(comp.despesa) },
+    { label:'Resultado',       a:fmtBRL(comp.resultado.a),      b:fmtBRL(comp.resultado.b),      d:fmtDelta(comp.resultado) },
+    { label:'Margem %',        a:`${comp.margem.a.toFixed(1)}%`,b:`${comp.margem.b.toFixed(1)}%`,d:fmtDelta(comp.margem, false, true) },
+    { label:'Ticket Médio',    a:fmtBRL(comp.ticket.a),         b:fmtBRL(comp.ticket.b),         d:fmtDelta(comp.ticket) },
+    { label:'Total Registros', a:fmtNum(comp.totalRegistros.a), b:fmtNum(comp.totalRegistros.b), d:fmtDelta(comp.totalRegistros, false) },
+  ];
+
+  document.getElementById('comparativo-content').innerHTML = `
+    <div class="tbl-wrap"><table>
+      <thead><tr>
+        <th>KPI</th>
+        <th style="text-align:right">${esc(labelA)}</th>
+        <th style="text-align:right">${esc(labelB)}</th>
+        <th style="text-align:right">Variação</th>
+      </tr></thead>
+      <tbody>${linhas.map(l=>`<tr>
+        <td style="font-weight:600">${esc(l.label)}</td>
+        <td style="text-align:right">${l.a}</td>
+        <td style="text-align:right">${l.b}</td>
+        <td style="text-align:right">${l.d}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>`;
+
+  if (_chartComparativo) _chartComparativo.destroy();
+  const canvas = document.getElementById('chart-comparativo');
+  if (!canvas) return;
+  _chartComparativo = new Chart(canvas.getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: [labelA, labelB],
+      datasets: [
+        { label:'Receita', data:[kA.receita, kB.receita], backgroundColor:['rgba(0,97,0,.7)','rgba(0,97,0,.4)'] },
+        { label:'Despesa', data:[kA.despesa, kB.despesa], backgroundColor:['rgba(156,0,6,.7)','rgba(156,0,6,.4)'] },
+      ]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ position:'bottom', labels:{ font:{size:11}, boxWidth:12 } } },
+      scales:{ y:{ ticks:{ callback: v => fmtBRL(v) } } }
+    }
+  });
+
+  card.scrollIntoView({ behavior:'smooth', block:'nearest' });
+  _toast('Comparativo carregado — ' + _nomeArquivoComp);
 }
 
 // ══════════════════════════════════════════════════════
@@ -1549,23 +2010,23 @@ function _gerarBriefing() {
   if (k.periodoInicio) linhas.push(`- Período: ${fmtData(k.periodoInicio)} → ${fmtData(k.periodoFim)}`);
 
   if (_ultimaAuditoria && _ultimaAuditoria.length) {
-    linhas.push(`\n## Auditoria (${_ultimaAuditoria.length} alerta(s))`);
-    _ultimaAuditoria.slice(0, 8).forEach(a => linhas.push(`- [${a.sev}] ${a.tipo}: ${a.msg}`));
+    const pendentes = _auditoriaPendentes(_ultimaAuditoria);
+    const confirmados = _auditConfirmados.size;
+    linhas.push(`\n## Auditoria (${pendentes.length} alerta(s) pendente(s)${confirmados ? `, ${confirmados} confirmado(s) como correto(s)` : ''})`);
+    pendentes.slice(0, 8).forEach(a => linhas.push(`- [${a.severidade}] ${a.tipo}: ${a.descricao}`));
   } else {
     linhas.push(`\n## Auditoria\n- Nenhum problema encontrado.`);
   }
 
-  if (_ultimoAging) {
-    const agEntries = Object.entries(_ultimoAging).filter(([, d]) => d && d.total > 0);
-    if (agEntries.length) {
-      linhas.push(`\n## Aging de Recebíveis`);
-      agEntries.forEach(([faixa, d]) => linhas.push(`- ${faixa}: ${fmtV(d.total)} (${d.qtd} registros)`));
-    }
+  if (_ultimoAging && _ultimoAging.length) {
+    linhas.push(`\n## Aging de Recebíveis`);
+    _ultimoAging.filter(d => d && d.total > 0)
+      .forEach(d => linhas.push(`- ${d.faixa}: ${fmtV(d.total)} (${d.qtd} registros)`));
   }
 
-  if (_ultimoDre && _ultimoDre.length) {
-    linhas.push(`\n## DRE Resumido`);
-    _ultimoDre.slice(0, 10).forEach(r => linhas.push(`- ${r.linha}: ${fmtV(r.valor)}`));
+  if (_ultimoDre && _ultimoDre.linhas && _ultimoDre.linhas.length) {
+    linhas.push(`\n## DRE Resumido${_ultimoDre.modo === 'sinal' ? ' (classificado por sinal de valor)' : ''}`);
+    _ultimoDre.linhas.slice(0, 10).forEach(r => linhas.push(`- ${r.linha}: ${fmtV(r.valor)}`));
   }
 
   if (_ultimoPareto && _ultimoPareto.length) {
@@ -1696,11 +2157,56 @@ function _copiarFallback(t) {
 function mostrarLoader(v) {
   document.getElementById('loader').classList.toggle('show', v);
   const skel = document.getElementById('loader-skeleton');
-  if (skel) {
-    if (v && document.getElementById('dashboard').style.display !== 'none')
-      skel.classList.add('show');
-    else skel.classList.remove('show');
+  if (skel) skel.classList.toggle('show', v && _dashboardVisivel);
+}
+
+function baixarTemplate() {
+  if (typeof XLSX === 'undefined') {
+    document.getElementById('erros-cdn').textContent = 'SheetJS não carregado — verifique sua conexão e recarregue a página.';
+    document.getElementById('erros-cdn').style.display = 'block';
+    return;
   }
+  const wb = XLSX.utils.book_new();
+
+  // ── Aba 1: DADOS ──────────────────────────────────────
+  const wsData = XLSX.utils.aoa_to_sheet([
+    ['Nome / Razão Social', 'Nota Fiscal', 'Data de Emissão', 'Vencimento', 'Valor (R$)'],
+    ['Empresa Alpha Ltda',    'NF-2024-001', '15/01/2024', '15/02/2024',  15000.00],
+    ['Fornecedor Beta S/A',   'NF-2024-002', '20/01/2024', '20/02/2024',  -4500.00],
+    ['Cliente Gamma ME',      'NF-2024-003', '01/02/2024', '01/03/2024',  28000.00],
+    ['Locadora Delta Ltda',   'NF-2024-004', '05/02/2024', '',            -3200.00],
+    ['Distribuidora Epsilon', 'NF-2024-005', '10/02/2024', '10/03/2024',   9800.00],
+    ['Serviços Zeta Ltda',    'NF-2024-006', '15/02/2024', '15/03/2024',  -1200.00],
+    ['Importadora Eta S.A.',  'NF-2024-007', '20/02/2024', '20/03/2024',  42000.00],
+    ['Consultoria Theta ME',  'NF-2024-008', '28/02/2024', '',            -8500.00],
+  ]);
+  wsData['!cols'] = [{wch:28},{wch:16},{wch:16},{wch:16},{wch:14}];
+  XLSX.utils.book_append_sheet(wb, wsData, 'DADOS');
+
+  // ── Aba 2: INSTRUÇÕES ─────────────────────────────────
+  const COLUNAS = [
+    { nome:'Nome / Razão Social', tipo:'Texto',    obrig:'SIM', descricao:'Nome do cliente ou fornecedor. Usado no Pareto e ranking de entidades.' },
+    { nome:'Nota Fiscal',         tipo:'Texto',    obrig:'não', descricao:'Número da NF ou ID único do lançamento. Usado para detectar duplicatas.' },
+    { nome:'Data de Emissão',     tipo:'Data',     obrig:'SIM', descricao:'Data da emissão ou lançamento. Formato: DD/MM/AAAA ou AAAA-MM-DD.' },
+    { nome:'Vencimento',          tipo:'Data',     obrig:'não', descricao:'Data de vencimento. Quando preenchida, habilita o Aging de Recebíveis.' },
+    { nome:'Valor (R$)',          tipo:'Número',   obrig:'SIM', descricao:'Valor do lançamento. POSITIVO = Receita · NEGATIVO = Despesa. Não use R$ ou pontos como separador milhar.' },
+  ];
+  const wsInst = XLSX.utils.aoa_to_sheet([
+    ['Coluna', 'Tipo', 'Obrigatório', 'Descrição'],
+    ...COLUNAS.map(c => [c.nome, c.tipo, c.obrig, c.descricao]),
+    ['', '', '', ''],
+    ['DICAS', '', '', ''],
+    ['Valor positivo', '', '', 'Ex: 15000 → classificado como Receita automaticamente'],
+    ['Valor negativo', '', '', 'Ex: -4500 → classificado como Despesa automaticamente'],
+    ['Aging de Recebíveis', '', '', 'Preencha a coluna Vencimento para habilitar a análise de inadimplência'],
+    ['ERPs', '', '', 'Exportações de TOTVS, Omie, SAP, Sankhya, Bling etc. são detectadas automaticamente'],
+    ['Colunas extras', '', '', 'Colunas adicionais (CNPJ, Status, Observação etc.) são ignoradas — não causam erro'],
+  ]);
+  wsInst['!cols'] = [{wch:22},{wch:10},{wch:14},{wch:70}];
+  XLSX.utils.book_append_sheet(wb, wsInst, 'INSTRUÇÕES');
+
+  XLSX.writeFile(wb, 'template_planilha_financeira_pro.xlsx');
+  _toast('Template baixado! Preencha e importe aqui.');
 }
 
 function exportarJSON() {
@@ -1722,15 +2228,24 @@ function exportarJSON() {
 // PWA — Service Worker
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () =>
-    navigator.serviceWorker.register('sw.js').catch(e => console.warn('SW:', e))
+    navigator.serviceWorker.register('sw.js', { scope: './' }).catch(e => console.warn('SW:', e))
   );
 }
 </script>
 
 <div class="page-footer">
-  <span style="display:inline-block;background:var(--navy);color:#fff;padding:5px 18px;border-radius:20px;font-size:11px;font-weight:600;letter-spacing:.4px;">Powered by Luan Guilherme Lourenço</span>
+  <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:6px">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect x="2" y="14" width="4" height="8" rx="1" fill="#C9A84C"/>
+      <rect x="8" y="9" width="4" height="13" rx="1" fill="#1F4E79"/>
+      <rect x="14" y="4" width="4" height="18" rx="1" fill="#1F4E79" opacity=".7"/>
+      <rect x="20" y="1" width="2" height="21" rx="1" fill="#1F4E79" opacity=".4"/>
+    </svg>
+    <span style="font-size:13px;font-weight:700;color:#1A1A2E;letter-spacing:.2px;">Planilha Financeira Pro</span>
+  </div>
+  <span style="display:inline-block;background:var(--navy);color:#fff;padding:4px 16px;border-radius:20px;font-size:11px;font-weight:600;letter-spacing:.4px;">Desenvolvido por Luan Guilherme Lourenço</span>
   <br>
-  <span style="font-size:10px;color:#bbb;margin-top:6px;display:inline-block;">Planilha Financeira Pro &mdash; Análise autônoma de planilhas</span>
+  <span style="font-size:10px;color:#94A3B8;margin-top:6px;display:inline-block;">&copy; 2025 Luan Guilherme Lourenço &mdash; Análise autônoma de planilhas financeiras</span>
 </div>
 
 </body>
