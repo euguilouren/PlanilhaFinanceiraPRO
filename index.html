@@ -788,6 +788,16 @@ body{font-family:'Inter',Arial,sans-serif;font-size:13.5px;background:#E8EDF4;
   transform:translateY(-2px);
   box-shadow:0 8px 28px rgba(201,168,76,.55)
 }
+.btn-template{
+  background:transparent;color:#fff;
+  border:1.5px solid rgba(255,255,255,.4);
+  box-shadow:none;margin-left:10px
+}
+.btn-template:hover{
+  background:rgba(255,255,255,.1);
+  border-color:rgba(255,255,255,.7);
+  box-shadow:0 4px 16px rgba(0,0,0,.2)
+}
 .upload-steps{display:flex;align-items:center;gap:6px;justify-content:center;
   margin-top:22px;font-size:11px;color:rgba(255,255,255,.45);position:relative;z-index:1}
 .upload-steps .step-num{display:inline-flex;width:22px;height:22px;border-radius:50%;
@@ -1130,12 +1140,13 @@ tr:hover td{background:#EEF4FF;transition:background .15s}
 
 <!-- Upload -->
 <div id="upload-area">
-  <div class="upload-steps">
-    <div class="step active"><div class="step-num">1</div> Importar arquivo</div>
-    <div class="step-line"></div>
-    <div class="step"><div class="step-num">2</div> Configurar colunas</div>
-    <div class="step-line"></div>
-    <div class="step"><div class="step-num">3</div> Ver análise</div>
+  <!-- Stepper único com IDs funcionais — posicionado ACIMA do card com espaçamento adequado -->
+  <div class="upload-steps" style="margin-bottom:32px;margin-top:0">
+    <span class="step active" id="step-1"><span class="step-num">1</span> <span class="step-label">Importar arquivo</span></span>
+    <span class="step-line"></span>
+    <span class="step" id="step-2"><span class="step-num">2</span> <span class="step-label">Configurar colunas</span></span>
+    <span class="step-line"></span>
+    <span class="step" id="step-3"><span class="step-num">3</span> <span class="step-label">Ver análise</span></span>
   </div>
 
   <div class="drop-zone" id="drop-zone">
@@ -1150,17 +1161,10 @@ tr:hover td{background:#EEF4FF;transition:background .15s}
     <button class="btn-upload" onclick="document.getElementById('file-input').click()">
       Selecionar arquivo
     </button>
-    <button class="btn-upload" style="background:linear-gradient(135deg,#8B6914,#C9A227);margin-left:10px" onclick="baixarTemplate()">
+    <button class="btn-upload btn-template" onclick="baixarTemplate()">
       ↓ Baixar Template Padrão
     </button>
     <input type="file" id="file-input" accept=".xlsx,.xls,.csv,.xlsm">
-    <div class="upload-steps">
-      <span class="step active" id="step-1"><span class="step-num">1</span> <span class="step-label">Importe</span></span>
-      <span class="step-arrow">→</span>
-      <span class="step" id="step-2"><span class="step-num">2</span> <span class="step-label">Configure</span></span>
-      <span class="step-arrow">→</span>
-      <span class="step" id="step-3"><span class="step-num">3</span> <span class="step-label">Analise</span></span>
-    </div>
   </div>
 
   <div class="col-config" id="col-config" style="display:none">
