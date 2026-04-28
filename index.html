@@ -339,7 +339,8 @@ function calcularAging(dados, colVenc, colValor) {
     const v = toNum(row[colValor]);
     if (isNaN(v)) return;
     if (!d) { faixas['Sem data'].qtd++; faixas['Sem data'].total += v; return; }
-    const dias = Math.floor((hoje - d) / 86400000);
+    const d0 = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const dias = Math.round((hoje - d0) / 86400000);
     for (const [nome, f] of Object.entries(faixas)) {
       if (nome === 'Sem data') continue;
       if (dias >= f.min && dias <= f.max) {
@@ -381,7 +382,7 @@ function calcularPareto(dados, colEntidade, colValor, top = 15) {
   let acum = 0;
   const items = lista.slice(0, top).map((item, idx) => {
     const pct = totalBase ? Math.abs(item.total) / totalBase * 100 : 0;
-    acum += (item.total > 0 ? pct : 0);
+    acum += pct;
     return { ranking: idx+1, nome: item.nome, total: item.total,
              pct, acumulado: acum, classe: acum <= 80 ? 'A' : 'B' };
   });
@@ -466,7 +467,7 @@ function construirDRE(dados, colCat, colValor) {
     { linha:'(-) IR/CSLL',                      valor:-ir,  tipo:'input' },
     { linha:'(=) Lucro Líquido',                valor:ll,   tipo:'total lucro' },
   ];
-  return { linhas: linhas.map(l => ({ ...l, av: rl ? (l.valor/rl*100) : 0 })), modo };
+  return { linhas: linhas.map(l => ({ ...l, av: rl ? (l.valor/Math.abs(rl)*100) : 0 })), modo };
 }
 
 // ══════════════════════════════════════════════════════
@@ -487,10 +488,10 @@ function calcularKPIs(dados, cols) {
     const v    = toNum(r[colVal]);
     if (isNaN(v)) return;
     const tipo = String(r[colTipo] || r['Tipo'] || '').trim().toUpperCase();
-    if (tipo === 'RECEITA') { receita += v; nfRec++; }
-    else if (tipo === 'DESPESA') { despesa += v; nfDesp++; }
-    else if (v >= 0) { receita += v; nfRec++; }
-    else { despesa += Math.abs(v); nfDesp++; }
+    if (/^(RECEITA|C|CR[EÉ]DITO|ENTRADA|1)$/.test(tipo)) { receita += v; nfRec++; }
+    else if (/^(DESPESA|D|D[EÉ]BITO|SA[IÍ]DA|2)$/.test(tipo)) { despesa += Math.abs(v); nfDesp++; }
+    else if (v > 0) { receita += v; nfRec++; }
+    else if (v < 0) { despesa += Math.abs(v); nfDesp++; }
   });
   const resultado = receita - despesa;
   const margem    = receita !== 0 ? resultado / receita * 100 : 0;
@@ -1210,6 +1211,10 @@ tr:hover td{background:#EEF4FF;transition:background .15s}
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
       Comparar período
     </button>
+    <button class="btn-sm btn-outline" onclick="abrirPainelClaude()" title="Análise com IA">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M12 2a10 10 0 0 1 10 10c0 5.52-4.48 10-10 10S2 17.52 2 12 6.48 2 12 2z"/><path d="M12 6v6l4 2"/></svg>
+      Análise IA
+    </button>
   </div>
 
   <!-- Score Financeiro -->
@@ -1472,6 +1477,7 @@ function carregarArquivo(file) {
       _colsComparativos = null;
       _kpisComparativos = null;
       _nomeArquivoComp  = '';
+      if (_chartAging)       { _chartAging.destroy();       _chartAging = null; }
       if (_chartComparativo) { _chartComparativo.destroy(); _chartComparativo = null; }
       const _ccReset = document.getElementById('card-comparativo');
       if (_ccReset) _ccReset.style.display = 'none';
@@ -1537,6 +1543,10 @@ function carregarArquivoComparativo(file) {
       _colsComparativos = Object.assign({}, _cols);
       const det = detectarColunas(headers);
       Object.entries(det).forEach(([k,v]) => { if (v && headers.includes(v)) _colsComparativos[k] = v; });
+      // Validar que a coluna valor existe no arquivo comparativo
+      if (!_colsComparativos.valor || !headers.includes(_colsComparativos.valor)) {
+        throw new Error('Coluna de valores não encontrada no arquivo comparativo. Verifique se os cabeçalhos são compatíveis.');
+      }
       _kpisComparativos = calcularKPIs(dados, _colsComparativos);
       mostrarLoader(false);
       renderComparativo();
@@ -1583,7 +1593,7 @@ function mostrarConfigColunas(headers, cols, erpDetectado) {
     const div = document.createElement('div');
     div.className = 'col-group';
     const sel = headers.map(h =>
-      `<option value="${h}" ${cols[tipo]===h?'selected':''}>${h}</option>`
+      `<option value="${esc(h)}" ${cols[tipo]===h?'selected':''}>${esc(h)}</option>`
     ).join('');
     div.innerHTML = `<label>${label}</label>
       <select id="sel-${tipo}"><option value="">(nenhuma)</option>${sel}</select>`;
@@ -1593,6 +1603,11 @@ function mostrarConfigColunas(headers, cols, erpDetectado) {
 }
 
 function aplicarMapeamentoERP(erpKey) {
+  // Zera todos os selects antes para não deixar valores de ERP anterior
+  ['valor','data','vencimento','entidade','chave'].forEach(t => {
+    const s = document.getElementById(`sel-${t}`);
+    if (s) s.value = '';
+  });
   if (!erpKey || !MAPAS_ERP_JS[erpKey]) return;
   const mapa = MAPAS_ERP_JS[erpKey].mapa;
   Object.entries(mapa).forEach(([orig, campo]) => {
@@ -1616,10 +1631,14 @@ function executarAnalise() {
   mostrarLoader(true);
   setTimeout(() => {
     try {
-      // Preserva a categoria detectada automaticamente pelo ERP (não exposta na UI)
-      const catErp = _cols.categoria || null;
+      // Preserva chaves detectadas pelo ERP que não têm select na UI
+      const catErp  = _cols.categoria || null;
+      const tipoErp = _cols.tipo      || null;
       _cols = lerColsSelecionadas();
-      if (catErp) _cols.categoria = catErp;
+      if (catErp)  _cols.categoria = catErp;
+      if (tipoErp) _cols.tipo      = tipoErp;
+      // Garante que confirmados não ficam desalinhados com nova análise
+      _auditConfirmados.clear();
       const dados = _dadosOriginais;
 
       // KPIs
@@ -1670,7 +1689,6 @@ function executarAnalise() {
       _atualizarStep(3);
     } catch(err) {
       alert('Erro na análise: ' + err.message);
-      console.error(err);
     }
     mostrarLoader(false);
     // Stagger de entrada dos cards e KPIs
@@ -1800,12 +1818,13 @@ function renderVerificacao(integ) {
 // RENDER AUDITORIA
 // ══════════════════════════════════════════════════════
 const BADGE = { 'CRÍTICA':'b-critica','ALTA':'b-alta','MÉDIA':'b-media','BAIXA':'b-baixa' };
+function _auditKey(p) { return `${p.tipo}|${String(p.linha)}|${p.coluna}`; }
 function _auditoriaPendentes(lista) {
-  return (lista || []).filter((_, i) => !_auditConfirmados.has(i));
+  return (lista || []).filter(p => !_auditConfirmados.has(_auditKey(p)));
 }
-function confirmarAuditoria(idx) {
-  if (_auditConfirmados.has(idx)) _auditConfirmados.delete(idx);
-  else _auditConfirmados.add(idx);
+function confirmarAuditoria(key) {
+  if (_auditConfirmados.has(key)) _auditConfirmados.delete(key);
+  else _auditConfirmados.add(key);
   renderAuditoria(_ultimaAuditoria);
 }
 
@@ -1816,14 +1835,15 @@ function renderAuditoria(lista) {
     ? `<span class="badge b-critica">${criticos} CRÍTICO${criticos>1?'S':''}</span>` : '';
   document.getElementById('badge-auditoria').innerHTML = badge;
 
-  if (!lista.length) {
+  if (!lista || !lista.length) {
     document.getElementById('auditoria-content').innerHTML =
       '<p style="color:var(--verde);font-weight:bold;padding:12px">✓ Nenhum problema encontrado!</p>';
     return;
   }
 
-  const rows = lista.map((p, idx) => {
-    const confirmado = _auditConfirmados.has(idx);
+  const rows = lista.map((p) => {
+    const key        = _auditKey(p);
+    const confirmado = _auditConfirmados.has(key);
     const rowStyle   = confirmado ? 'opacity:0.45;background:#f7fdf7' : '';
     const sevCell    = confirmado
       ? `<span class="badge" style="background:#d1fae5;color:#065f46;border:1px solid #6ee7b7">✓ Verificado</span>`
@@ -1837,7 +1857,7 @@ function renderAuditoria(lista) {
       <td>${esc(p.tipo)}</td><td>${esc(p.linha)}</td>
       <td>${esc(p.coluna)}</td><td>${esc(p.valor)}</td>
       <td>${esc(p.descricao)}</td>
-      <td><button onclick="confirmarAuditoria(${idx})"
+      <td><button onclick="confirmarAuditoria('${esc(key)}')"
         style="font-size:11px;padding:3px 10px;border-radius:6px;cursor:pointer;font-weight:600;white-space:nowrap;${btnStyle}">${btnLabel}</button></td>
     </tr>`;
   }).join('');
@@ -2062,6 +2082,10 @@ function renderTabela(dados, headers) {
   const tbody = document.getElementById('tbody-dados');
   thead.innerHTML = '<tr>' + headers.map(h=>`<th>${esc(h)}</th>`).join('') + '</tr>';
   const slice = dados.slice(0, MAX_ROWS_TABELA);
+  if (!slice.length) {
+    tbody.innerHTML = `<tr><td colspan="${headers.length}" style="text-align:center;color:var(--text-3);padding:24px;font-style:italic">Nenhum resultado encontrado.</td></tr>`;
+    return;
+  }
   tbody.innerHTML = slice.map(row =>
     '<tr>' + headers.map(h => `<td>${esc(row[h])}</td>`).join('') + '</tr>'
   ).join('');
