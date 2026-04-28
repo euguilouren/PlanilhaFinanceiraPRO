@@ -17,6 +17,7 @@ import logging
 import smtplib
 import argparse
 import traceback
+from difflib                import get_close_matches
 from email.mime.text        import MIMEText
 from email.mime.multipart   import MIMEMultipart
 from datetime               import datetime, timezone
@@ -407,7 +408,8 @@ class ProcessadorArquivo:
             if self.analisador_claude.ativo:
                 logger.info("[6/6] Enviando briefing ao Claude API...")
                 briefing = self._gerar_briefing(
-                    df, diagnostico, df_auditoria, df_dre, df_aging, df_pareto, df_ticket
+                    df, diagnostico, df_auditoria, df_dre,
+                    df_aging, df_pareto, df_ticket, df_fluxo_m
                 )
                 analise = self.analisador_claude.analisar(briefing)
                 if analise:
@@ -675,7 +677,8 @@ class ProcessadorArquivo:
 </body></html>"""
 
     def _gerar_briefing(self, df, diagnostico, df_auditoria, df_dre,
-                        df_aging, df_pareto, df_ticket) -> str:
+                        df_aging, df_pareto, df_ticket,
+                        df_fluxo_m=None) -> str:
         """Gera texto compacto com os achados principais para envio ao Claude API."""
         linhas = [
             f"# BRIEFING FINANCEIRO — {datetime.now().strftime('%d/%m/%Y %H:%M')}",
@@ -728,12 +731,75 @@ class ProcessadorArquivo:
                     f" | {int(row.get('Transações', 0))} transações"
                 )
             linhas.append("")
+        # ── Fluxo Mensal ──────────────────────────────────────────
+        if df_fluxo_m is not None and len(df_fluxo_m):
+            linhas.append("## Fluxo por Mês")
+            cols_fluxo = df_fluxo_m.columns.tolist()
+            col_per  = next((c for c in cols_fluxo if 'periodo' in c.lower() or 'period' in c.lower()), cols_fluxo[0])
+            col_rec  = next((c for c in cols_fluxo if 'receita' in c.lower()), None)
+            col_desp = next((c for c in cols_fluxo if 'despesa' in c.lower()), None)
+            col_res  = next((c for c in cols_fluxo if 'resultado' in c.lower()), None)
+            for _, row in df_fluxo_m.tail(12).iterrows():
+                partes = [f"  {row[col_per]}"]
+                if col_rec:  partes.append(f"Rec R$ {row[col_rec]:>12,.2f}")
+                if col_desp: partes.append(f"Desp R$ {row[col_desp]:>12,.2f}")
+                if col_res:
+                    res = row[col_res]
+                    sinal = '+' if res >= 0 else ''
+                    partes.append(f"Resultado {sinal}R$ {res:,.2f}")
+                linhas.append("  |  ".join(partes))
+            linhas.append("")
+
+        # ── Score Financeiro (0–100) ───────────────────────────
+        try:
+            # Margem líquida (30 pts)
+            col_val_df = 'Valor' if 'Valor' in df.columns else df.columns[0]
+            nums = pd.to_numeric(df[col_val_df], errors='coerce').dropna()
+            receita = nums[nums > 0].sum()
+            despesa = nums[nums < 0].abs().sum()
+            margem  = (receita - despesa) / receita * 100 if receita else 0
+            pts_m   = 30 if margem >= 30 else (20 if margem >= 15 else (10 if margem >= 5 else 0))
+
+            # Inadimplência aging (25 pts)
+            pts_a = 0
+            if df_aging is not None and len(df_aging):
+                total_ag = df_aging['Total_RS'].sum() if 'Total_RS' in df_aging.columns else 0
+                vencido  = df_aging[df_aging.get('Faixa_Aging', df_aging.columns[0]).name
+                    if hasattr(df_aging.get('Faixa_Aging', None), 'name') else 'Faixa_Aging'
+                    ]['Total_RS'].sum() if 'Faixa_Aging' in df_aging.columns else 0
+                # Simpler: sum all rows that aren't "A vencer"
+                col_faixa = next((c for c in df_aging.columns if 'faixa' in c.lower()), None)
+                if col_faixa and 'Total_RS' in df_aging.columns:
+                    vencido  = df_aging[~df_aging[col_faixa].str.contains('vencer|Sem', na=False)]['Total_RS'].sum()
+                    pct_venc = vencido / total_ag * 100 if total_ag > 0 else 0
+                    pts_a = 25 if pct_venc == 0 else (18 if pct_venc < 10 else (10 if pct_venc < 25 else 0))
+
+            # Concentração Pareto (20 pts)
+            pts_p = 20
+            if df_pareto is not None and len(df_pareto) >= 3 and 'Percentual' in df_pareto.columns:
+                top3_pct = df_pareto.head(3)['Percentual'].sum()
+                pts_p = 20 if top3_pct < 40 else (12 if top3_pct < 60 else (6 if top3_pct < 80 else 0))
+
+            # Auditoria críticos (25 pts)
+            criticos = len(df_auditoria[df_auditoria['Severidade'] == 'CRÍTICA']) if len(df_auditoria) else 0
+            pts_aud  = 25 if criticos == 0 else (18 if criticos <= 2 else (10 if criticos <= 5 else 0))
+
+            score = pts_m + pts_a + pts_p + pts_aud
+            classe = 'EXCELENTE' if score >= 80 else ('MODERADA' if score >= 60 else 'ATENÇÃO')
+            linhas.append(f"## Score Financeiro: {score}/100 — {classe}")
+            linhas.append(f"  Margem ({pts_m}/30) | Inadimplência ({pts_a}/25) | Concentração ({pts_p}/20) | Auditoria ({pts_aud}/25)")
+            linhas.append(f"  Margem líquida: {margem:.1f}% | Críticos auditoria: {criticos}")
+            linhas.append("")
+        except Exception:
+            pass  # Score é informativo — não bloquear briefing em caso de erro
+
         linhas += [
             "---",
             "Analise os dados acima e indique:",
             "1. Quais inconsistências são mais críticas?",
-            "2. O que o DRE indica sobre a saúde financeira?",
-            "3. Quais ações recomenda com base no aging?",
+            "2. O que o DRE e o fluxo mensal indicam sobre a saúde financeira?",
+            "3. Quais ações recomenda com base no aging e no score?",
+            "4. Existe concentração de risco em poucos clientes/fornecedores?",
         ]
         return '\n'.join(linhas)
 

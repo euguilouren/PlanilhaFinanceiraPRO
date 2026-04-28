@@ -183,6 +183,81 @@ resumo = Util.resumo_para_claude(df, col_valor=COL_VALOR)
 print(resumo)
 ```
 
+O briefing gerado pelo motor autônomo inclui automaticamente as seções:
+- **KPIs** (Receita, Despesa, Resultado, Margem, Ticket Médio)
+- **Auditoria** (problemas por severidade)
+- **DRE Resumido** (com AV%)
+- **Aging de Recebíveis** (por faixa)
+- **Top 5 Pareto** (por faturamento)
+- **Fluxo Mensal** (últimos 12 meses — Receita / Despesa / Resultado)
+- **Score Financeiro** (0–100 com pilares: Margem, Inadimplência, Concentração, Auditoria)
+
+Use `/score`, `/fluxo` ou `/verificacao` para aprofundar em cada seção.
+
+---
+
+## /score
+
+**Ativa quando:** Você quer um diagnóstico rápido (0–100) da saúde financeira.
+
+**Comportamento:**
+1. Calcule o Score Financeiro nos 4 pilares abaixo e apresente em tabela
+2. Exiba o total com classificação: EXCELENTE (≥80) | MODERADA (≥60) | ATENÇÃO (<60)
+3. Destaque o pilar com menor pontuação e recomende ação prioritária
+
+| Pilar | Peso | Critério |
+|---|---|---|
+| Margem Líquida | 30 pts | ≥30% = 30 · ≥15% = 20 · ≥5% = 10 · <5% = 0 |
+| Inadimplência | 25 pts | 0% vencido = 25 · <10% = 18 · <25% = 10 · ≥25% = 0 |
+| Concentração Pareto | 20 pts | Top 3 <40% = 20 · <60% = 12 · <80% = 6 · ≥80% = 0 |
+| Auditoria | 25 pts | 0 críticos = 25 · ≤2 = 18 · ≤5 = 10 · >5 = 0 |
+
+**Exemplo de uso:**
+```
+/score
+[cola o briefing.txt aqui]
+```
+
+---
+
+## /fluxo
+
+**Ativa quando:** Você quer analisar a evolução de receitas e despesas por período.
+
+**Comportamento:**
+1. Apresente a tabela mensal (ou diária/anual se solicitado) com: Período | Receitas | Despesas | Resultado | Margem%
+2. Identifique os 2 meses com melhor e pior resultado
+3. Calcule a tendência (crescimento/queda) comparando primeira e segunda metade do período
+4. Alerte se algum mês tiver despesa > receita (resultado negativo)
+
+**Exemplo de uso:**
+```
+/fluxo
+[cola a seção "Fluxo por Mês" do briefing]
+```
+
+---
+
+## /verificacao
+
+**Ativa quando:** Você quer checar a integridade dos dados antes de confiar nas análises.
+
+**Comportamento:**
+1. Confirme o checksum (soma dos |valores|) e compare com =SOMA() no Excel
+2. Avalie a cobertura de datas (% de registros com data válida)
+3. Verifique se os valores processados representam ≥ 85% do total de registros
+4. Classifique a confiança: VERIFICADO (≥80%) | PARCIAL (≥60%) | REVISAR (<60%)
+5. Para cada alerta, forneça o passo exato de investigação no Excel
+
+**Exemplo de uso:**
+```
+/verificacao
+Registros totais: 1.240
+Registros com valor: 1.190 (96%)
+Cobertura de datas: 98%
+Checksum: R$ 2.341.890,00
+```
+
 ---
 
 ## Regras gerais das skills
