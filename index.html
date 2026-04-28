@@ -505,7 +505,7 @@ function calcularKPIs(dados, cols) {
     nfRec, nfDesp,
     periodoInicio:  minData,
     periodoFim:     maxData,
-    colsDetectadas: Object.values(cols).filter(Boolean).length,
+    colsDetectadas: new Set(Object.values(cols).filter(Boolean)).size,
   };
 }
 
@@ -527,7 +527,7 @@ function calcularFluxoPeriodo(dados, colData, colValor, colTipo, freq) {
     if (!grupos[key]) grupos[key] = { rec:0, desp:0, nfRec:0, nfDesp:0 };
     const v    = toNum(r[colValor]);
     if (isNaN(v)) return;
-    const tipo = cols.tipo ? String(r[cols.tipo] ?? '').trim().toUpperCase() : '';
+    const tipo = colTipo ? String(r[colTipo] ?? '').trim().toUpperCase() : '';
     const isRec = /^(RECEITA|C|CR[EÉ]DITO|ENTRADA|1)$/.test(tipo)
       || (!/^(DESPESA|D|D[EÉ]BITO|SA[IÍ]DA|2)$/.test(tipo) && v > 0);
     if (isRec) { grupos[key].rec += v;  grupos[key].nfRec++; }
@@ -642,7 +642,7 @@ function calcularScoreFinanceiro(kpis, aging, pareto, auditProblemas) {
   pilares.margem = { pts: ptsMargem, max: 30, label: 'Margem Líquida', detalhe: `${(margem||0).toFixed(1)}%` };
 
   // Inadimplência aging (25 pts)
-  let ptsAging = 25, detalheAging = 'Sem dados';
+  let ptsAging = 0, detalheAging = 'Sem dados (vencimento não mapeado)';
   if (aging && aging.length) {
     const totalAging = aging.reduce((s,f) => s + f.total, 0);
     const vencido = aging.filter(f => f.faixa !== 'A vencer' && f.faixa !== 'Sem data').reduce((s,f) => s + f.total, 0);
@@ -1866,7 +1866,7 @@ function renderAuditoria(lista) {
       <td>${esc(p.tipo)}</td><td>${esc(p.linha)}</td>
       <td>${esc(p.coluna)}</td><td>${esc(p.valor)}</td>
       <td>${esc(p.descricao)}</td>
-      <td><button onclick="confirmarAuditoria(${JSON.stringify(key)})"
+      <td><button onclick='confirmarAuditoria(${esc(JSON.stringify(key))})'
         style="font-size:11px;padding:3px 10px;border-radius:6px;cursor:pointer;font-weight:600;white-space:nowrap;${btnStyle}">${btnLabel}</button></td>
     </tr>`;
   }).join('');
@@ -1929,7 +1929,6 @@ function renderAging(lista) {
     </table></div>`;
 
   // Gráfico
-  if (_chartAging) _chartAging.destroy();
   const _canvAging = document.getElementById('chart-aging');
   if (!_canvAging) return;
   const ctx = _canvAging.getContext('2d');
@@ -2370,8 +2369,10 @@ function exportarJSON() {
   };
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([JSON.stringify(obj,null,2)], {type:'application/json'}));
-  a.download = `analise_${_nomeArquivo.replace(/\.[^.]+$/,'')}_${Date.now()}.json`;
+  const base = (_nomeArquivo || 'export').replace(/\.[^.]+$/,'');
+  a.download = `analise_${base}_${Date.now()}.json`;
   a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
 
 // PWA — Service Worker
