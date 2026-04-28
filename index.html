@@ -341,6 +341,7 @@ function calcularAging(dados, colVenc, colValor) {
     if (!d) { faixas['Sem data'].qtd++; faixas['Sem data'].total += v; return; }
     const d0 = new Date(d.getFullYear(), d.getMonth(), d.getDate());
     const dias = Math.round((hoje - d0) / 86400000);
+    if (isNaN(dias)) { faixas['Sem data'].qtd++; faixas['Sem data'].total += v; return; }
     for (const [nome, f] of Object.entries(faixas)) {
       if (nome === 'Sem data') continue;
       if (dias >= f.min && dias <= f.max) {
@@ -417,8 +418,8 @@ function construirDRE(dados, colCat, colValor) {
     dados.forEach(row => {
       const v = toNum(row[colValor]);
       if (isNaN(v)) return;
-      if (v >= 0) valores['Receita Bruta'] += v;
-      else valores['(-) Despesas Operacionais'] += v;
+      if (v > 0) valores['Receita Bruta'] += v;
+      else if (v < 0) valores['(-) Despesas Operacionais'] += v;
     });
   } else {
     dados.forEach(row => {
@@ -526,8 +527,9 @@ function calcularFluxoPeriodo(dados, colData, colValor, colTipo, freq) {
     if (!grupos[key]) grupos[key] = { rec:0, desp:0, nfRec:0, nfDesp:0 };
     const v    = toNum(r[colValor]);
     if (isNaN(v)) return;
-    const tipo = String(r[colTipo] || r['Tipo'] || '').trim().toUpperCase();
-    const isRec = tipo === 'RECEITA' || (tipo !== 'DESPESA' && v >= 0);
+    const tipo = cols.tipo ? String(r[cols.tipo] ?? '').trim().toUpperCase() : '';
+    const isRec = /^(RECEITA|C|CR[EÉ]DITO|ENTRADA|1)$/.test(tipo)
+      || (!/^(DESPESA|D|D[EÉ]BITO|SA[IÍ]DA|2)$/.test(tipo) && v > 0);
     if (isRec) { grupos[key].rec += v;  grupos[key].nfRec++; }
     else       { grupos[key].desp += Math.abs(v); grupos[key].nfDesp++; }
   });
@@ -772,7 +774,7 @@ body{font-family:'Inter',Arial,sans-serif;font-size:13.5px;background:#E8EDF4;
   box-shadow:0 12px 60px rgba(0,0,0,.4),0 0 0 1px rgba(201,168,76,.3),inset 0 1px 0 rgba(255,255,255,.15)
 }
 .drop-zone .upload-icon{margin-bottom:22px}
-.drop-zone .upload-icon svg{width:72px;height:72px;color:#C9A84C;drop-shadow(0 0 12px rgba(201,168,76,.4))}
+.drop-zone .upload-icon svg{width:72px;height:72px;color:#C9A84C;filter:drop-shadow(0 0 12px rgba(201,168,76,.4))}
 .drop-zone .upload-title{color:#fff;font-size:23px;font-weight:800;margin-bottom:8px;letter-spacing:-.5px}
 .drop-zone .upload-sub{color:rgba(255,255,255,.5);font-size:12.5px;margin-bottom:20px}
 .btn-upload{
@@ -1202,7 +1204,7 @@ tr:hover td{background:#EEF4FF;transition:background .15s}
 <div id="dashboard">
   <div class="toolbar">
     <span class="tag-arquivo" id="tag-arquivo">—</span>
-    <button class="btn-sm" onclick="document.getElementById('upload-area').style.display='block';document.getElementById('dashboard').style.display='none';_dashboardVisivel=false;document.getElementById('btn-comparar').style.display='none';const _cc=document.getElementById('card-comparativo');if(_cc)_cc.style.display='none';_atualizarStep(1)">
+    <button class="btn-sm" onclick="document.getElementById('upload-area').style.display='block';document.getElementById('dashboard').style.display='none';document.getElementById('col-config').style.display='none';_dashboardVisivel=false;document.getElementById('btn-comparar').style.display='none';const _cc=document.getElementById('card-comparativo');if(_cc)_cc.style.display='none';_atualizarStep(1)">
       Novo arquivo
     </button>
     <button class="btn-sm btn-outline btn-imprimir" onclick="window.print()">Imprimir</button>
@@ -1297,7 +1299,7 @@ tr:hover td{background:#EEF4FF;transition:background .15s}
     <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
       <input id="claude-api-key" type="password" placeholder="sk-ant-api03-..."
         style="flex:1;min-width:200px;padding:8px 12px;border:1px solid #C4B5FD;border-radius:8px;font-size:13px;font-family:inherit;outline:none;color:#1F1B4B"
-        oninput="localStorage.setItem('_cak',this.value)"
+        oninput="try{localStorage.setItem('_cak',this.value)}catch(e){}"
         onkeydown="if(event.key==='Enter')analisarComClaude(document.getElementById('btn-analisar-claude'))">
       <button id="btn-analisar-claude"
         style="background:#7C3AED;color:#fff;border:none;padding:8px 20px;border-radius:8px;cursor:pointer;font-weight:600;font-size:13px;white-space:nowrap"
@@ -1432,6 +1434,7 @@ function carregarArquivo(file) {
         const wb    = XLSX.read(txt, { type:'string', raw:false });
         const ws    = wb.Sheets[wb.SheetNames[0]];
         const arr   = XLSX.utils.sheet_to_json(ws, { header:1, defval:'' });
+        if (!arr.length || !arr[0]) throw new Error('Arquivo vazio ou sem cabeçalho.');
         const rawH  = arr[0].map(String);
         headers     = rawH.filter(h => h && !h.startsWith('__EMPTY'));
         dados       = arr.slice(1).map(r => {
@@ -1520,6 +1523,7 @@ function carregarArquivoComparativo(file) {
         const wb  = XLSX.read(e.target.result, { type:'string', raw:false });
         const ws  = wb.Sheets[wb.SheetNames[0]];
         const arr = XLSX.utils.sheet_to_json(ws, { header:1, defval:'' });
+        if (!arr.length || !arr[0]) throw new Error('Arquivo comparativo vazio ou sem cabeçalho.');
         const rawH = arr[0].map(String);
         headers = rawH.filter(h => h && !h.startsWith('__EMPTY'));
         dados   = arr.slice(1).map(r => {
@@ -1551,6 +1555,7 @@ function carregarArquivoComparativo(file) {
       mostrarLoader(false);
       renderComparativo();
     } catch(err) {
+      _kpisComparativos = null; _colsComparativos = null; _nomeArquivoComp = '';
       mostrarLoader(false);
       alert('Erro ao ler arquivo comparativo: ' + err.message);
     }
@@ -1566,6 +1571,7 @@ function mostrarConfigColunas(headers, cols, erpDetectado) {
   const labels = {
     valor:'Valor (R$)', data:'Data de Emissão', vencimento:'Vencimento',
     entidade:'Cliente / Entidade', chave:'Chave (ID / NF)',
+    categoria:'Categoria / Histórico', tipo:'Tipo (C/D · Receita/Despesa)',
   };
 
   // ERP banner
@@ -1604,7 +1610,7 @@ function mostrarConfigColunas(headers, cols, erpDetectado) {
 
 function aplicarMapeamentoERP(erpKey) {
   // Zera todos os selects antes para não deixar valores de ERP anterior
-  ['valor','data','vencimento','entidade','chave'].forEach(t => {
+  ['valor','data','vencimento','entidade','chave','categoria','tipo'].forEach(t => {
     const s = document.getElementById(`sel-${t}`);
     if (s) s.value = '';
   });
@@ -1618,7 +1624,7 @@ function aplicarMapeamentoERP(erpKey) {
 }
 
 function lerColsSelecionadas() {
-  const tipos = ['valor','data','vencimento','entidade','chave'];
+  const tipos = ['valor','data','vencimento','entidade','chave','categoria','tipo'];
   const c = {};
   tipos.forEach(t => { c[t] = document.getElementById(`sel-${t}`)?.value || null; });
   return c;
@@ -1631,13 +1637,7 @@ function executarAnalise() {
   mostrarLoader(true);
   setTimeout(() => {
     try {
-      // Preserva chaves detectadas pelo ERP que não têm select na UI
-      const catErp  = _cols.categoria || null;
-      const tipoErp = _cols.tipo      || null;
       _cols = lerColsSelecionadas();
-      if (catErp)  _cols.categoria = catErp;
-      if (tipoErp) _cols.tipo      = tipoErp;
-      // Garante que confirmados não ficam desalinhados com nova análise
       _auditConfirmados.clear();
       const dados = _dadosOriginais;
 
@@ -1689,6 +1689,9 @@ function executarAnalise() {
       _atualizarStep(3);
     } catch(err) {
       alert('Erro na análise: ' + err.message);
+      document.getElementById('upload-area').style.display = 'block';
+      document.getElementById('dashboard').style.display   = 'none';
+      _atualizarStep(2);
     }
     mostrarLoader(false);
     // Stagger de entrada dos cards e KPIs
@@ -1825,7 +1828,9 @@ function _auditoriaPendentes(lista) {
 function confirmarAuditoria(key) {
   if (_auditConfirmados.has(key)) _auditConfirmados.delete(key);
   else _auditConfirmados.add(key);
+  const sc = document.getElementById('auditoria-content')?.scrollTop || 0;
   renderAuditoria(_ultimaAuditoria);
+  requestAnimationFrame(() => { const el = document.getElementById('auditoria-content'); if (el) el.scrollTop = sc; });
 }
 
 function renderAuditoria(lista) {
@@ -1857,7 +1862,7 @@ function renderAuditoria(lista) {
       <td>${esc(p.tipo)}</td><td>${esc(p.linha)}</td>
       <td>${esc(p.coluna)}</td><td>${esc(p.valor)}</td>
       <td>${esc(p.descricao)}</td>
-      <td><button onclick="confirmarAuditoria('${esc(key)}')"
+      <td><button onclick="confirmarAuditoria(${JSON.stringify(key)})"
         style="font-size:11px;padding:3px 10px;border-radius:6px;cursor:pointer;font-weight:600;white-space:nowrap;${btnStyle}">${btnLabel}</button></td>
     </tr>`;
   }).join('');
@@ -1881,6 +1886,7 @@ function renderAuditoria(lista) {
 // RENDER AGING
 // ══════════════════════════════════════════════════════
 function renderAging(lista) {
+  if (_chartAging) { _chartAging.destroy(); _chartAging = null; }
   if (!lista || !lista.length) {
     document.getElementById('aging-content').innerHTML = `
       <div style="padding:14px;background:#FFF7ED;border-left:4px solid #F59E0B;border-radius:0 8px 8px 0">
@@ -1905,7 +1911,7 @@ function renderAging(lista) {
       <td style="text-align:right">${fmtNum(i.qtd)}</td>
       <td style="text-align:right">${fmtBRL(i.total)}</td>
       <td style="text-align:right">${fmtNum(i.pct,1)}%</td>
-      <td><div class="bar-w"><div class="bar-f" style="width:${Math.min(i.pct,100)}%;background:${cor}"></div></div></td>
+      <td><div class="bar-w"><div class="bar-f" style="width:${Math.min(Math.max(i.pct,0),100)}%;background:${cor}"></div></div></td>
     </tr>`;
   }).join('');
   document.getElementById('aging-content').innerHTML = `
@@ -1979,7 +1985,11 @@ function renderDRE(dre) {
 // RENDER PARETO
 // ══════════════════════════════════════════════════════
 function renderPareto(lista) {
-  if (!lista || !lista.length) return;
+  if (!lista || !lista.length) {
+    document.getElementById('pareto-content').innerHTML =
+      '<p style="color:var(--text-3);padding:12px;font-style:italic">Coluna de entidade não mapeada — selecione a coluna "Cliente / Entidade" na configuração.</p>';
+    return;
+  }
   const rows = lista.map(i => `
     <tr>
       <td style="text-align:center;font-weight:bold">${esc(i.ranking)}</td>
@@ -2014,7 +2024,12 @@ function renderComparativo() {
   document.getElementById('comparativo-labels').textContent = `${labelA}  ×  ${labelB}`;
 
   const fmtDelta = (d, isBRL=true, isPP=false) => {
-    if (d.pct === null) return '<span class="delta-neu">—</span>';
+    if (d.pct === null) {
+      if (!d.abs) return '<span class="delta-neu">—</span>';
+      const sinal = d.abs > 0 ? '↑' : '↓';
+      const cls   = d.abs > 0 ? 'delta-pos' : 'delta-neg';
+      return `<span class="${cls}">${sinal} ${isBRL ? fmtBRL(Math.abs(d.abs)) : fmtNum(Math.abs(Math.round(d.abs)))}</span>`;
+    }
     const sinal = d.abs >= 0 ? '↑' : '↓';
     const cls   = d.abs >= 0 ? 'delta-pos' : 'delta-neg';
     const abs   = isPP ? `${d.abs >= 0 ? '+' : ''}${d.abs.toFixed(1)}pp`
@@ -2176,18 +2191,20 @@ function _inlineMd(s) {
 function _markdownParaHTML(md) {
   if (!md) return '';
   const linhas = md.split('\n');
-  let html = '', lista = false, tabela = false;
+  let html = '', listaTipo = null, tabela = false;
   for (const l of linhas) {
-    if (lista && !l.match(/^[-*]\s/) && !l.match(/^\d+\.\s/)) { html += '</ul>'; lista = false; }
+    if (listaTipo && !l.match(/^[-*]\s/) && !l.match(/^\d+\.\s/)) { html += '</ul>'; listaTipo = null; }
     if (tabela && !l.match(/^\|/)) { html += '</table>'; tabela = false; }
     if (l.match(/^###\s/))      html += `<h5 style="margin:10px 0 3px;color:var(--navy)">${_inlineMd(l.slice(4))}</h5>`;
     else if (l.match(/^##\s/))  html += `<h4 style="margin:12px 0 4px;color:var(--navy)">${_inlineMd(l.slice(3))}</h4>`;
     else if (l.match(/^#\s/))   html += `<h3 style="margin:12px 0 5px;color:var(--navy)">${_inlineMd(l.slice(2))}</h3>`;
     else if (l.match(/^[-*]\s/)) {
-      if (!lista) { html += '<ul style="margin:4px 0 4px 18px;padding:0">'; lista = true; }
+      if (listaTipo === 'ol') { html += '</ul>'; listaTipo = null; }
+      if (!listaTipo) { html += '<ul style="margin:4px 0 4px 18px;padding:0">'; listaTipo = 'ul'; }
       html += `<li style="margin:2px 0">${_inlineMd(l.slice(2))}</li>`;
     } else if (l.match(/^\d+\.\s/)) {
-      if (!lista) { html += '<ul style="margin:4px 0 4px 18px;padding:0;list-style:decimal">'; lista = true; }
+      if (listaTipo === 'ul') { html += '</ul>'; listaTipo = null; }
+      if (!listaTipo) { html += '<ul style="margin:4px 0 4px 18px;padding:0;list-style:decimal">'; listaTipo = 'ol'; }
       html += `<li style="margin:2px 0">${_inlineMd(l.replace(/^\d+\.\s/, ''))}</li>`;
     } else if (l.match(/^\|/)) {
       if (l.match(/^\|[-:\s|]+\|$/)) continue;
@@ -2200,8 +2217,8 @@ function _markdownParaHTML(md) {
       html += `<p style="margin:4px 0">${_inlineMd(l)}</p>`;
     }
   }
-  if (lista)  html += '</ul>';
-  if (tabela) html += '</table>';
+  if (listaTipo) html += '</ul>';
+  if (tabela)    html += '</table>';
   return html;
 }
 
@@ -2261,6 +2278,7 @@ async function analisarComClaude(btn) {
 
 function copiarAnalise() {
   const t = _ultimaAnaliseClaude || document.getElementById('claude-texto').innerText;
+  if (!t || !t.trim()) { alert('Nenhuma análise para copiar.'); return; }
   if (navigator.clipboard) {
     navigator.clipboard.writeText(t).then(() => alert('Análise copiada!')).catch(() => _copiarFallback(t));
   } else {
@@ -2340,11 +2358,11 @@ function exportarJSON() {
   const obj = {
     arquivo:   _nomeArquivo,
     timestamp: new Date().toISOString(),
-    kpis:      calcularKPIs(_dadosOriginais, _cols),
-    auditoria: auditoria(_dadosOriginais, _cols),
-    aging:     calcularAging(_dadosOriginais, _cols.vencimento, _cols.valor),
-    dre:       construirDRE(_dadosOriginais, _cols.categoria, _cols.valor),
-    pareto:    calcularPareto(_dadosOriginais, _cols.entidade, _cols.valor),
+    kpis:      _ultimosKpis      ?? calcularKPIs(_dadosOriginais, _cols),
+    auditoria: _ultimaAuditoria  ?? auditoria(_dadosOriginais, _cols),
+    aging:     _ultimoAging      ?? calcularAging(_dadosOriginais, _cols.vencimento, _cols.valor),
+    dre:       _ultimoDre        ?? construirDRE(_dadosOriginais, _cols.categoria, _cols.valor),
+    pareto:    _ultimoPareto     ?? calcularPareto(_dadosOriginais, _cols.entidade, _cols.valor),
   };
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([JSON.stringify(obj,null,2)], {type:'application/json'}));
