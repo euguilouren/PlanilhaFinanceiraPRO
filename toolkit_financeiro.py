@@ -120,7 +120,7 @@ class Leitor:
     """Leitura, diagnóstico e validação inicial de dados."""
 
     # Regex corrigida: exige ao menos um dígito inicial — evita falso positivo em "..." ou ".,,"
-    _RE_NUMERO = re.compile(r'^\d{1,3}([.,]\d{3})*([.,]\d+)?$')
+    _RE_NUMERO = re.compile(r'^[+-]?\d{1,3}([.,]\d{3})*([.,]\d+)?$')
 
     @staticmethod
     def ler_arquivo(caminho: str, **kwargs) -> dict:
@@ -703,13 +703,17 @@ class AnalistaFinanceiro:
 
         Returns:
             DataFrame com colunas ``Faixa_Aging``, ``Quantidade``,
-            ``Total_RS``, ``Percentual`` e ``PCLD_Sugerida_RS``.
+            ``Total_RS`` e ``Percentual``.
         """
         if data_ref is None:
             data_ref = datetime.now()
         df = df.copy()
         venc = pd.to_datetime(df[col_vencimento], errors='coerce', dayfirst=True)
-        dias = (data_ref - venc).dt.days
+        # Garantir tz-naive em ambos os lados para evitar TypeError em planilhas com timezone
+        if hasattr(venc.dtype, 'tz') and venc.dtype.tz is not None:
+            venc = venc.dt.tz_localize(None)
+        data_ref_ts = pd.Timestamp(data_ref).tz_localize(None) if pd.Timestamp(data_ref).tzinfo is not None else pd.Timestamp(data_ref)
+        dias = (data_ref_ts - venc).dt.days
         faixa_media = (faixa_atencao + faixa_critica) // 2
 
         def _faixa(d):
@@ -790,7 +794,7 @@ class AnalistaFinanceiro:
         ]
         resultado = pd.DataFrame(dre_final)
         if receita_liq != 0:
-            resultado['AV_%'] = (resultado['Valor_RS'] / receita_liq * 100).round(1)
+            resultado['AV_%'] = (resultado['Valor_RS'] / abs(receita_liq) * 100).round(1)
         return resultado
 
     @staticmethod
@@ -867,7 +871,7 @@ class AnalistaFinanceiro:
             indicadores.append({
                 'Indicador': nome, 'Fórmula': formula, 'Valor': valor,
                 'Referência': ref,
-                'Status': 'SAUDÁVEL' if ok_cond(valor) else ('ATENÇÃO' if ok_cond(valor * 0.8) else 'CRÍTICO'),
+                'Status': 'SAUDÁVEL' if ok_cond(valor) else ('ATENÇÃO' if ok_cond(valor / 0.8) else 'CRÍTICO'),
             })
 
         if passivo_circulante != 0:
@@ -2006,7 +2010,7 @@ class Normalizador:
             if col_def['tipo'] == 'lista' and col_def.get('opcoes'):
                 opcoes = col_def['opcoes']
                 invalidos_mask = (
-                    ~serie.astype(str).str.upper().isin(opcoes + ['', 'PENDENTE'])
+                    ~serie.astype(str).str.upper().isin(opcoes + [''])
                 )
                 linhas_inv = list(df.index[invalidos_mask] + 2)
                 if linhas_inv:
@@ -2026,7 +2030,7 @@ class Normalizador:
             if col_def['tipo'] == 'data':
                 re_data = re.compile(r'^\d{2}/\d{2}/\d{4}$')
                 invalidas = serie.astype(str).apply(
-                    lambda x: bool(x) and x not in ('', 'nan') and not re_data.match(x)
+                    lambda x: bool(x) and x not in ('', 'nan', 'NaT', 'None') and not re_data.match(x)
                 )
                 linhas_data = list(df.index[invalidas] + 2)
                 if linhas_data:
