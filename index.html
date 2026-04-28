@@ -1126,7 +1126,7 @@ tr:hover td{background:#EEF4FF;transition:background .15s}
     <div>
       <h1>Planilha Financeira Pro</h1>
       <div class="sub">Análise autônoma de planilhas — 100% no navegador, sem upload</div>
-      <div style="font-size:11px;opacity:0.75;margin-top:2px;letter-spacing:.3px;">por <strong style="color:#C9A84C">Luan Guilherme Lourenço</strong></div>
+      <div style="font-size:11px;opacity:0.75;margin-top:2px;letter-spacing:.3px;">&copy; 2025 <strong style="color:#C9A84C">Luan Guilherme Lourenço</strong> &mdash; Todos os direitos reservados</div>
     </div>
   </div>
   <div style="display:flex;align-items:center;gap:12px">
@@ -1157,7 +1157,7 @@ tr:hover td{background:#EEF4FF;transition:background .15s}
     </div>
     <p class="upload-title">Arraste sua planilha aqui</p>
     <p class="upload-sub">Excel (.xlsx, .xls) ou CSV — processado 100% no seu navegador</p>
-    <p style="font-size:10px;color:#94A3B8;margin-top:-4px;margin-bottom:8px;">Desenvolvido por <strong style="color:#64748B">Luan Guilherme Lourenço</strong></p>
+    <p style="font-size:10px;color:#94A3B8;margin-top:-4px;margin-bottom:8px;">&copy; 2025 <strong style="color:#64748B">Luan Guilherme Lourenço</strong> &mdash; Todos os direitos reservados</p>
     <button class="btn-upload" onclick="document.getElementById('file-input').click()">
       Selecionar arquivo
     </button>
@@ -1293,11 +1293,11 @@ tr:hover td{background:#EEF4FF;transition:background .15s}
     <div class="chart-box-sm"><canvas id="chart-comparativo"></canvas></div>
   </div>
 
-  <!-- Painel Claude AI -->
+  <!-- Painel IA -->
   <div class="card" id="card-claude" style="display:none;border:2px solid #C4B5FD">
-    <h2 style="color:#5B21B6">Análise com Claude — IA</h2>
+    <h2 style="color:#5B21B6">Análise com Inteligência Artificial</h2>
     <p style="font-size:12px;color:#6B7280;margin:0 0 14px">
-      Insira sua chave da API Anthropic para obter uma análise automática dos dados carregados.
+      Insira sua chave de API para obter uma análise automática e inteligente dos dados carregados.
       A chave é salva <strong>apenas neste navegador</strong> (localStorage) para sua conveniência — nunca enviada a servidores próprios. Use "Limpar" para removê-la.
     </p>
     <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
@@ -2229,7 +2229,7 @@ function _markdownParaHTML(md) {
 
 async function analisarComClaude(btn) {
   const apiKey = (document.getElementById('claude-api-key').value || '').trim();
-  if (!apiKey) { alert('Insira sua chave da API Anthropic.'); return; }
+  if (!apiKey) { alert('Insira sua chave de API.'); return; }
   if (!_ultimosKpis) { alert('Carregue e analise uma planilha primeiro.'); return; }
 
   const resultado = document.getElementById('claude-resultado');
@@ -2395,9 +2395,9 @@ if ('serviceWorker' in navigator) {
     </svg>
     <span style="font-size:13px;font-weight:700;color:#1A1A2E;letter-spacing:.2px;">Planilha Financeira Pro</span>
   </div>
-  <span style="display:inline-block;background:var(--navy);color:#fff;padding:4px 16px;border-radius:20px;font-size:11px;font-weight:600;letter-spacing:.4px;">Desenvolvido por Luan Guilherme Lourenço</span>
+  <span style="display:inline-block;background:var(--navy);color:#fff;padding:4px 16px;border-radius:20px;font-size:11px;font-weight:600;letter-spacing:.4px;">&copy; 2025 Luan Guilherme Lourenço &mdash; Todos os direitos reservados</span>
   <br>
-  <span style="font-size:10px;color:#94A3B8;margin-top:6px;display:inline-block;">&copy; 2025 Luan Guilherme Lourenço &mdash; Análise autônoma de planilhas financeiras</span>
+  <span style="font-size:10px;color:#94A3B8;margin-top:6px;display:inline-block;">Planilha Financeira Pro &mdash; Análise autônoma de planilhas financeiras</span>
 </div>
 
 </body>
