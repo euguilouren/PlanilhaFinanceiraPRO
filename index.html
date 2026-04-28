@@ -189,6 +189,12 @@ function toDate(v) {
     if (d.getDate() !== +br[1] || d.getMonth() !== +br[2]-1) return null;
     return d;
   }
+  // YYYY-MM-DD — parse as local to avoid UTC midnight → day-1 in UTC-3
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) {
+    const d = new Date(+iso[1], +iso[2]-1, +iso[3]);
+    return isNaN(d) ? null : d;
+  }
   const d = new Date(s);
   return isNaN(d) ? null : d;
 }
@@ -852,6 +858,7 @@ body{font-family:'Inter',Arial,sans-serif;font-size:13.5px;background:#E8EDF4;
 }
 .kpi.critico{border-top-color:#C00000}
 .kpi.ok{border-top-color:var(--verde)}
+.kpi.gold{border-top-color:var(--gold)}
 .kpi .lbl{font-size:10.5px;color:var(--text-3);text-transform:uppercase;letter-spacing:.7px;font-weight:700}
 .kpi .val{font-size:clamp(22px,2.6vw,34px);font-weight:800;color:var(--azul);
   margin:7px 0 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
@@ -1313,7 +1320,6 @@ const esc = v => String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').repl
 // ESTADO GLOBAL
 // ══════════════════════════════════════════════════════
 let _dadosOriginais = [];
-let _dadosFiltrados = [];
 let _headers        = [];
 let _cols           = {};
 let _nomeArquivo    = '';
@@ -1459,7 +1465,6 @@ function carregarArquivo(file) {
           });
       }
       _dadosOriginais  = dados;
-      _dadosFiltrados  = dados;
       _headers         = headers;
       _cols            = detectarColunas(headers);
       _erpDetectado    = detectarERP(headers);
@@ -1692,22 +1697,22 @@ function renderKPIs(k) {
     <div class="kpi ok">
       <svg class="kpi-icon" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
       <div class="lbl">Receitas</div>
-      <div id="kpi-receita" class="val ok" style="font-size:18px">${fmtBRL(k.receita)}</div>
+      <div id="kpi-receita" class="val ok">${fmtBRL(k.receita)}</div>
       <div class="sub">${k.nfRec} NFs vendidas</div></div>
     <div class="kpi critico">
       <svg class="kpi-icon" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></svg>
       <div class="lbl">Despesas</div>
-      <div id="kpi-despesa" class="val critico" style="font-size:18px">${fmtBRL(k.despesa)}</div>
+      <div id="kpi-despesa" class="val critico">${fmtBRL(k.despesa)}</div>
       <div class="sub">${k.nfDesp} NFs recebidas</div></div>
     <div class="kpi gold">
       <svg class="kpi-icon" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
       <div class="lbl">Resultado Líquido</div>
-      <div id="kpi-resultado" class="val" style="font-size:18px;color:${corRes}">${fmtBRL(k.resultado)}</div>
+      <div id="kpi-resultado" class="val" style="color:${corRes}">${fmtBRL(k.resultado)}</div>
       <div class="sub">Margem: ${margem}%</div></div>
     <div class="kpi">
       <svg class="kpi-icon" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
       <div class="lbl">Ticket Médio (Rec.)</div>
-      <div id="kpi-ticket" class="val" style="font-size:18px">${fmtBRL(k.ticket)}</div>
+      <div id="kpi-ticket" class="val">${fmtBRL(k.ticket)}</div>
       <div class="sub">por NF de receita</div></div>
     <div class="kpi">
       <svg class="kpi-icon" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
