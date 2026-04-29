@@ -710,6 +710,50 @@ function calcularKPIsComparativo(kpisA, kpisB) {
 // Exportar para uso no app.js
 // (module.exports removido para uso direto no navegador)
 
+// ══════════════════════════════════════════════════════
+// OFX — PARSER DE EXTRATO BANCÁRIO (SGML e XML)
+// ══════════════════════════════════════════════════════
+
+function parseOFX(text) {
+  const idx = text.toUpperCase().indexOf('<OFX>');
+  if (idx === -1) throw new Error('Arquivo OFX inválido: bloco <OFX> não encontrado.');
+  const body = text.slice(idx);
+
+  // Extrai blocos <STMTTRN>…</STMTTRN> — presente em SGML e XML
+  const blocos = [...body.matchAll(/<STMTTRN>([\s\S]*?)<\/STMTTRN>/gi)].map(m => m[1]);
+  if (!blocos.length) throw new Error('Nenhuma transação encontrada no arquivo OFX.');
+
+  // Extrai valor do campo: funciona com tags sem fechamento (SGML) e com (XML)
+  function campo(bloco, tag) {
+    const m = new RegExp(`<${tag}>([^<\\r\\n]*)`, 'i').exec(bloco);
+    return m ? m[1].trim() : '';
+  }
+
+  // YYYYMMDD[HHMMSS[tz]] → DD/MM/YYYY
+  function parseDt(dt) {
+    const s = dt.replace(/[^\d].*/, '').slice(0, 8);
+    return s.length === 8 ? `${s.slice(6)}/${s.slice(4,6)}/${s.slice(0,4)}` : '';
+  }
+
+  const TIPO_MAP = {
+    CREDIT:'CRÉDITO', DEP:'CRÉDITO', INT:'CRÉDITO', DIV:'CRÉDITO',
+    DEBIT:'DÉBITO',   ATM:'DÉBITO',  POS:'DÉBITO',  PAYMENT:'DÉBITO', CHECK:'DÉBITO', FEE:'DÉBITO',
+    XFER:'TRANSFERÊNCIA',
+  };
+
+  const dados = blocos.map(b => {
+    const data  = parseDt(campo(b, 'DTPOSTED'));
+    const valor = parseFloat((campo(b, 'TRNAMT') || '0').replace(',', '.')) || 0;
+    const descr = (campo(b, 'MEMO') || campo(b, 'NAME') || '')
+                    .replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>');
+    const id    = campo(b, 'FITID');
+    const tipo  = TIPO_MAP[(campo(b, 'TRNTYPE') || '').toUpperCase()] || campo(b, 'TRNTYPE');
+    return { 'Data': data, 'Vencimento': data, 'Valor': valor, 'Descrição': descr, 'ID': id, 'Tipo': tipo };
+  });
+
+  return { headers: ['Data', 'Vencimento', 'Valor', 'Descrição', 'ID', 'Tipo'], dados };
+}
+
 </script>
 <style>
 :root{
@@ -1143,7 +1187,7 @@ tr:hover td{background:#EEF4FF;transition:background .15s}
     <div>
       <h1>Planilha Financeira Pro</h1>
       <div class="sub">Análise autônoma de planilhas — 100% no navegador, sem upload</div>
-      <div style="font-size:11px;opacity:0.75;margin-top:2px;letter-spacing:.3px;">por <strong style="color:#C9A84C">Luan Guilherme Lourenço</strong></div>
+      <div style="font-size:11px;opacity:0.75;margin-top:2px;letter-spacing:.3px;">&copy; 2025 <strong style="color:#C9A84C">Luan Guilherme Lourenço</strong> &mdash; Todos os direitos reservados</div>
     </div>
   </div>
   <div style="display:flex;align-items:center;gap:12px">
@@ -1173,15 +1217,15 @@ tr:hover td{background:#EEF4FF;transition:background .15s}
       </svg>
     </div>
     <p class="upload-title">Arraste sua planilha aqui</p>
-    <p class="upload-sub">Excel (.xlsx, .xls) ou CSV — processado 100% no seu navegador</p>
-    <p style="font-size:10px;color:#94A3B8;margin-top:-4px;margin-bottom:8px;">Desenvolvido por <strong style="color:#64748B">Luan Guilherme Lourenço</strong></p>
+    <p class="upload-sub">Excel (.xlsx, .xls), CSV ou OFX (extrato bancário) — processado 100% no seu navegador</p>
+    <p style="font-size:10px;color:#94A3B8;margin-top:-4px;margin-bottom:8px;">&copy; 2025 <strong style="color:#64748B">Luan Guilherme Lourenço</strong> &mdash; Todos os direitos reservados</p>
     <button class="btn-upload" onclick="document.getElementById('file-input').click()">
       Selecionar arquivo
     </button>
     <button class="btn-upload btn-template" onclick="baixarTemplate()">
       ↓ Baixar Template Padrão
     </button>
-    <input type="file" id="file-input" accept=".xlsx,.xls,.csv,.xlsm">
+    <input type="file" id="file-input" accept=".xlsx,.xls,.csv,.xlsm,.ofx">
   </div>
 
   <div class="col-config" id="col-config" style="display:none">
@@ -1310,11 +1354,11 @@ tr:hover td{background:#EEF4FF;transition:background .15s}
     <div class="chart-box-sm"><canvas id="chart-comparativo"></canvas></div>
   </div>
 
-  <!-- Painel Claude AI -->
+  <!-- Painel IA -->
   <div class="card" id="card-claude" style="display:none;border:2px solid #C4B5FD">
-    <h2 style="color:#5B21B6">Análise com Claude — IA</h2>
+    <h2 style="color:#5B21B6">Análise com Inteligência Artificial</h2>
     <p style="font-size:12px;color:#6B7280;margin:0 0 14px">
-      Insira sua chave da API Anthropic para obter uma análise automática dos dados carregados.
+      Insira sua chave de API para obter uma análise automática e inteligente dos dados carregados.
       A chave é salva <strong>apenas neste navegador</strong> (localStorage) para sua conveniência — nunca enviada a servidores próprios. Use "Limpar" para removê-la.
     </p>
     <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
@@ -1453,7 +1497,10 @@ function carregarArquivo(file) {
   reader.onload = e => {
     try {
       let dados, headers;
-      if (file.name.toLowerCase().match(/\.(csv|tsv)$/)) {
+      if (file.name.toLowerCase().endsWith('.ofx')) {
+        ({ headers, dados } = parseOFX(e.target.result));
+        if (!dados.length) throw new Error('Nenhuma transação encontrada no arquivo OFX.');
+      } else if (file.name.toLowerCase().match(/\.(csv|tsv)$/)) {
         const txt   = e.target.result;
         const sep   = file.name.toLowerCase().endsWith('.tsv') ? '\t' : undefined;
         const wb    = XLSX.read(txt, { type:'string', raw:false, FS: sep });
@@ -1522,7 +1569,9 @@ function carregarArquivo(file) {
     }
   };
   reader.onerror = () => { mostrarLoader(false); alert('Erro ao ler o arquivo. Verifique se ele não está aberto em outro programa.'); };
-  if (file.name.toLowerCase().endsWith('.csv') || file.name.toLowerCase().endsWith('.tsv'))
+  if (file.name.toLowerCase().endsWith('.ofx'))
+    reader.readAsText(file, 'windows-1252');
+  else if (file.name.toLowerCase().endsWith('.csv') || file.name.toLowerCase().endsWith('.tsv'))
     reader.readAsText(file, 'utf-8');
   else
     reader.readAsArrayBuffer(file);
@@ -1534,7 +1583,7 @@ function carregarArquivo(file) {
 function abrirComparativo() {
   const inp = document.createElement('input');
   inp.type = 'file';
-  inp.accept = '.xlsx,.xls,.csv,.xlsm';
+  inp.accept = '.xlsx,.xls,.csv,.xlsm,.ofx';
   inp.onchange = e => { if (e.target.files[0]) carregarArquivoComparativo(e.target.files[0]); };
   inp.click();
 }
@@ -1547,7 +1596,10 @@ function carregarArquivoComparativo(file) {
   reader.onload = e => {
     try {
       let dados, headers;
-      if (file.name.toLowerCase().match(/\.(csv|tsv)$/)) {
+      if (file.name.toLowerCase().endsWith('.ofx')) {
+        ({ headers, dados } = parseOFX(e.target.result));
+        if (!dados.length) throw new Error('Nenhuma transação encontrada no arquivo OFX comparativo.');
+      } else if (file.name.toLowerCase().match(/\.(csv|tsv)$/)) {
         const sep = file.name.toLowerCase().endsWith('.tsv') ? '\t' : undefined;
         const wb  = XLSX.read(e.target.result, { type:'string', raw:false, FS: sep });
         const ws  = wb.Sheets[wb.SheetNames[0]];
@@ -1590,7 +1642,9 @@ function carregarArquivoComparativo(file) {
     }
   };
   reader.onerror = () => { mostrarLoader(false); alert('Erro ao ler o arquivo comparativo. Verifique se ele não está aberto em outro programa.'); };
-  if (file.name.toLowerCase().endsWith('.csv') || file.name.toLowerCase().endsWith('.tsv'))
+  if (file.name.toLowerCase().endsWith('.ofx'))
+    reader.readAsText(file, 'windows-1252');
+  else if (file.name.toLowerCase().endsWith('.csv') || file.name.toLowerCase().endsWith('.tsv'))
     reader.readAsText(file, 'utf-8');
   else reader.readAsArrayBuffer(file);
 }
@@ -2256,7 +2310,7 @@ function _markdownParaHTML(md) {
 
 async function analisarComClaude(btn) {
   const apiKey = (document.getElementById('claude-api-key').value || '').trim();
-  if (!apiKey) { alert('Insira sua chave da API Anthropic.'); return; }
+  if (!apiKey) { alert('Insira sua chave de API.'); return; }
   if (!_ultimosKpis) { alert('Carregue e analise uma planilha primeiro.'); return; }
 
   const resultado = document.getElementById('claude-resultado');
@@ -2424,9 +2478,9 @@ if ('serviceWorker' in navigator) {
     </svg>
     <span style="font-size:13px;font-weight:700;color:#1A1A2E;letter-spacing:.2px;">Planilha Financeira Pro</span>
   </div>
-  <span style="display:inline-block;background:var(--navy);color:#fff;padding:4px 16px;border-radius:20px;font-size:11px;font-weight:600;letter-spacing:.4px;">Desenvolvido por Luan Guilherme Lourenço</span>
+  <span style="display:inline-block;background:var(--navy);color:#fff;padding:4px 16px;border-radius:20px;font-size:11px;font-weight:600;letter-spacing:.4px;">&copy; 2025 Luan Guilherme Lourenço &mdash; Todos os direitos reservados</span>
   <br>
-  <span style="font-size:10px;color:#94A3B8;margin-top:6px;display:inline-block;">&copy; 2025 Luan Guilherme Lourenço &mdash; Análise autônoma de planilhas financeiras</span>
+  <span style="font-size:10px;color:#94A3B8;margin-top:6px;display:inline-block;">Planilha Financeira Pro &mdash; Análise autônoma de planilhas financeiras</span>
 </div>
 
 </body>
