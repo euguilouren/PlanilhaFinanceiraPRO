@@ -7,7 +7,7 @@ import numpy as np
 from pathlib import Path
 
 from toolkit_financeiro import (
-    Leitor, AnalistaFinanceiro,
+    Leitor, AnalistaFinanceiro, Auditor,
     Conciliador, Util, PrestadorContas, MontadorPlanilha,
     Normalizador, validar_config, Status,
 )
@@ -594,3 +594,192 @@ class TestOFXEdgeCases:
         p.write_bytes(content.encode('windows-1252'))
         df = Leitor.ler_ofx(str(p))
         assert len(df) == 1
+
+
+# ── validar_config ────────────────────────────────────────────────
+
+class TestValidarConfig:
+    def test_indicador_negativo_gera_aviso(self):
+        from toolkit_financeiro import validar_config
+        cfg = {
+            'pastas': {'entrada': 'x', 'saida': 'y'},
+            'colunas': {'valor': 'Valor'},
+            'auditoria': {}, 'indicadores': {'liquidez_corrente_min': -1},
+            'aging': {}, 'email': {'ativo': False}, 'relatorio': {},
+        }
+        avisos = validar_config(cfg)
+        assert any('liquidez_corrente_min' in a for a in avisos)
+
+    def test_indicador_nao_numerico_gera_aviso(self):
+        from toolkit_financeiro import validar_config
+        cfg = {
+            'pastas': {'entrada': 'x', 'saida': 'y'},
+            'colunas': {'valor': 'Valor'},
+            'auditoria': {}, 'indicadores': {'margem_liquida_min': 'alto'},
+            'aging': {}, 'email': {'ativo': False}, 'relatorio': {},
+        }
+        avisos = validar_config(cfg)
+        assert any('margem_liquida_min' in a for a in avisos)
+
+    def test_email_ativo_sem_smtp_gera_aviso(self):
+        from toolkit_financeiro import validar_config
+        cfg = {
+            'pastas': {'entrada': 'x', 'saida': 'y'},
+            'colunas': {'valor': 'Valor'},
+            'auditoria': {}, 'indicadores': {},
+            'aging': {}, 'relatorio': {},
+            'email': {'ativo': True, 'remetente': 'a@b.com', 'destinatarios': ['b@c.com']},
+        }
+        avisos = validar_config(cfg)
+        assert any('smtp_servidor' in a for a in avisos)
+
+    def test_email_destinatario_invalido_gera_aviso(self):
+        from toolkit_financeiro import validar_config
+        cfg = {
+            'pastas': {'entrada': 'x', 'saida': 'y'},
+            'colunas': {'valor': 'Valor'},
+            'auditoria': {}, 'indicadores': {},
+            'aging': {}, 'relatorio': {},
+            'email': {
+                'ativo': True, 'smtp_servidor': 's', 'remetente': 'a@b.com',
+                'destinatarios': ['nao_e_email'],
+            },
+        }
+        avisos = validar_config(cfg)
+        assert any('nao_e_email' in a for a in avisos)
+
+
+# ── Auditor branches ──────────────────────────────────────────────
+
+class TestAuditorBranches:
+    def test_detectar_campos_vazios_coluna_ausente(self):
+        df = pd.DataFrame({'NF': ['001'], 'Valor': [100.0]})
+        result = Auditor.detectar_campos_vazios(df, ['NF', 'Categoria_Inexistente'])
+        tipos = [r['tipo'] for r in result]
+        assert 'COLUNA_AUSENTE' in tipos
+
+    def test_detectar_classificacao_errada_receita_negativa(self):
+        df = pd.DataFrame({
+            'Tipo': ['RECEITA', 'DESPESA'],
+            'Valor': [-500.0, -200.0],
+        })
+        result = Auditor.detectar_classificacao_errada(df, 'Valor', 'Tipo')
+        assert len(result) == 1
+        assert result[0]['tipo'] == 'CLASSIFICAÇÃO_ERRADA'
+
+    def test_detectar_classificacao_errada_sem_colunas_retorna_vazio(self):
+        df = pd.DataFrame({'NF': ['001']})
+        result = Auditor.detectar_classificacao_errada(df, 'Valor', 'Tipo')
+        assert result == []
+
+
+# ── Verificador ───────────────────────────────────────────────────
+
+class TestVerificador:
+    def test_verificar_formulas_planilha(self, tmp_path):
+        from toolkit_financeiro import Verificador
+        import openpyxl
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws['A1'] = 'TOTAL'
+        ws['B1'] = 1000
+        ws['A2'] = 'Receita'
+        ws['B2'] = '=SUM(B3:B5)'
+        path = str(tmp_path / 'test.xlsx')
+        wb.save(path)
+        result = Verificador.verificar_formulas_planilha(path)
+        assert 'abas_verificadas' in result
+        assert len(result['abas_verificadas']) >= 1
+
+    def test_verificar_atualizacao_ok(self):
+        from toolkit_financeiro import Verificador
+        df_orig = pd.DataFrame({'Valor': [100.0, 200.0], 'NF': ['001', '002']})
+        df_novo = pd.DataFrame({'Valor': [300.0], 'NF': ['003']})
+        df_res  = pd.DataFrame({'Valor': [100.0, 200.0, 300.0], 'NF': ['001', '002', '003']})
+        result = Verificador.verificar_atualizacao(df_orig, df_novo, df_res, 'Valor', ['NF'])
+        assert result['status'] == 'OK'
+
+    def test_verificar_atualizacao_divergencia(self):
+        from toolkit_financeiro import Verificador
+        df_orig = pd.DataFrame({'Valor': [100.0], 'NF': ['001']})
+        df_novo = pd.DataFrame({'Valor': [200.0], 'NF': ['002']})
+        df_res  = pd.DataFrame({'Valor': [100.0], 'NF': ['001']})  # faltando 200.0
+        result = Verificador.verificar_atualizacao(df_orig, df_novo, df_res, 'Valor', ['NF'])
+        tipos = [a['tipo'] for a in result['alertas']]
+        assert 'SOMA_ATUALIZACAO_DIVERGENTE' in tipos
+
+    def test_relatorio_verificacao_ok(self):
+        from toolkit_financeiro import Verificador
+        from toolkit_financeiro import Status
+        v = [{'status': Status.OK, 'descricao': 'Teste OK', 'alertas': []}]
+        txt = Verificador.relatorio_verificacao(v)
+        assert 'INTEGRIDADE CONFIRMADA' in txt
+
+    def test_relatorio_verificacao_com_alertas(self):
+        from toolkit_financeiro import Verificador, Status
+        v = [{
+            'status': 'FALHA', 'descricao': 'Conciliação',
+            'alertas': [{'severidade': Status.CRITICA, 'mensagem': 'Divergência'}],
+        }]
+        txt = Verificador.relatorio_verificacao(v)
+        assert 'ALERTA' in txt
+        assert 'Divergência' in txt
+
+
+# ── PipelineFinanceiro ────────────────────────────────────────────
+
+class TestPipelineFinanceiro:
+    def _make_xlsx(self, tmp_path):
+        import openpyxl
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = 'Dados'
+        ws.append(['NF', 'Data', 'Valor', 'Categoria', 'Cliente'])
+        ws.append(['001', '2024-01-01', 1000.0, 'RECEITA', 'Alfa'])
+        ws.append(['002', '2024-01-15', -200.0, 'DESPESA OPERACIONAL', 'Beta'])
+        ws.append(['003', '2024-02-01', 500.0, 'RECEITA', 'Gamma'])
+        path = str(tmp_path / 'pipeline.xlsx')
+        wb.save(path)
+        return path
+
+    def test_pipeline_diagnostico(self, tmp_path):
+        from toolkit_financeiro import PipelineFinanceiro
+        path = self._make_xlsx(tmp_path)
+        p = PipelineFinanceiro(path)
+        diag = p.executar_diagnostico()
+        assert isinstance(diag, str)
+        assert 'pipeline.xlsx' in diag
+
+    def test_pipeline_auditoria(self, tmp_path):
+        from toolkit_financeiro import PipelineFinanceiro
+        path = self._make_xlsx(tmp_path)
+        p = PipelineFinanceiro(path)
+        df_audit = p.executar_auditoria(colunas_chave=['NF'], col_valor='Valor')
+        assert isinstance(df_audit, pd.DataFrame)
+
+    def test_pipeline_analise_financeira(self, tmp_path):
+        from toolkit_financeiro import PipelineFinanceiro
+        path = self._make_xlsx(tmp_path)
+        p = PipelineFinanceiro(path)
+        dre = p.executar_analise_financeira('Categoria', 'Valor')
+        assert 'Linha_DRE' in dre.columns
+
+    def test_pipeline_analise_comercial(self, tmp_path):
+        from toolkit_financeiro import PipelineFinanceiro
+        path = self._make_xlsx(tmp_path)
+        p = PipelineFinanceiro(path)
+        res = p.executar_analise_comercial('Cliente', 'Valor')
+        assert 'pareto' in res
+        assert 'ticket_medio' in res
+
+    def test_pipeline_salvar(self, tmp_path):
+        from toolkit_financeiro import PipelineFinanceiro
+        path = self._make_xlsx(tmp_path)
+        p = PipelineFinanceiro(path)
+        dre = p.executar_analise_financeira('Categoria', 'Valor')
+        p.adicionar_aba_resultado('DRE', dre)
+        saida = str(tmp_path / 'resultado.xlsx')
+        caminho = p.salvar(saida)
+        assert caminho == saida
+        import os
+        assert os.path.exists(saida)

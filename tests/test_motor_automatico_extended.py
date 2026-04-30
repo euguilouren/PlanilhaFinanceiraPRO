@@ -427,3 +427,272 @@ class TestValidarCaminho:
         p.write_text('a,b\n1,2\n')
         result = ProcessadorArquivo._validar_caminho_arquivo(str(p))
         assert result.suffix == '.csv'
+
+    def test_arquivo_muito_grande_levanta_value_error(self, tmp_path):
+        p = tmp_path / 'grande.csv'
+        p.write_text('a,b\n1,2\n')
+        with pytest.raises(ValueError, match='grande'):
+            ProcessadorArquivo._validar_caminho_arquivo(str(p), max_bytes=1)
+
+
+# ── AnalisadorClaudeAPI — branches faltando ───────────────────────
+
+class TestAnalisadorClaudeAPIBranches:
+    def _make_api(self, mock_anthropic):
+        with patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'key'}):
+            with patch.dict('sys.modules', {'anthropic': mock_anthropic}):
+                return AnalisadorClaudeAPI({'claude_api': {'ativo': True}})
+
+    def test_prompt_oserror_usa_padrao(self, tmp_path):
+        mock_anthropic = MagicMock()
+        mock_anthropic.Anthropic.return_value = MagicMock()
+        with patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'key'}):
+            with patch.dict('sys.modules', {'anthropic': mock_anthropic}):
+                api = AnalisadorClaudeAPI({
+                    'claude_api': {'ativo': True, 'prompt_sistema': '/nao/existe.md'}
+                })
+        assert 'analista' in api._system_prompt.lower()
+
+    def test_analisar_bloco_sem_tipo_text_retorna_vazio(self):
+        mock_anthropic = MagicMock()
+        mock_client = MagicMock()
+        bloco = MagicMock()
+        bloco.type = 'tool_use'
+        mock_client.messages.create.return_value.content = [bloco]
+        mock_anthropic.Anthropic.return_value = mock_client
+        with patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'key'}):
+            with patch.dict('sys.modules', {'anthropic': mock_anthropic}):
+                api = AnalisadorClaudeAPI({'claude_api': {'ativo': True}})
+                result = api.analisar('briefing')
+        assert result == ''
+
+    def test_analisar_rate_limit_retorna_vazio(self):
+        mock_anthropic = MagicMock()
+        mock_client = MagicMock()
+        mock_anthropic.AuthenticationError = type('AuthErr', (Exception,), {})
+        mock_anthropic.RateLimitError = type('RateErr', (Exception,), {})
+        mock_anthropic.APIConnectionError = type('ConnErr', (Exception,), {})
+        mock_anthropic.APIError = type('APIErr', (Exception,), {})
+        mock_client.messages.create.side_effect = mock_anthropic.RateLimitError('rate limit')
+        mock_anthropic.Anthropic.return_value = mock_client
+        with patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'key'}):
+            with patch.dict('sys.modules', {'anthropic': mock_anthropic}):
+                api = AnalisadorClaudeAPI({'claude_api': {'ativo': True}})
+                assert api.analisar('x') == ''
+
+    def test_analisar_connection_error_retorna_vazio(self):
+        mock_anthropic = MagicMock()
+        mock_client = MagicMock()
+        mock_anthropic.AuthenticationError = type('AuthErr', (Exception,), {})
+        mock_anthropic.RateLimitError = type('RateErr', (Exception,), {})
+        mock_anthropic.APIConnectionError = type('ConnErr', (Exception,), {})
+        mock_anthropic.APIError = type('APIErr', (Exception,), {})
+        mock_client.messages.create.side_effect = mock_anthropic.APIConnectionError('conn')
+        mock_anthropic.Anthropic.return_value = mock_client
+        with patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'key'}):
+            with patch.dict('sys.modules', {'anthropic': mock_anthropic}):
+                api = AnalisadorClaudeAPI({'claude_api': {'ativo': True}})
+                assert api.analisar('x') == ''
+
+    def test_analisar_api_error_retorna_vazio(self):
+        mock_anthropic = MagicMock()
+        mock_client = MagicMock()
+        mock_anthropic.AuthenticationError = type('AuthErr', (Exception,), {})
+        mock_anthropic.RateLimitError = type('RateErr', (Exception,), {})
+        mock_anthropic.APIConnectionError = type('ConnErr', (Exception,), {})
+        mock_anthropic.APIError = type('APIErr', (Exception,), {})
+        mock_client.messages.create.side_effect = mock_anthropic.APIError('err')
+        mock_anthropic.Anthropic.return_value = mock_client
+        with patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'key'}):
+            with patch.dict('sys.modules', {'anthropic': mock_anthropic}):
+                api = AnalisadorClaudeAPI({'claude_api': {'ativo': True}})
+                assert api.analisar('x') == ''
+
+
+# ── ProcessadorArquivo — exception paths ──────────────────────────
+
+class TestProcessadorExceptionPaths:
+    def test_empty_data_error_retorna_erro(self, cfg):
+        proc = ProcessadorArquivo(cfg)
+        with patch('motor_automatico.Leitor.ler_arquivo') as mock:
+            import pandas as _pd
+            mock.side_effect = _pd.errors.EmptyDataError('vazio')
+            res = proc.processar('/fake/dados.csv')
+        assert res['status'] == 'ERRO'
+
+    def test_runtime_error_retorna_erro(self, cfg):
+        proc = ProcessadorArquivo(cfg)
+        with patch('motor_automatico.Leitor.ler_arquivo') as mock:
+            mock.side_effect = RuntimeError('falha crítica')
+            res = proc.processar('/fake/dados.csv')
+        assert res['status'] == 'ERRO'
+
+    def test_normalizar_colunas_com_erp(self, cfg):
+        proc = ProcessadorArquivo(cfg)
+        df = pd.DataFrame({'DocNum': ['001'], 'CardName': ['Alfa'], 'DocTotal': [100.0]})
+        with patch('base_conhecimento.detectar_erp', return_value='SAP_B1'), \
+             patch('base_conhecimento.normalizar_colunas', return_value=df):
+            result = proc._normalizar_colunas(df)
+        assert isinstance(result, pd.DataFrame)
+
+    def test_calcular_aging_exception_retorna_none(self, cfg):
+        proc = ProcessadorArquivo(cfg)
+        df = pd.DataFrame({'Vencimento': ['2024-01-01'], 'Valor': [100.0]})
+        with patch('motor_automatico.AnalistaFinanceiro.calcular_aging',
+                   side_effect=ValueError('dados inválidos')):
+            result = proc._calcular_aging(df, 'Vencimento', 'Valor')
+        assert result is None
+
+    def test_construir_dre_exception_retorna_none(self, cfg):
+        proc = ProcessadorArquivo(cfg)
+        df = pd.DataFrame({'Categoria': [None], 'Valor': [None]})
+        with patch('motor_automatico.AnalistaFinanceiro.construir_dre', side_effect=KeyError('x')):
+            result = proc._construir_dre(df, 'Categoria', 'Valor')
+        assert result is None
+
+    def test_calcular_pareto_exception_retorna_none(self, cfg):
+        proc = ProcessadorArquivo(cfg)
+        df = pd.DataFrame({'Cliente': ['X'], 'Valor': [0.0]})
+        with patch('motor_automatico.AnalistaComercial.pareto', side_effect=ZeroDivisionError):
+            result = proc._calcular_pareto(df, 'Cliente', 'Valor')
+        assert result is None
+
+    def test_calcular_ticket_exception_retorna_none(self, cfg):
+        proc = ProcessadorArquivo(cfg)
+        df = pd.DataFrame({'Valor': [100.0]})
+        with patch('motor_automatico.AnalistaComercial.ticket_medio', side_effect=ValueError):
+            result = proc._calcular_ticket(df, 'Valor', 'Cliente')
+        assert result is None
+
+    def test_log_handler_nao_duplicado(self, cfg):
+        proc1 = ProcessadorArquivo(cfg)
+        proc2 = ProcessadorArquivo(cfg)
+        assert proc2._log_handler is None
+
+
+# ── _gerar_briefing — branches ────────────────────────────────────
+
+class TestGerarBriefing:
+    def test_briefing_com_problemas_formato(self, proc):
+        df = pd.DataFrame({'NF': ['001'], 'Valor': [100.0]})
+        df_audit = pd.DataFrame(columns=['Severidade', 'Tipo', 'Linha', 'Coluna', 'Descrição'])
+        diag = {
+            'arquivo': 'teste.csv', 'total_registros': 1,
+            'problemas_formato': [{'severidade': 'ALTA', 'descricao': 'Números como texto'}],
+        }
+        briefing = proc._gerar_briefing(df, diag, df_audit, None, None, None, None)
+        assert 'Números como texto' in briefing
+        assert 'ALTA' in briefing
+
+    def test_briefing_com_auditoria_problemas(self, proc):
+        df = pd.DataFrame({'NF': ['001'], 'Valor': [100.0]})
+        df_audit = pd.DataFrame([{
+            'Severidade': 'CRÍTICA', 'Tipo': 'DUPLICATA',
+            'Linha': 2, 'Coluna': 'NF', 'Descrição': 'Duplicata em NF',
+        }])
+        diag = {'arquivo': 'teste.csv', 'total_registros': 1, 'problemas_formato': []}
+        briefing = proc._gerar_briefing(df, diag, df_audit, None, None, None, None)
+        assert 'Duplicata em NF' in briefing
+        assert 'CRÍTICA' in briefing
+
+
+# ── _enviar_email — branches adicionais ──────────────────────────
+
+class TestEnviarEmailBranches:
+    def _cfg_email(self, senha=''):
+        return {
+            'ativo': True, 'smtp_servidor': 'smtp.test.com', 'smtp_porta': 587,
+            'remetente': 'a@b.com', 'senha': senha, 'destinatarios': ['d@b.com'],
+        }
+
+    def test_senha_vazia_nao_envia(self, cfg):
+        cfg['email'] = self._cfg_email(senha='')
+        proc = ProcessadorArquivo(cfg)
+        resultado = {'arquivo_origem': 'x.csv', 'total_problemas': 1, 'criticos': 1, 'timestamp': '20240101'}
+        df_audit = pd.DataFrame(columns=['Severidade', 'Tipo', 'Descrição'])
+        with patch('smtplib.SMTP') as mock_smtp, \
+             patch.dict('os.environ', {}, clear=True):
+            proc._enviar_email(resultado, df_audit)
+            mock_smtp.assert_not_called()
+
+    def test_email_com_criticos_monta_html(self, cfg):
+        cfg['email'] = self._cfg_email(senha='s')
+        proc = ProcessadorArquivo(cfg)
+        resultado = {'arquivo_origem': 'x.csv', 'total_problemas': 1, 'criticos': 1, 'timestamp': '20240101'}
+        df_audit = pd.DataFrame([{'Severidade': 'CRÍTICA', 'Tipo': 'DUPLICATA', 'Descrição': 'Dup'}])
+        chamadas = []
+        class FakeSMTP:
+            def __init__(self, *a, **kw): pass
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+            def starttls(self, **kw): pass
+            def login(self, *a): pass
+            def sendmail(self, *a): chamadas.append(True)
+        with patch('smtplib.SMTP', FakeSMTP), \
+             patch.dict('os.environ', {'EMAIL_SENHA': 's'}):
+            proc._enviar_email(resultado, df_audit)
+        assert chamadas
+
+    def test_smtp_auth_error_nao_rejeita(self, cfg):
+        import smtplib
+        cfg['email'] = self._cfg_email(senha='wrong')
+        proc = ProcessadorArquivo(cfg)
+        resultado = {'arquivo_origem': 'x.csv', 'total_problemas': 0, 'criticos': 0, 'timestamp': '20240101'}
+        df_audit = pd.DataFrame(columns=['Severidade', 'Tipo', 'Descrição'])
+        class FakeSMTP:
+            def __init__(self, *a, **kw): pass
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+            def starttls(self, **kw): pass
+            def login(self, *a): raise smtplib.SMTPAuthenticationError(535, b'Auth failed')
+            def sendmail(self, *a): pass
+        with patch('smtplib.SMTP', FakeSMTP), \
+             patch.dict('os.environ', {'EMAIL_SENHA': 'wrong'}):
+            proc._enviar_email(resultado, df_audit)
+
+    def test_email_config_incompleta_keyerror(self, cfg):
+        cfg['email'] = {'ativo': True, 'destinatarios': ['d@b.com']}
+        proc = ProcessadorArquivo(cfg)
+        resultado = {'arquivo_origem': 'x.csv', 'total_problemas': 0, 'criticos': 0, 'timestamp': '20240101'}
+        df_audit = pd.DataFrame(columns=['Severidade', 'Tipo', 'Descrição'])
+        with patch.dict('os.environ', {'EMAIL_SENHA': 'x'}):
+            proc._enviar_email(resultado, df_audit)
+
+
+# ── ObservadorPasta ───────────────────────────────────────────────
+
+class TestObservadorPasta:
+    def test_varrer_processa_arquivo_novo(self, cfg, tmp_path):
+        from motor_automatico import ObservadorPasta
+        pasta = tmp_path / 'entrada'
+        pasta.mkdir()
+        arq = pasta / 'dados.csv'
+        arq.write_text('NF,Valor\n001,100\n', encoding='utf-8')
+        proc = ProcessadorArquivo(cfg)
+        obs = ObservadorPasta(proc, str(pasta))
+        obs.varrer_uma_vez()
+        obs.varrer_uma_vez()
+        assert arq.name in obs._vistos
+
+    def test_varrer_nao_reprocessa_arquivo_visto(self, cfg, tmp_path):
+        from motor_automatico import ObservadorPasta
+        pasta = tmp_path / 'entrada'
+        pasta.mkdir()
+        arq = pasta / 'dados.csv'
+        arq.write_text('NF,Valor\n001,100\n', encoding='utf-8')
+        proc = ProcessadorArquivo(cfg)
+        obs = ObservadorPasta(proc, str(pasta))
+        obs.varrer_uma_vez()
+        obs.varrer_uma_vez()
+        contagem_inicial = len(obs._vistos)
+        obs.varrer_uma_vez()
+        assert len(obs._vistos) == contagem_inicial
+
+    def test_monitorar_para_no_keyboard_interrupt(self, cfg, tmp_path):
+        from motor_automatico import ObservadorPasta
+        pasta = tmp_path / 'entrada'
+        pasta.mkdir()
+        proc = ProcessadorArquivo(cfg)
+        obs = ObservadorPasta(proc, str(pasta))
+        with patch.object(obs, 'varrer_uma_vez', side_effect=KeyboardInterrupt):
+            obs.monitorar(intervalo=0)
