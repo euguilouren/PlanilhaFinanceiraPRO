@@ -683,8 +683,8 @@ class Conciliador:
         v2 = pd.to_numeric(df2[col_valor2], errors='coerce')
         v2_arr = v2.to_numpy(dtype=float, na_value=np.nan)
 
-        d1 = pd.to_datetime(df1[col_data1], errors='coerce', dayfirst=True) if col_data1 and col_data1 in df1.columns else pd.Series([pd.NaT] * len(df1))
-        d2 = pd.to_datetime(df2[col_data2], errors='coerce', dayfirst=True) if col_data2 and col_data2 in df2.columns else pd.Series([pd.NaT] * len(df2))
+        d1 = pd.to_datetime(df1[col_data1], errors='coerce', dayfirst=True, format='mixed') if col_data1 and col_data1 in df1.columns else pd.Series([pd.NaT] * len(df1))
+        d2 = pd.to_datetime(df2[col_data2], errors='coerce', dayfirst=True, format='mixed') if col_data2 and col_data2 in df2.columns else pd.Series([pd.NaT] * len(df2))
 
         matches = []
         matched_f2: set = set()
@@ -893,9 +893,11 @@ class AnalistaFinanceiro:
         col_categoria: str = None, freq: str = 'M',
     ) -> pd.DataFrame:
         df = df.copy()
-        df['_data']    = pd.to_datetime(df[col_data], errors='coerce', dayfirst=True)
+        df['_data']    = pd.to_datetime(df[col_data], errors='coerce', dayfirst=True, format='mixed')
         df['_valor']   = pd.to_numeric(df[col_valor], errors='coerce')
-        df['_periodo'] = df['_data'].dt.to_period(freq)
+        # to_period() usa aliases Period (M, Y), não os de DatetimeIndex (ME, YE)
+        _period_alias = {'ME': 'M', 'YE': 'Y', 'QE': 'Q', 'A': 'Y'}.get(freq.upper(), freq)
+        df['_periodo'] = df['_data'].dt.to_period(_period_alias)
 
         if col_categoria and col_categoria in df.columns:
             grupo = df.groupby([col_categoria, '_periodo']).agg(Total=('_valor', 'sum')).reset_index()
@@ -1019,7 +1021,7 @@ class AnalistaFinanceiro:
             return pd.DataFrame()
 
         df = df.copy()
-        df['_data'] = pd.to_datetime(df[col_data], errors='coerce', dayfirst=True)
+        df['_data'] = pd.to_datetime(df[col_data], errors='coerce', dayfirst=True, format='mixed')
         df['_valor'] = pd.to_numeric(df[col_valor], errors='coerce').fillna(0)
 
         # Mapear freq='A' para 'YE' (pandas ≥ 2.2 deprecou 'A')
