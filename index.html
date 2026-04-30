@@ -634,8 +634,10 @@ function renderFluxoPeriodo(dados, cols) {
       <button class="btn-sm btn-outline fluxo-tab" onclick="switchFluxo('A',this)">Anual</button>
     </div>
     <div id="fluxo-d" style="display:none">${tabD}</div>
-    <div id="fluxo-m" style="display:block">${tabM}</div>
+    <div id="fluxo-m" style="display:block">${tabM}<canvas id="chart-fluxo-m" height="180" style="margin-top:16px;max-width:100%"></canvas></div>
     <div id="fluxo-a" style="display:none">${tabA}</div>`;
+  const _linhasM = calcularFluxoPeriodo(dados, colData, colValor, colTipo, 'M');
+  requestAnimationFrame(() => _renderChartFluxoM(_linhasM));
 }
 
 // ── switch de tab fluxo ─
@@ -793,6 +795,19 @@ function parseOFX(text) {
   --warning:#9C5700;--warning-bg:#FFEB9C;
   --shadow-sm:0 1px 3px rgba(0,0,0,.1);
 }
+[data-theme="dark"]{
+  --bg:#0f172a;--text:#e2e8f0;--surface:#1e293b;--surface-2:#334155;
+  --border:#334155;--text-2:#94a3b8;--text-3:#64748b;
+  --azul:#2E75B6;--navy:#2E75B6;--navy-2:#3b82f6;--navy-3:#1d4ed8;
+}
+[data-theme="dark"] body{background:#0f172a;background-image:radial-gradient(circle,#1e293b 1px,transparent 1px);background-size:22px 22px}
+[data-theme="dark"] .card{background:var(--surface);border-color:var(--border)}
+[data-theme="dark"] .header{background:rgba(15,23,42,0.97)}
+[data-theme="dark"] table th{background:#1e3a5f}
+[data-theme="dark"] table tr:nth-child(even){background:#1e293b}
+[data-theme="dark"] table tr:hover{background:#334155}
+[data-theme="dark"] .kpi{background:var(--surface)}
+[data-theme="dark"] #upload-area{background:linear-gradient(155deg,#020b18 0%,#1e3a5f 50%,#071525 100%)}
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Inter',Arial,sans-serif;font-size:13.5px;background:#E8EDF4;
   background-image:radial-gradient(circle,#C8D4E3 1px,transparent 1px);
@@ -1297,6 +1312,12 @@ tr:hover td{background:#EEF4FF;transition:background .15s}
     <p style="font-size:11px;color:#888;margin-bottom:12px">
       Ajuste os mapeamentos de colunas se necessário:
     </p>
+    <div id="sel-aba-wrap" style="display:none;align-items:center;gap:8px;margin-bottom:14px;padding:10px 14px;background:var(--surface-2);border-radius:8px;border:1px solid var(--border)">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+      <span style="font-size:12px;font-weight:600;color:var(--text-2)">Aba do arquivo:</span>
+      <select id="sel-aba" onchange="_trocarAba(this.value)" style="font-size:12px;padding:5px 10px;border:1.5px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)"></select>
+      <span id="sel-aba-info" style="font-size:11px;color:var(--text-3)"></span>
+    </div>
     <div class="col-grid" id="col-selects"></div>
     <button class="btn-analisar" onclick="executarAnalise()">Analisar</button>
   </div>
@@ -1306,10 +1327,12 @@ tr:hover td{background:#EEF4FF;transition:background .15s}
 <div id="dashboard">
   <div class="toolbar">
     <span class="tag-arquivo" id="tag-arquivo">—</span>
+    <button class="btn-sm btn-outline" id="btn-darkmode" onclick="_toggleDarkMode()" title="Alternar tema claro/escuro" style="padding:5px 9px;font-size:15px">🌙</button>
     <button class="btn-sm" onclick="document.getElementById('upload-area').style.display='block';document.getElementById('dashboard').style.display='none';document.getElementById('col-config').style.display='none';_dashboardVisivel=false;document.getElementById('btn-comparar').style.display='none';const _cc=document.getElementById('card-comparativo');if(_cc)_cc.style.display='none';_atualizarStep(1)">
       Novo arquivo
     </button>
     <button class="btn-sm btn-outline btn-imprimir" onclick="window.print()">Imprimir</button>
+    <button class="btn-sm btn-outline" onclick="exportarCSV()">⬇ Exportar CSV</button>
     <button class="btn-sm btn-outline" onclick="exportarJSON()">Exportar JSON</button>
     <button class="btn-sm btn-outline" id="btn-comparar" style="display:none" onclick="abrirComparativo()">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
@@ -1374,7 +1397,7 @@ tr:hover td{background:#EEF4FF;transition:background .15s}
   </div>
 
   <!-- Dados brutos -->
-  <div class="card">
+  <div class="card" id="card-dados">
     <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex-shrink:0"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>Dados <span id="dados-info" style="font-size:11px;font-weight:normal;color:#888;text-transform:none"></span></h2>
     <div style="margin-bottom:10px">
       <div style="display:flex;align-items:center;gap:0">
@@ -1384,6 +1407,13 @@ tr:hover td{background:#EEF4FF;transition:background .15s}
           <button class="busca-clear" id="busca-clear" onclick="_limparBusca()" title="Limpar busca">✕</button>
         </div>
         <span class="busca-info" id="busca-info"></span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap" id="filtro-periodo-wrap">
+        <span style="font-size:12px;color:var(--text-2);font-weight:500">Período:</span>
+        <input type="date" id="filtro-de" onchange="filtrarTabela()" style="font-size:12px;padding:5px 8px;border:1.5px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)">
+        <span style="font-size:12px;color:var(--text-2)">até</span>
+        <input type="date" id="filtro-ate" onchange="filtrarTabela()" style="font-size:12px;padding:5px 8px;border:1.5px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)">
+        <button onclick="_limparFiltros()" style="font-size:11px;padding:4px 10px;border:1.5px solid var(--border);border-radius:6px;background:none;cursor:pointer;color:var(--text-2)">✕ Limpar</button>
       </div>
     </div>
     <div class="tbl-wrap"><table id="tabela-dados"><thead id="thead-dados"></thead><tbody id="tbody-dados"></tbody></table></div>
@@ -1454,6 +1484,12 @@ let _colsComparativos    = null;
 let _kpisComparativos    = null;
 let _nomeArquivoComp     = '';
 let _chartComparativo    = null;
+let _chartFluxoM         = null;
+let _sortCol = null;
+let _sortDir = 1;
+let _paginaAtual = 1;
+let _dadosVisivelArr = [];
+let _todasAbas = {};
 
 window.addEventListener('beforeinstallprompt', e => {
   e.preventDefault();
@@ -1506,6 +1542,25 @@ function _setLoaderStep(text) {
 }
 
 const _yield = () => new Promise(r => setTimeout(r, 0));
+
+// ── Dark Mode ───────────────────────────────────────────
+function _toggleDarkMode() {
+  const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+  document.documentElement.setAttribute('data-theme', dark ? '' : 'dark');
+  localStorage.setItem('pfp_theme', dark ? 'light' : 'dark');
+  const btn = document.getElementById('btn-darkmode');
+  if (btn) btn.textContent = dark ? '🌙' : '☀️';
+}
+(function(){
+  const t = localStorage.getItem('pfp_theme');
+  if (t === 'dark') {
+    document.documentElement.setAttribute('data-theme','dark');
+    window.addEventListener('DOMContentLoaded',()=>{
+      const b = document.getElementById('btn-darkmode');
+      if(b) b.textContent='☀️';
+    });
+  }
+})();
 
 function _atualizarStep(n) {
   [1,2,3].forEach(i => {
@@ -1640,6 +1695,40 @@ function carregarArquivo(file) {
             });
             return obj;
           });
+
+        // Multi-sheet: detectar e exibir seletor de abas
+        _todasAbas = {};
+        const _selAbaWrap = document.getElementById('sel-aba-wrap');
+        if (wb.SheetNames.length > 1) {
+          wb.SheetNames.forEach(sn => {
+            const wsi = wb.Sheets[sn];
+            if (!wsi || !wsi['!ref'] || wsi['!ref']==='A1') return;
+            const arri = XLSX.utils.sheet_to_json(wsi, { header:1, defval:'' });
+            if (!arri.length) return;
+            let hr = 0;
+            for (let i=0; i<Math.min(5,arri.length); i++) {
+              if (arri[i].filter(c=>c&&!String(c).startsWith('__EMPTY')).length >= 2) { hr=i; break; }
+            }
+            const rh = arri[hr].map(String);
+            const hh = rh.filter(h=>h&&!h.startsWith('__EMPTY'));
+            const dd = arri.slice(hr+1).filter(r=>r.some(c=>c!=='')).map(r => {
+              const o={}; rh.forEach((h,i)=>{ if(h&&!h.startsWith('__EMPTY')) o[h]=r[i]??''; }); return o;
+            });
+            if (hh.length && dd.length) _todasAbas[sn] = { headers: hh, dados: dd };
+          });
+          const _abasComDados = Object.keys(_todasAbas);
+          if (_abasComDados.length > 1 && _selAbaWrap) {
+            const _selAba = document.getElementById('sel-aba');
+            _selAba.innerHTML = _abasComDados.map(n=>`<option value="${esc(n)}"${n===abaReal?' selected':''}>${esc(n)}</option>`).join('');
+            _selAbaWrap.style.display = 'flex';
+            const _selAbaInfo = document.getElementById('sel-aba-info');
+            if (_selAbaInfo) _selAbaInfo.textContent = `${dados.length.toLocaleString('pt-BR')} registros`;
+          } else if (_selAbaWrap) {
+            _selAbaWrap.style.display = 'none';
+          }
+        } else if (_selAbaWrap) {
+          _selAbaWrap.style.display = 'none';
+        }
       }
       _dadosOriginais  = dados;
       _headers         = headers;
@@ -1660,6 +1749,8 @@ function carregarArquivo(file) {
       _atualizarStep(2);
       mostrarConfigColunas(headers, _cols, _erpDetectado);
       document.getElementById('header-info').textContent = `${file.name} — ${dados.length.toLocaleString('pt-BR')} registros`;
+      // Reset sort/filter on new file
+      _sortCol = null; _sortDir = 1; _paginaAtual = 1;
     } catch(err) {
       mostrarLoader(false);
       alert('Erro ao ler o arquivo: ' + err.message);
@@ -1751,6 +1842,17 @@ function carregarArquivoComparativo(file) {
 }
 
 // ══════════════════════════════════════════════════════
+function _trocarAba(nomeAba) {
+  const aba = _todasAbas[nomeAba];
+  if (!aba) return;
+  _dadosOriginais = aba.dados;
+  _headers = aba.headers;
+  const info = document.getElementById('sel-aba-info');
+  if (info) info.textContent = `${aba.dados.length.toLocaleString('pt-BR')} registros`;
+  const det = detectarColunas(_headers);
+  mostrarConfigColunas(_headers, det, null);
+}
+
 // CONFIG COLUNAS
 // ══════════════════════════════════════════════════════
 function mostrarConfigColunas(headers, cols, erpDetectado) {
@@ -2343,23 +2445,72 @@ function renderComparativo() {
 }
 
 // ══════════════════════════════════════════════════════
-// RENDER TABELA DE DADOS
+// RENDER TABELA DE DADOS (com paginação e ordenação)
 // ══════════════════════════════════════════════════════
-const MAX_ROWS_TABELA = 500;
+const _PAGINA_SIZE = 100;
+
 function renderTabela(dados, headers) {
-  document.getElementById('dados-info').textContent =
-    `${dados.length.toLocaleString('pt-BR')} registros${dados.length>MAX_ROWS_TABELA?' — mostrando primeiros '+MAX_ROWS_TABELA:''}`;
+  _dadosVisivelArr = dados;
+  const total = dados.length;
+  const totalPags = Math.max(1, Math.ceil(total / _PAGINA_SIZE));
+  if (_paginaAtual > totalPags) _paginaAtual = totalPags;
+  const slice = dados.slice((_paginaAtual-1)*_PAGINA_SIZE, _paginaAtual*_PAGINA_SIZE);
+
   const thead = document.getElementById('thead-dados');
-  const tbody = document.getElementById('tbody-dados');
-  thead.innerHTML = '<tr>' + headers.map(h=>`<th>${esc(h)}</th>`).join('') + '</tr>';
-  const slice = dados.slice(0, MAX_ROWS_TABELA);
+  const tbody  = document.getElementById('tbody-dados');
+  thead.innerHTML = '<tr>' + headers.map(h => {
+    const sorted = _sortCol === h;
+    const arrow  = sorted ? (_sortDir === 1 ? ' ▲' : ' ▼') : '';
+    return `<th style="cursor:pointer;user-select:none;white-space:nowrap" onclick="_ordenarTabela('${esc(h)}')" title="Clique para ordenar">${esc(h)}<span style="opacity:.5;font-size:10px">${arrow}</span></th>`;
+  }).join('') + '</tr>';
+
   if (!slice.length) {
     tbody.innerHTML = `<tr><td colspan="${headers.length}" style="text-align:center;color:var(--text-3);padding:24px;font-style:italic">Nenhum resultado encontrado.</td></tr>`;
-    return;
+  } else {
+    tbody.innerHTML = slice.map(row =>
+      '<tr>' + headers.map(h => `<td>${esc(row[h])}</td>`).join('') + '</tr>'
+    ).join('');
   }
-  tbody.innerHTML = slice.map(row =>
-    '<tr>' + headers.map(h => `<td>${esc(row[h])}</td>`).join('') + '</tr>'
-  ).join('');
+
+  // info + pagination
+  const inicio = total ? (_paginaAtual-1)*_PAGINA_SIZE+1 : 0;
+  const fim    = Math.min(_paginaAtual*_PAGINA_SIZE, total);
+  document.getElementById('dados-info').textContent =
+    total > _PAGINA_SIZE ? `${inicio}–${fim} de ${total.toLocaleString('pt-BR')} registros` : `${total.toLocaleString('pt-BR')} registros`;
+
+  let pagHtml = '';
+  if (totalPags > 1) {
+    pagHtml = `<div style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:12px;color:var(--text-2)">
+      <button class="btn-sm btn-outline" onclick="_irPagina(${_paginaAtual-1})" ${_paginaAtual===1?'disabled':''} style="padding:3px 10px">◀</button>
+      <span>Página <strong>${_paginaAtual}</strong> de ${totalPags}</span>
+      <button class="btn-sm btn-outline" onclick="_irPagina(${_paginaAtual+1})" ${_paginaAtual===totalPags?'disabled':''} style="padding:3px 10px">▶</button>
+    </div>`;
+  }
+  let pag = document.getElementById('tabela-paginacao');
+  if (!pag) { pag = document.createElement('div'); pag.id='tabela-paginacao'; document.getElementById('card-dados')?.appendChild(pag); }
+  pag.innerHTML = pagHtml;
+}
+
+function _irPagina(n) {
+  const total = _dadosVisivelArr.length;
+  const totalPags = Math.max(1, Math.ceil(total / _PAGINA_SIZE));
+  _paginaAtual = Math.max(1, Math.min(n, totalPags));
+  renderTabela(_dadosVisivelArr, _headers);
+  document.getElementById('card-dados')?.scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+function _ordenarTabela(col) {
+  if (_sortCol === col) _sortDir *= -1;
+  else { _sortCol = col; _sortDir = 1; }
+  _paginaAtual = 1;
+  const sorted = [..._dadosVisivelArr].sort((a, b) => {
+    const va = a[col] ?? '', vb = b[col] ?? '';
+    const na = parseFloat(String(va).replace(/[^\d.,\-]/g,'').replace(',','.'));
+    const nb = parseFloat(String(vb).replace(/[^\d.,\-]/g,'').replace(',','.'));
+    if (!isNaN(na) && !isNaN(nb)) return (na - nb) * _sortDir;
+    return String(va).localeCompare(String(vb), 'pt-BR') * _sortDir;
+  });
+  renderTabela(sorted, _headers);
 }
 
 let _buscaTimer = null;
@@ -2367,22 +2518,62 @@ function filtrarTabela() {
   const q = document.getElementById('busca').value;
   const clearBtn = document.getElementById('busca-clear');
   if (clearBtn) clearBtn.classList.toggle('show', q.length > 0);
+  _paginaAtual = 1;
   clearTimeout(_buscaTimer);
   _buscaTimer = setTimeout(_filtrarTabelaImediato, 200);
 }
 function _filtrarTabelaImediato() {
-  const q = document.getElementById('busca').value.toLowerCase();
-  if (!q) {
-    renderTabela(_dadosOriginais, _headers);
-    _atualizarContadorBusca(_dadosOriginais.length, _dadosOriginais.length);
-    return;
+  const q    = document.getElementById('busca').value.toLowerCase();
+  const de   = document.getElementById('filtro-de')?.value;
+  const ate  = document.getElementById('filtro-ate')?.value;
+  const colD = _cols.data || 'Data';
+
+  let filtrado = _dadosOriginais;
+
+  if (q) {
+    filtrado = filtrado.filter(row =>
+      _headers.some(h => String(row[h]??'').toLowerCase().includes(q))
+    );
   }
-  const filtrado = _dadosOriginais.filter(row =>
-    _headers.some(h => String(row[h]??'').toLowerCase().includes(q))
-  );
+  if (de || ate) {
+    filtrado = filtrado.filter(row => {
+      const raw = row[colD];
+      if (!raw) return false;
+      const d = _parseDataBR(String(raw));
+      if (!d) return false;
+      if (de  && d < de)  return false;
+      if (ate && d > ate) return false;
+      return true;
+    });
+  }
+
+  _sortCol = null; _sortDir = 1; _paginaAtual = 1;
   renderTabela(filtrado, _headers);
   _atualizarContadorBusca(filtrado.length, _dadosOriginais.length);
 }
+
+function _parseDataBR(s) {
+  // Converts DD/MM/YYYY or YYYY-MM-DD or Date object to YYYY-MM-DD string
+  if (!s) return null;
+  const m1 = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (m1) return `${m1[3]}-${m1[2]}-${m1[1]}`;
+  const m2 = s.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (m2) return m2[1];
+  return null;
+}
+
+function _limparFiltros() {
+  const de = document.getElementById('filtro-de');
+  const ate = document.getElementById('filtro-ate');
+  const busca = document.getElementById('busca');
+  if (de) de.value = '';
+  if (ate) ate.value = '';
+  if (busca) { busca.value = ''; const b = document.getElementById('busca-clear'); if(b) b.classList.remove('show'); }
+  _sortCol = null; _sortDir = 1; _paginaAtual = 1;
+  renderTabela(_dadosOriginais, _headers);
+  _atualizarContadorBusca(_dadosOriginais.length, _dadosOriginais.length);
+}
+
 function _limparBusca() {
   const input = document.getElementById('busca');
   input.value = '';
@@ -2638,6 +2829,44 @@ function baixarTemplate() {
   _toast('Template baixado! Preencha e importe aqui.');
 }
 
+function exportarCSV() {
+  const dados = (typeof _dadosVisivelArr !== 'undefined' && _dadosVisivelArr.length) ? _dadosVisivelArr : _dadosOriginais;
+  if (!dados.length) { _toast('Sem dados para exportar', 2500, 'aviso'); return; }
+  if (typeof XLSX === 'undefined') { _toast('SheetJS não carregado', 2500, 'erro'); return; }
+  const rows = [_headers, ...dados.map(r => _headers.map(h => r[h] ?? ''))];
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  const wb2 = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb2, ws, 'Dados');
+  XLSX.writeFile(wb2, (_nomeArquivo||'dados').replace(/\.[^.]+$/,'') + '_exportado.xlsx');
+  _toast(`${dados.length.toLocaleString('pt-BR')} registros exportados`, 3000, 'sucesso');
+}
+
+function _renderChartFluxoM(linhas) {
+  if (_chartFluxoM) { _chartFluxoM.destroy(); _chartFluxoM = null; }
+  const ctx = document.getElementById('chart-fluxo-m')?.getContext('2d');
+  if (!ctx || !linhas || !linhas.length) return;
+  _chartFluxoM = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: linhas.map(r => r.periodo),
+      datasets: [
+        { label:'Receita',  data:linhas.map(r=>r.receita),  backgroundColor:'rgba(0,97,0,.65)',  borderRadius:4, order:2 },
+        { label:'Despesa',  data:linhas.map(r=>r.despesa),  backgroundColor:'rgba(156,0,6,.65)', borderRadius:4, order:3 },
+        { label:'Resultado', type:'line', data:linhas.map(r=>r.resultado),
+          borderColor:'#2E75B6', borderWidth:2.5, pointRadius:4, pointBackgroundColor:'#2E75B6',
+          tension:0.3, fill:false, order:1 }
+      ]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:true,
+      plugins:{ legend:{ position:'top', labels:{ font:{size:11} } },
+        tooltip:{ callbacks:{ label: c => `${c.dataset.label}: ${fmtBRL(c.raw)}` } } },
+      scales:{ y:{ ticks:{ callback: v => 'R$ '+Number(v).toLocaleString('pt-BR'), font:{size:10} },
+        grid:{ color:'rgba(0,0,0,.06)' } } }
+    }
+  });
+}
+
 function exportarJSON() {
   if (!_dadosOriginais.length) { alert('Nenhum dado carregado para exportar.'); return; }
   const _par = _ultimoPareto ?? calcularPareto(_dadosOriginais, _cols.entidade, _cols.valor);
@@ -2660,6 +2889,59 @@ function exportarJSON() {
   document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
+
+function exportarCSV() {
+  const dados = _dadosVisivelArr.length ? _dadosVisivelArr : _dadosOriginais;
+  if (!dados.length) { _toast('Sem dados para exportar', 2500, 'aviso'); return; }
+  if (typeof XLSX === 'undefined') { _toast('SheetJS não carregado', 2500, 'erro'); return; }
+  const rows = [_headers, ...dados.map(r => _headers.map(h => r[h] ?? ''))];
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  const wb2 = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb2, ws, 'Dados');
+  XLSX.writeFile(wb2, (_nomeArquivo||'dados').replace(/\.[^.]+$/,'') + '_exportado.xlsx');
+  _toast(`${dados.length.toLocaleString('pt-BR')} registros exportados`, 3000, 'sucesso');
+}
+
+function _trocarAba(nomAba) {
+  const aba = _todasAbas[nomAba];
+  if (!aba) return;
+  _dadosOriginais = aba.dados;
+  _headers = aba.headers;
+  const info = document.getElementById('sel-aba-info');
+  if (info) info.textContent = `${aba.dados.length.toLocaleString('pt-BR')} registros`;
+  const det = detectarColunas(_headers);
+  mostrarConfigColunas(_headers, det, _erpDetectado);
+}
+
+// ── Atalhos de teclado ─────────────────────────────────
+document.addEventListener('keydown', e => {
+  const tag = document.activeElement?.tagName;
+  const isInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+  // / → focar busca
+  if (e.key === '/' && !isInput) {
+    e.preventDefault();
+    const b = document.getElementById('busca');
+    if (b && _dashboardVisivel) { b.focus(); b.select(); }
+  }
+  // Escape → limpar busca se focado
+  if (e.key === 'Escape') {
+    const busca = document.getElementById('busca');
+    if (document.activeElement === busca) { _limparBusca(); busca.blur(); }
+  }
+  // Enter na tela de configuração → executar análise
+  if (e.key === 'Enter' && !isInput) {
+    const cfg = document.getElementById('col-config');
+    if (cfg && cfg.style.display !== 'none') {
+      const btn = cfg.querySelector('button.btn-primary, button[onclick*="executarAnalise"]');
+      if (btn) btn.click();
+    }
+  }
+  // Alt+D → toggle dark mode
+  if (e.key === 'd' && e.altKey) {
+    e.preventDefault();
+    _toggleDarkMode();
+  }
+});
 
 // PWA — Service Worker
 if ('serviceWorker' in navigator) {
