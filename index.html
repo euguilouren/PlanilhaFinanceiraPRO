@@ -1742,6 +1742,7 @@ function carregarArquivo(file) {
       _nomeArquivoComp  = '';
       if (_chartAging)       { _chartAging.destroy();       _chartAging = null; }
       if (_chartComparativo) { _chartComparativo.destroy(); _chartComparativo = null; }
+      if (_chartFluxoM)      { _chartFluxoM.destroy();      _chartFluxoM = null; }
       const _ccReset = document.getElementById('card-comparativo');
       if (_ccReset) _ccReset.style.display = 'none';
       document.getElementById('btn-comparar').style.display = 'none';
