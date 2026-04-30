@@ -892,6 +892,13 @@ body{font-family:'Inter',Arial,sans-serif;font-size:13.5px;background:#E8EDF4;
   border-color:rgba(255,255,255,.7);
   box-shadow:0 4px 16px rgba(0,0,0,.2)
 }
+.hist-item{display:flex;align-items:center;gap:10px;padding:8px 14px;
+  background:rgba(255,255,255,.07);border-radius:8px;cursor:pointer;margin-bottom:6px;
+  border:1px solid rgba(255,255,255,.1);transition:.18s}
+.hist-item:hover{background:rgba(255,255,255,.13);border-color:rgba(255,255,255,.22)}
+.hist-item .hist-nome{flex:1;font-size:12px;font-weight:600;color:rgba(255,255,255,.85);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hist-item .hist-data{font-size:10px;color:rgba(255,255,255,.4);white-space:nowrap}
 .upload-steps{display:flex;align-items:center;gap:6px;justify-content:center;
   margin-top:22px;font-size:11px;color:rgba(255,255,255,.45);position:relative;z-index:1}
 .upload-steps .step-num{display:inline-flex;width:22px;height:22px;border-radius:50%;
@@ -921,6 +928,11 @@ body{font-family:'Inter',Arial,sans-serif;font-size:13.5px;background:#E8EDF4;
   border-radius:var(--radius-sm);font-size:12px;color:#333;background:#fff;
   font-family:inherit;outline:none}
 .col-group select:focus{border-color:var(--azul2)}
+.col-preview{font-size:10px;color:var(--text-3);margin-top:3px;min-height:14px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-style:italic}
+#tabela-dados th:first-child,#tabela-dados td:first-child{
+  position:sticky;left:0;z-index:2;background:var(--surface)}
+#tabela-dados thead th:first-child{z-index:3;background:var(--navy)}
 .btn-analisar{
   background:linear-gradient(135deg,#1F4E79,#2E75B6);
   color:#fff;border:none;border-radius:22px;
@@ -1155,6 +1167,28 @@ tr:hover td{background:#EEF4FF;transition:background .15s}
 ::-webkit-scrollbar-thumb:hover{background:#94A3B8}
 *{scrollbar-width:thin;scrollbar-color:#CBD5E1 transparent}
 /* ── Animações de entrada ── */
+/* ── Onboarding tour ── */
+#onboarding-overlay{position:fixed;inset:0;background:rgba(10,20,40,.82);z-index:9999;
+  display:flex;align-items:center;justify-content:center;animation:fadeIn .3s ease-out}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.onboarding-card{background:#fff;border-radius:18px;padding:36px 40px;max-width:460px;width:90%;
+  box-shadow:0 24px 80px rgba(0,0,0,.35);text-align:center;position:relative}
+[data-theme="dark"] .onboarding-card{background:#1e293b;color:#f1f5f9}
+.onboarding-steps-dots{display:flex;gap:7px;justify-content:center;margin-bottom:24px}
+.onboarding-dot{width:8px;height:8px;border-radius:50%;background:#e2e8f0;transition:.2s}
+.onboarding-dot.ativo{background:var(--azul);width:22px;border-radius:4px}
+.onboarding-icon{font-size:48px;margin-bottom:14px;line-height:1}
+.onboarding-titulo{font-size:20px;font-weight:800;color:var(--azul);margin-bottom:8px}
+.onboarding-texto{font-size:13.5px;color:#64748b;line-height:1.6;margin-bottom:26px}
+[data-theme="dark"] .onboarding-texto{color:#94a3b8}
+.onboarding-btn-row{display:flex;gap:10px;justify-content:center}
+.onboarding-btn{padding:10px 28px;border-radius:22px;font-size:13px;font-weight:700;
+  cursor:pointer;border:none;transition:.18s}
+.onboarding-btn-pular{background:transparent;color:#94a3b8;border:1.5px solid #e2e8f0;padding:10px 20px}
+.onboarding-btn-pular:hover{background:#f8fafc;color:#64748b}
+.onboarding-btn-prox{background:linear-gradient(135deg,#1F4E79,#2E75B6);color:#fff;
+  box-shadow:0 4px 16px rgba(31,78,121,.3)}
+.onboarding-btn-prox:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(31,78,121,.4)}
 @keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}
 .card-animate{animation:fadeUp .45s ease-out both}
 @keyframes floatIcon{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
@@ -1296,6 +1330,12 @@ tr:hover td{background:#EEF4FF;transition:background .15s}
     <input type="file" id="file-input" accept=".xlsx,.xls,.csv,.xlsm,.ofx">
   </div>
 
+  <!-- Histórico de arquivos recentes -->
+  <div id="historico-wrap" style="display:none;margin-top:18px;max-width:520px;margin-left:auto;margin-right:auto">
+    <div style="font-size:11px;font-weight:700;color:rgba(255,255,255,.55);text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px">Recentes</div>
+    <div id="historico-lista"></div>
+  </div>
+
   <div class="col-config" id="col-config" style="display:none">
     <h3>Configuração de Colunas</h3>
     <div class="erp-selector-wrap">
@@ -1365,7 +1405,10 @@ tr:hover td{background:#EEF4FF;transition:background .15s}
     <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">
       <div>
         <div class="score-label">Score Financeiro</div>
-        <div id="score-numero" class="score-numero">—</div>
+        <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+          <div id="score-numero" class="score-numero">—</div>
+          <div id="score-delta" style="display:none;font-size:13px;font-weight:700;padding:2px 9px;border-radius:12px"></div>
+        </div>
         <div id="score-classificacao" style="font-size:13px;font-weight:600;margin-top:2px">—</div>
       </div>
       <div style="flex:1;min-width:200px">
@@ -1460,7 +1503,7 @@ tr:hover td{background:#EEF4FF;transition:background .15s}
         onclick="analisarComClaude(this)">Analisar</button>
       <button title="Esquecer chave salva"
         style="background:#EDE9FE;color:#7C3AED;border:none;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:11px;font-weight:600"
-        onclick="sessionStorage.removeItem('_cak');document.getElementById('claude-api-key').value='';alert('Chave removida.')">Limpar</button>
+        onclick="sessionStorage.removeItem('_cak');document.getElementById('claude-api-key').value='';_toast('Chave de API removida',2500,'info')">Limpar</button>
     </div>
     <div id="claude-resultado" style="display:none">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
@@ -1755,6 +1798,7 @@ function carregarArquivo(file) {
       _headers         = headers;
       _cols            = detectarColunas(headers);
       _erpDetectado    = detectarERP(headers);
+      _salvarHistorico(_nomeArquivo, dados.length);
       _auditConfirmados.clear();
       _ultimosKpis = _ultimaAuditoria = _ultimoAging = _ultimoDre = _ultimoPareto = null;
       _ultimaAnaliseClaude = '';
@@ -1914,10 +1958,22 @@ function mostrarConfigColunas(headers, cols, erpDetectado) {
       `<option value="${esc(h)}" ${cols[tipo]===h?'selected':''}>${esc(h)}</option>`
     ).join('');
     div.innerHTML = `<label>${label}</label>
-      <select id="sel-${tipo}"><option value="">(nenhuma)</option>${sel}</select>`;
+      <select id="sel-${tipo}" onchange="_atualizarPreview('${tipo}')"><option value="">(nenhuma)</option>${sel}</select>
+      <div id="prev-${tipo}" class="col-preview"></div>`;
     grid.appendChild(div);
+    if (cols[tipo]) setTimeout(() => _atualizarPreview(tipo), 0);
   }
   document.getElementById('col-config').style.display = 'block';
+}
+
+function _atualizarPreview(tipo) {
+  const sel  = document.getElementById(`sel-${tipo}`);
+  const prev = document.getElementById(`prev-${tipo}`);
+  if (!sel || !prev) return;
+  const col = sel.value;
+  if (!col || !_dadosOriginais.length) { prev.textContent = ''; return; }
+  const amostras = _dadosOriginais.slice(0,3).map(r => String(r[col]??'—')).filter(v=>v&&v!=='—');
+  prev.textContent = amostras.length ? `ex: ${amostras.join(' · ')}` : '';
 }
 
 function aplicarMapeamentoERP(erpKey) {
@@ -2017,7 +2073,7 @@ async function executarAnalise() {
       _atualizarStep(3);
       _toast(`${_dadosOriginais.length.toLocaleString('pt-BR')} registros analisados com sucesso`, 3500, 'sucesso');
     } catch(err) {
-      alert('Erro na análise: ' + err.message);
+      _mostrarErro('Erro na análise: ' + err.message);
       document.getElementById('upload-area').style.display = 'block';
       document.getElementById('dashboard').style.display   = 'none';
       _atualizarStep(2);
@@ -2084,6 +2140,8 @@ function renderKPIs(k) {
 // ══════════════════════════════════════════════════════
 // RENDER SCORE FINANCEIRO
 // ══════════════════════════════════════════════════════
+let _scoreAnterior = null;
+
 function renderScoreFinanceiro(s) {
   const card = document.getElementById('card-score');
   if (!card) return;
@@ -2100,6 +2158,24 @@ function renderScoreFinanceiro(s) {
   barra.style.width = '0%';
   requestAnimationFrame(() => { barra.style.width = s.score + '%'; });
   _animarContador(numEl, s.score, 'num', 600);
+
+  // Delta vs análise anterior
+  const deltaEl = document.getElementById('score-delta');
+  if (deltaEl && _scoreAnterior !== null) {
+    const diff = s.score - _scoreAnterior;
+    if (diff !== 0) {
+      const pos = diff > 0;
+      deltaEl.textContent = (pos ? '▲ +' : '▼ ') + diff + ' pts';
+      deltaEl.style.display = 'inline-block';
+      deltaEl.style.background = pos ? '#e6f4ea' : '#fce8e6';
+      deltaEl.style.color      = pos ? '#1e7e34' : '#b71c1c';
+    } else {
+      deltaEl.style.display = 'none';
+    }
+  } else if (deltaEl) {
+    deltaEl.style.display = 'none';
+  }
+  _scoreAnterior = s.score;
   document.getElementById('score-pilares').innerHTML = Object.values(s.pilares).map(p => `
     <div class="score-pilar">
       <div class="score-pilar-val">${p.pts}<span class="score-pilar-max">/${p.max}</span></div>
@@ -2720,8 +2796,8 @@ function _markdownParaHTML(md) {
 
 async function analisarComClaude(btn) {
   const apiKey = (document.getElementById('claude-api-key').value || '').trim();
-  if (!apiKey) { alert('Insira sua chave de API.'); return; }
-  if (!_ultimosKpis) { alert('Carregue e analise uma planilha primeiro.'); return; }
+  if (!apiKey) { _toast('Insira sua chave de API.',3500,'aviso'); return; }
+  if (!_ultimosKpis) { _toast('Carregue e analise uma planilha primeiro.',3500,'aviso'); return; }
 
   const resultado = document.getElementById('claude-resultado');
   const erro      = document.getElementById('claude-erro');
@@ -2775,9 +2851,9 @@ async function analisarComClaude(btn) {
 
 function copiarAnalise() {
   const t = _ultimaAnaliseClaude || document.getElementById('claude-texto').innerText;
-  if (!t || !t.trim()) { alert('Nenhuma análise para copiar.'); return; }
+  if (!t || !t.trim()) { _toast('Nenhuma análise para copiar.',2500,'aviso'); return; }
   if (navigator.clipboard) {
-    navigator.clipboard.writeText(t).then(() => alert('Análise copiada!')).catch(() => _copiarFallback(t));
+    navigator.clipboard.writeText(t).then(() => _toast('Análise copiada!',2500,'sucesso')).catch(() => _copiarFallback(t));
   } else {
     _copiarFallback(t);
   }
@@ -2790,7 +2866,7 @@ function _copiarFallback(t) {
   ta.select();
   document.execCommand('copy');
   document.body.removeChild(ta);
-  alert('Análise copiada!');
+  _toast('Análise copiada!',2500,'sucesso');
 }
 
 // ══════════════════════════════════════════════════════
@@ -2890,7 +2966,7 @@ function _renderChartFluxoM(linhas) {
 }
 
 function exportarJSON() {
-  if (!_dadosOriginais.length) { alert('Nenhum dado carregado para exportar.'); return; }
+  if (!_dadosOriginais.length) { _toast('Nenhum dado para exportar.',2500,'aviso'); return; }
   const _par = _ultimoPareto ?? calcularPareto(_dadosOriginais, _cols.entidade, _cols.valor);
   const obj = {
     arquivo:   _nomeArquivo,
@@ -2965,6 +3041,98 @@ document.addEventListener('keydown', e => {
   }
 });
 
+// ══════════════════════════════════════════════════════
+// ONBOARDING TOUR (primeiro acesso)
+// ══════════════════════════════════════════════════════
+const _ONB_KEY  = 'pfp_onboarding_done';
+let   _onbPasso = 0;
+const _onbPassos = [
+  { icon:'📁', titulo:'Importe sua planilha', texto:'Arraste um arquivo <strong>Excel (.xlsx/.xls)</strong>, <strong>CSV</strong> ou <strong>extrato OFX</strong> direto para a área de upload — tudo é processado 100% no seu navegador, sem enviar dados para servidores.' },
+  { icon:'⚙️', titulo:'Configure as colunas', texto:'O sistema detecta automaticamente os campos do seu ERP. Se necessário, ajuste os mapeamentos de <strong>Valor, Data, Vencimento, Entidade</strong> e <strong>Chave</strong> antes de analisar.' },
+  { icon:'📊', titulo:'Explore a análise', texto:'Visualize <strong>Score Financeiro</strong>, <strong>KPIs</strong>, <strong>Aging de recebíveis</strong>, <strong>DRE</strong>, <strong>Análise de Pareto</strong> e muito mais. Use <kbd>Alt+D</kbd> para alternar o tema escuro.' },
+];
+
+function _mostrarOnboarding() {
+  _onbPasso = 0;
+  _onbRenderPasso();
+  document.getElementById('onboarding-overlay').style.display = 'flex';
+}
+
+function _fecharOnboarding() {
+  document.getElementById('onboarding-overlay').style.display = 'none';
+  try { localStorage.setItem(_ONB_KEY, '1'); } catch (e) { /* storage indisponível */ }
+}
+
+function _onbProximo() {
+  _onbPasso++;
+  if (_onbPasso >= _onbPassos.length) { _fecharOnboarding(); return; }
+  _onbRenderPasso();
+}
+
+function _onbRenderPasso() {
+  const p = _onbPassos[_onbPasso];
+  document.getElementById('onb-icon').textContent   = p.icon;
+  document.getElementById('onb-titulo').textContent = p.titulo;
+  document.getElementById('onb-texto').innerHTML    = p.texto;
+  const btn = document.getElementById('onb-btn-prox');
+  btn.textContent = _onbPasso < _onbPassos.length - 1 ? 'Próximo →' : 'Começar!';
+  const dots = document.getElementById('onb-dots');
+  dots.innerHTML = _onbPassos.map((_,i) =>
+    `<div class="onboarding-dot${i===_onbPasso?' ativo':''}"></div>`).join('');
+}
+
+// Iniciar onboarding na primeira visita
+(function() {
+  try { if (!localStorage.getItem(_ONB_KEY)) window.addEventListener('DOMContentLoaded', _mostrarOnboarding); }
+  catch (e) { /* storage indisponível */ }
+})();
+
+// ══════════════════════════════════════════════════════
+// HISTÓRICO DE ARQUIVOS RECENTES
+// ══════════════════════════════════════════════════════
+const _HIST_KEY = 'pfp_historico';
+const _HIST_MAX = 5;
+
+function _salvarHistorico(nome, linhas) {
+  try {
+    const hist = JSON.parse(localStorage.getItem(_HIST_KEY) || '[]');
+    const entrada = { nome, linhas, ts: Date.now() };
+    const filtrado = hist.filter(h => h.nome !== nome);
+    filtrado.unshift(entrada);
+    localStorage.setItem(_HIST_KEY, JSON.stringify(filtrado.slice(0, _HIST_MAX)));
+    _renderHistorico();
+  } catch (e) { /* storage indisponível */ }
+}
+
+function _renderHistorico() {
+  try {
+    const hist = JSON.parse(localStorage.getItem(_HIST_KEY) || '[]');
+    const wrap = document.getElementById('historico-wrap');
+    const lista = document.getElementById('historico-lista');
+    if (!wrap || !lista) return;
+    if (!hist.length) { wrap.style.display = 'none'; return; }
+    wrap.style.display = 'block';
+    const fmt = ts => {
+      const d = new Date(ts);
+      const hoje = new Date();
+      const diff = Math.floor((hoje - d) / 86400000);
+      if (diff === 0) return 'hoje ' + d.toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' });
+      if (diff === 1) return 'ontem';
+      return d.toLocaleDateString('pt-BR', { day:'2-digit', month:'short' });
+    };
+    lista.innerHTML = hist.map(h => `
+      <div class="hist-item" title="Clique para reanalisar (requererá reimportar o arquivo)">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        <span class="hist-nome">${esc(h.nome)}</span>
+        <span class="hist-data">${h.linhas ? h.linhas.toLocaleString('pt-BR') + ' lin · ' : ''}${fmt(h.ts)}</span>
+      </div>`).join('');
+  } catch (e) { /* storage indisponível */ }
+}
+
+// Renderizar histórico ao carregar a página
+window.addEventListener('DOMContentLoaded', _renderHistorico);
+
+// ══════════════════════════════════════════════════════
 // PWA — Service Worker
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () =>
@@ -2986,6 +3154,20 @@ if ('serviceWorker' in navigator) {
   <span style="display:inline-block;background:var(--navy);color:#fff;padding:4px 16px;border-radius:20px;font-size:11px;font-weight:600;letter-spacing:.4px;">&copy; 2025 Luan Guilherme Lourenço &mdash; Todos os direitos reservados</span>
   <br>
   <span style="font-size:10px;color:#94A3B8;margin-top:6px;display:inline-block;">Planilha Financeira Pro &mdash; Análise autônoma de planilhas financeiras</span>
+</div>
+
+<!-- Onboarding tour (first-time) -->
+<div id="onboarding-overlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="onb-titulo">
+  <div class="onboarding-card">
+    <div class="onboarding-steps-dots" id="onb-dots"></div>
+    <div class="onboarding-icon" id="onb-icon"></div>
+    <div class="onboarding-titulo" id="onb-titulo"></div>
+    <div class="onboarding-texto" id="onb-texto"></div>
+    <div class="onboarding-btn-row">
+      <button class="onboarding-btn onboarding-btn-pular" onclick="_fecharOnboarding()">Pular</button>
+      <button class="onboarding-btn onboarding-btn-prox" id="onb-btn-prox" onclick="_onbProximo()">Próximo →</button>
+    </div>
+  </div>
 </div>
 
 </body>
