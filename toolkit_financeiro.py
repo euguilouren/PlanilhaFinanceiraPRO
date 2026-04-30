@@ -505,7 +505,8 @@ class Auditor:
                     'impacto_rs': 0,
                 })
                 continue
-            vazios = df[df[col].isnull()]
+            vazio_mask = df[col].isnull() | df[col].astype(str).str.strip().isin(['', 'nan', 'None'])
+            vazios = df[vazio_mask]
             if len(vazios) > 0:
                 inconsistencias.append({
                     'aba': aba, 'linha': (vazios.index + 2).tolist()[:10],

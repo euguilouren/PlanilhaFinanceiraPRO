@@ -149,6 +149,18 @@ class AnalisadorClaudeAPI:
         return ''
 
 
+def _outlier_descricao(row, col_val) -> str:
+    """Monta descrição legível de outlier com Z-score e valor real."""
+    try:
+        valor  = float(row.get(col_val, 0))
+        media  = float(row.get('_media_grupo', 0))
+        desvio = float(row.get('_desvio_padrao', 1)) or 1
+        zscore = abs((valor - media) / desvio)
+        return f"Valor R$ {valor:,.2f} está {zscore:.1f}× acima do desvio padrão (média R$ {media:,.2f})"
+    except (TypeError, ValueError):
+        return "Valor atípico detectado"
+
+
 # ══════════════════════════════════════════════════════════════════
 # PROCESSADOR PRINCIPAL
 # ══════════════════════════════════════════════════════════════════
@@ -484,7 +496,7 @@ class ProcessadorArquivo:
                 'coluna': col_val, 'tipo': 'OUTLIER',
                 'severidade': Status.MEDIA,
                 'valor': str(row.get(col_val, '')),
-                'descricao': f"Outlier ±{row.get('_desvio_padrao','?')}σ",
+                'descricao': _outlier_descricao(row, col_val),
                 'impacto_rs': 0,
             })
 
@@ -942,8 +954,11 @@ class ObservadorPasta:
                     resultado = self.processador.processar(str(arquivo))
                     if resultado.get('status') == 'ERRO':
                         err = resultado.get('erro', '')
-                        # Erro de I/O irrecuperável: remove dos vistos para retry.
-                        if any(kw in err for kw in ('PermissionError', 'OSError', 'IOError')):
+                        # Erro de I/O: verifica pelo tipo da exceção (str(exc) contém
+                        # apenas a mensagem, não o nome da classe).
+                        _io_keywords = ('permission denied', 'errno', 'no such file',
+                                        'acesso negado', 'access is denied')
+                        if any(kw in err.lower() for kw in _io_keywords):
                             self._vistos.discard(arquivo.name)
                             logger.warning("Arquivo %s será reprocessado na próxima varredura.", arquivo.name)
 
