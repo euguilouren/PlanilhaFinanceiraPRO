@@ -1017,6 +1017,16 @@ tr:hover td{background:#EEF4FF;transition:background .15s}
   font-size:12.5px;font-weight:600;z-index:1000;transition:.3s;pointer-events:none;opacity:0}
 #toast.show{transform:translateX(-50%) translateY(0);opacity:1}
 #toast.toast-erro{background:#9C0006}
+#toast.toast-sucesso{background:#166534}
+#toast.toast-aviso{background:#92400E}
+#toast.toast-info{background:#1e40af}
+.loader-step{font-size:11px;color:#64748b;margin-top:5px;font-weight:400;min-height:16px;text-align:center}
+.busca-clear{position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--text-2);padding:2px 5px;border-radius:4px;font-size:15px;line-height:1;display:none}
+.busca-clear.show{display:block}
+.busca-clear:hover{color:var(--navy);background:var(--surface-2)}
+.busca-info{font-size:12px;color:var(--text-2);margin-left:8px;white-space:nowrap}
+.audit-confirmado td{text-decoration:line-through;color:var(--text-3)!important}
+.audit-confirmado td .badge{text-decoration:none}
 /* DRE */
 .dre-total td{font-weight:700;background:#EEF4FB;color:var(--navy-2);border-top:2px solid var(--border)}
 .dre-lucro td{font-weight:700;background:var(--success-bg);color:var(--success);border-top:2px solid var(--success)}
@@ -1182,7 +1192,7 @@ tr:hover td{background:#EEF4FF;transition:background .15s}
 <body>
 
 <!-- Loader -->
-<div id="loader"><div class="spinner"></div><span class="loader-text">Analisando planilha...</span></div>
+<div id="loader"><div class="spinner"></div><div style="text-align:center"><span class="loader-text" id="loader-text">Analisando planilha...</span><div class="loader-step" id="loader-step"></div></div></div>
 <div id="loader-skeleton">
   <div class="skel-kpis">
     <div class="skel-kpi"><div class="skeleton skel-line" style="width:55%"></div><div class="skeleton skel-line h24"></div><div class="skeleton skel-line" style="width:40%"></div></div>
@@ -1367,9 +1377,13 @@ tr:hover td{background:#EEF4FF;transition:background .15s}
   <div class="card">
     <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex-shrink:0"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>Dados <span id="dados-info" style="font-size:11px;font-weight:normal;color:#888;text-transform:none"></span></h2>
     <div style="margin-bottom:10px">
-      <div class="search-wrap">
-        <span class="search-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
-        <input id="busca" type="text" placeholder="Buscar em todos os campos..." oninput="filtrarTabela()">
+      <div style="display:flex;align-items:center;gap:0">
+        <div class="search-wrap" style="position:relative">
+          <span class="search-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+          <input id="busca" type="text" placeholder="Buscar em todos os campos..." oninput="filtrarTabela()" style="padding-right:28px">
+          <button class="busca-clear" id="busca-clear" onclick="_limparBusca()" title="Limpar busca">✕</button>
+        </div>
+        <span class="busca-info" id="busca-info"></span>
       </div>
     </div>
     <div class="tbl-wrap"><table id="tabela-dados"><thead id="thead-dados"></thead><tbody id="tbody-dados"></tbody></table></div>
@@ -1476,13 +1490,22 @@ function _animarContador(el, valorFinal, tipo, duracao) {
 }
 
 function _toast(msg, ms=3000, tipo='') {
+  const icones = { erro:'🔴 ', sucesso:'✅ ', aviso:'⚠️ ', info:'ℹ️ ' };
   const el = document.getElementById('toast');
-  el.textContent = msg;
-  el.classList.toggle('toast-erro', tipo === 'erro');
-  el.classList.add('show');
+  el.textContent = (icones[tipo] || '') + msg;
+  el.className = 'show' + (tipo ? ` toast-${tipo}` : '');
   clearTimeout(_toastTimer);
-  _toastTimer = setTimeout(() => { el.classList.remove('show'); el.classList.remove('toast-erro'); }, ms);
+  _toastTimer = setTimeout(() => el.classList.remove('show'), ms);
 }
+
+function _setLoaderStep(text) {
+  const lt = document.getElementById('loader-text');
+  const ls = document.getElementById('loader-step');
+  if (lt) lt.textContent = 'Analisando planilha...';
+  if (ls) ls.textContent = text;
+}
+
+const _yield = () => new Promise(r => setTimeout(r, 0));
 
 function _atualizarStep(n) {
   [1,2,3].forEach(i => {
@@ -1800,35 +1823,46 @@ function lerColsSelecionadas() {
 // ══════════════════════════════════════════════════════
 // EXECUTAR ANÁLISE
 // ══════════════════════════════════════════════════════
-function executarAnalise() {
+async function executarAnalise() {
   mostrarLoader(true);
-  setTimeout(() => {
-    try {
+  _setLoaderStep('Preparando análise...');
+  await _yield();
+  try {
       _cols = lerColsSelecionadas();
       _auditConfirmados.clear();
       const dados = _dadosOriginais;
 
       // KPIs
+      _setLoaderStep(`Calculando KPIs — ${dados.length.toLocaleString('pt-BR')} registros...`);
+      await _yield();
       const kpis = calcularKPIs(dados, _cols);
       renderKPIs(kpis);
       _ultimosKpis = kpis;
 
       // Auditoria
+      _setLoaderStep('Auditando qualidade dos dados...');
+      await _yield();
       const audit = auditoria(dados, _cols);
       renderAuditoria(audit);
       _ultimaAuditoria = audit;
 
       // Aging
+      _setLoaderStep('Calculando Aging de recebíveis...');
+      await _yield();
       const ag = calcularAging(dados, _cols.vencimento, _cols.valor);
       renderAging(ag);
       _ultimoAging = ag;
 
       // DRE
+      _setLoaderStep('Construindo DRE...');
+      await _yield();
       const dre = construirDRE(dados, _cols.categoria, _cols.valor);
       renderDRE(dre);
       _ultimoDre = dre;
 
       // Pareto
+      _setLoaderStep('Calculando Pareto e Score Financeiro...');
+      await _yield();
       const par = calcularPareto(dados, _cols.entidade, _cols.valor);
       renderPareto(par);
       _ultimoPareto = par;
@@ -1838,6 +1872,8 @@ function executarAnalise() {
       renderScoreFinanceiro(_scoreData);
 
       // Fluxo por Período
+      _setLoaderStep('Gerando fluxo de caixa e relatórios...');
+      await _yield();
       renderFluxoPeriodo(dados, _cols);
 
       // Verificação de integridade
@@ -1846,6 +1882,7 @@ function executarAnalise() {
 
       // Tabela de dados
       renderTabela(dados, _headers);
+      _atualizarContadorBusca(dados.length, dados.length);
 
       // Mostrar dashboard
       document.getElementById('upload-area').style.display = 'none';
@@ -1854,6 +1891,7 @@ function executarAnalise() {
       document.getElementById('btn-comparar').style.display = 'inline-block';
       document.getElementById('tag-arquivo').textContent   = _nomeArquivo;
       _atualizarStep(3);
+      _toast(`${_dadosOriginais.length.toLocaleString('pt-BR')} registros analisados com sucesso`, 3500, 'sucesso');
     } catch(err) {
       alert('Erro na análise: ' + err.message);
       document.getElementById('upload-area').style.display = 'block';
@@ -1861,6 +1899,7 @@ function executarAnalise() {
       _atualizarStep(2);
     }
     mostrarLoader(false);
+    _setLoaderStep('');
     // Stagger de entrada dos cards e KPIs
     const _sc = [...document.querySelectorAll('#dashboard .card')];
     _sc.forEach(el => el.classList.remove('card-animate'));
@@ -1870,7 +1909,6 @@ function executarAnalise() {
     _sk.forEach(el => el.classList.remove('card-animate'));
     void document.body.offsetWidth;
     _sk.forEach((el,i) => { el.style.animationDelay=(i*55)+'ms'; el.classList.add('card-animate'); });
-  }, 50);
 }
 
 // ══════════════════════════════════════════════════════
@@ -2059,6 +2097,7 @@ function renderAuditoria(lista) {
     const key        = _auditKey(p);
     const confirmado = _auditConfirmados.has(key);
     const rowStyle   = confirmado ? 'opacity:0.45;background:#f7fdf7' : '';
+    const rowClass   = confirmado ? 'audit-confirmado' : '';
     const sevCell    = confirmado
       ? `<span class="badge" style="background:#d1fae5;color:#065f46;border:1px solid #6ee7b7">✓ Verificado</span>`
       : `<span class="badge ${BADGE[p.severidade]||'b-baixa'}">${esc(p.severidade)}</span>`;
@@ -2066,7 +2105,7 @@ function renderAuditoria(lista) {
     const btnStyle   = confirmado
       ? 'background:#e5e7eb;color:#6b7280;border:1px solid #d1d5db'
       : 'background:#d1fae5;color:#065f46;border:1px solid #6ee7b7';
-    return `<tr style="${rowStyle}">
+    return `<tr class="${rowClass}" style="${rowStyle}">
       <td>${sevCell}</td>
       <td>${esc(p.tipo)}</td><td>${esc(p.linha)}</td>
       <td>${esc(p.coluna)}</td><td>${esc(p.valor)}</td>
@@ -2156,7 +2195,12 @@ function renderAging(lista) {
 function renderDRE(dre) {
   const el = document.getElementById('dre-content');
   if (!dre) {
-    el.innerHTML = `<div class="empty">Coluna de valor não mapeada — selecione a coluna de valores para gerar o DRE.</div>`;
+    el.innerHTML = `<div style="padding:14px;background:#FFF7ED;border-left:4px solid #F59E0B;border-radius:0 8px 8px 0">
+      <strong style="color:#92400E">⚠ Categorias não detectadas</strong>
+      <p style="margin:6px 0 0;font-size:12px;color:#78350F;line-height:1.6">
+        O DRE precisa de uma coluna com a <strong>categoria financeira</strong> de cada lançamento (ex: RECEITA, CMV, DESPESA OPERACIONAL).<br>
+        <strong>Como ativar:</strong> Reimporte a planilha e no passo de configuração selecione a coluna correta no campo <strong>Categoria</strong>.
+      </p></div>`;
     return;
   }
   const { linhas, modo } = dre;
@@ -2194,8 +2238,12 @@ function renderDRE(dre) {
 // ══════════════════════════════════════════════════════
 function renderPareto(lista) {
   if (!lista || !lista.length) {
-    document.getElementById('pareto-content').innerHTML =
-      '<p style="color:var(--text-3);padding:12px;font-style:italic">Coluna de entidade não mapeada — selecione a coluna "Cliente / Entidade" na configuração.</p>';
+    document.getElementById('pareto-content').innerHTML = `<div style="padding:14px;background:#FFF7ED;border-left:4px solid #F59E0B;border-radius:0 8px 8px 0">
+      <strong style="color:#92400E">⚠ Entidade não mapeada</strong>
+      <p style="margin:6px 0 0;font-size:12px;color:#78350F;line-height:1.6">
+        O Pareto precisa de uma coluna com o nome do <strong>cliente ou fornecedor</strong> para ranquear concentração.<br>
+        <strong>Como ativar:</strong> Reimporte a planilha e selecione a coluna correta no campo <strong>Cliente / Entidade</strong>.
+      </p></div>`;
     return;
   }
   const rows = lista.map(i => `
@@ -2314,13 +2362,40 @@ function renderTabela(dados, headers) {
   ).join('');
 }
 
+let _buscaTimer = null;
 function filtrarTabela() {
+  const q = document.getElementById('busca').value;
+  const clearBtn = document.getElementById('busca-clear');
+  if (clearBtn) clearBtn.classList.toggle('show', q.length > 0);
+  clearTimeout(_buscaTimer);
+  _buscaTimer = setTimeout(_filtrarTabelaImediato, 200);
+}
+function _filtrarTabelaImediato() {
   const q = document.getElementById('busca').value.toLowerCase();
-  if (!q) { renderTabela(_dadosOriginais, _headers); return; }
+  if (!q) {
+    renderTabela(_dadosOriginais, _headers);
+    _atualizarContadorBusca(_dadosOriginais.length, _dadosOriginais.length);
+    return;
+  }
   const filtrado = _dadosOriginais.filter(row =>
     _headers.some(h => String(row[h]??'').toLowerCase().includes(q))
   );
   renderTabela(filtrado, _headers);
+  _atualizarContadorBusca(filtrado.length, _dadosOriginais.length);
+}
+function _limparBusca() {
+  const input = document.getElementById('busca');
+  input.value = '';
+  input.focus();
+  filtrarTabela();
+}
+function _atualizarContadorBusca(visivel, total) {
+  const el = document.getElementById('busca-info');
+  if (!el) return;
+  if (!total) { el.textContent = ''; return; }
+  el.textContent = visivel === total
+    ? `${total.toLocaleString('pt-BR')} registros`
+    : `${visivel.toLocaleString('pt-BR')} de ${total.toLocaleString('pt-BR')} registros`;
 }
 
 // ══════════════════════════════════════════════════════
