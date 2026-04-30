@@ -1107,10 +1107,26 @@ tr:hover td{background:#EEF4FF;transition:background .15s}
 /* Footer */
 .page-footer{text-align:center;padding:28px 0 40px;margin-top:12px;border-top:1px solid #E2EAF4;background:rgba(255,255,255,.5);border-radius:0 0 16px 16px}
 /* Print */
-@media print{
-  .header,.toolbar,#upload-area,.page-footer{display:none}
-  #dashboard{display:block!important;padding:0}
-  .card{box-shadow:none;break-inside:avoid;border:1px solid #ddd}
+@media print {
+  body{background:#fff!important;background-image:none!important}
+  .header,.toolbar,.step-bar,#upload-area,.btn-sm,
+  #btn-instalar-app,.busca-clear,#filtro-periodo-wrap,
+  #tabela-paginacao,.fluxo-tab{display:none!important}
+  .card{break-inside:avoid;box-shadow:none!important;border:1px solid #ccc!important;
+    margin-bottom:16px!important;page-break-inside:avoid}
+  #dashboard{display:block!important}
+  .tbl-wrap{overflow:visible!important}
+  table{width:100%;border-collapse:collapse;font-size:10px}
+  th,td{border:1px solid #ccc;padding:4px 6px}
+  canvas{max-width:100%!important;page-break-inside:avoid}
+  .score-card{border:2px solid #333!important}
+  h2{font-size:13px;margin-bottom:8px}
+  .kpi-grid{grid-template-columns:repeat(3,1fr)!important}
+  .kpi{break-inside:avoid;border:1px solid #ccc!important;box-shadow:none!important}
+  #card-claude,#card-comparativo{display:none!important}
+  @page{margin:1.5cm;size:A4}
+  .page-footer::after{content:'Relatório gerado por Planilha Financeira Pro — Luan Guilherme Lourenço';
+    display:block;text-align:center;font-size:9px;color:#666;margin-top:24px;border-top:1px solid #eee;padding-top:8px}
 }
 @media(max-width:900px){
   .kpis{grid-template-columns:repeat(3,1fr)}
@@ -1207,7 +1223,7 @@ tr:hover td{background:#EEF4FF;transition:background .15s}
 <body>
 
 <!-- Loader -->
-<div id="loader"><div class="spinner"></div><div style="text-align:center"><span class="loader-text" id="loader-text">Analisando planilha...</span><div class="loader-step" id="loader-step"></div></div></div>
+<div id="loader" role="status" aria-live="polite"><div class="spinner"></div><div style="text-align:center"><span class="loader-text" id="loader-text">Analisando planilha...</span><div class="loader-step" id="loader-step"></div></div></div>
 <div id="loader-skeleton">
   <div class="skel-kpis">
     <div class="skel-kpi"><div class="skeleton skel-line" style="width:55%"></div><div class="skeleton skel-line h24"></div><div class="skeleton skel-line" style="width:40%"></div></div>
@@ -1223,7 +1239,7 @@ tr:hover td{background:#EEF4FF;transition:background .15s}
 <div id="erros-cdn" style="display:none;background:#FEE2E2;color:#991B1B;border:1px solid #FECACA;border-radius:8px;padding:12px 16px;max-width:820px;margin:12px auto;font-size:13px;text-align:center"></div>
 
 <!-- Toast -->
-<div id="toast"></div>
+<div id="toast" role="alert" aria-live="assertive"></div>
 
 <!-- Header -->
 <div class="header">
@@ -1327,12 +1343,12 @@ tr:hover td{background:#EEF4FF;transition:background .15s}
 <div id="dashboard">
   <div class="toolbar">
     <span class="tag-arquivo" id="tag-arquivo">—</span>
-    <button class="btn-sm btn-outline" id="btn-darkmode" onclick="_toggleDarkMode()" title="Alternar tema claro/escuro" style="padding:5px 9px;font-size:15px">🌙</button>
+    <button class="btn-sm btn-outline" id="btn-darkmode" onclick="_toggleDarkMode()" title="Alternar tema claro/escuro" aria-label="Alternar tema claro/escuro" style="padding:5px 9px;font-size:15px">🌙</button>
     <button class="btn-sm" onclick="document.getElementById('upload-area').style.display='block';document.getElementById('dashboard').style.display='none';document.getElementById('col-config').style.display='none';_dashboardVisivel=false;document.getElementById('btn-comparar').style.display='none';const _cc=document.getElementById('card-comparativo');if(_cc)_cc.style.display='none';_atualizarStep(1)">
       Novo arquivo
     </button>
-    <button class="btn-sm btn-outline btn-imprimir" onclick="window.print()">Imprimir</button>
-    <button class="btn-sm btn-outline" onclick="exportarCSV()">⬇ Exportar CSV</button>
+    <button class="btn-sm btn-outline btn-imprimir" onclick="window.print()" aria-label="Imprimir relatório">Imprimir</button>
+    <button class="btn-sm btn-outline" onclick="exportarCSV()" aria-label="Exportar dados filtrados como Excel">⬇ Exportar CSV</button>
     <button class="btn-sm btn-outline" onclick="exportarJSON()">Exportar JSON</button>
     <button class="btn-sm btn-outline" id="btn-comparar" style="display:none" onclick="abrirComparativo()">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
@@ -1345,7 +1361,7 @@ tr:hover td{background:#EEF4FF;transition:background .15s}
   </div>
 
   <!-- Score Financeiro -->
-  <div class="card score-card" id="card-score" style="display:none">
+  <div class="card score-card" id="card-score" role="region" aria-label="Score Financeiro" style="display:none">
     <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">
       <div>
         <div class="score-label">Score Financeiro</div>
@@ -1367,7 +1383,7 @@ tr:hover td{background:#EEF4FF;transition:background .15s}
   <div class="kpis" id="kpis"></div>
 
   <!-- Fluxo por Período -->
-  <div class="card" id="card-fluxo" style="display:none">
+  <div class="card" id="card-fluxo" role="region" aria-label="Fluxo por Período" style="display:none">
     <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex-shrink:0"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>Fluxo por Período</h2>
     <div id="fluxo-content"></div>
   </div>
@@ -1379,31 +1395,31 @@ tr:hover td{background:#EEF4FF;transition:background .15s}
   </div>
 
   <!-- Auditoria -->
-  <div class="card" id="card-auditoria">
+  <div class="card" id="card-auditoria" role="region" aria-label="Auditoria de Dados">
     <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex-shrink:0"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>Auditoria de Dados <span id="badge-auditoria"></span></h2>
     <div id="auditoria-content"></div>
   </div>
 
   <!-- Grid: Aging + gráfico -->
   <div class="grid2">
-    <div class="card" id="card-aging"><h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Aging de Recebíveis</h2><div id="aging-content"><div class="empty">Coluna de vencimento não detectada</div></div></div>
+    <div class="card" id="card-aging" role="region" aria-label="Aging de Recebíveis"><h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Aging de Recebíveis</h2><div id="aging-content"><div class="empty">Coluna de vencimento não detectada</div></div></div>
     <div class="card"><h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex-shrink:0"><path d="M21.21 15.89A10 10 0 118 2.83"/><path d="M22 12A10 10 0 0012 2v10z"/></svg>Aging — Distribuição</h2><div class="chart-box"><canvas id="chart-aging"></canvas></div></div>
   </div>
 
   <!-- Grid: DRE + Pareto -->
   <div class="grid2">
-    <div class="card" id="card-dre"><h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex-shrink:0"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>DRE</h2><div id="dre-content"><div class="empty">Categorias não detectadas</div></div></div>
-    <div class="card"><h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex-shrink:0"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>Pareto — Top Entidades</h2><div id="pareto-content"></div></div>
+    <div class="card" id="card-dre" role="region" aria-label="DRE"><h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex-shrink:0"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>DRE</h2><div id="dre-content"><div class="empty">Categorias não detectadas</div></div></div>
+    <div class="card" role="region" aria-label="Análise Pareto"><h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex-shrink:0"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>Pareto — Top Entidades</h2><div id="pareto-content"></div></div>
   </div>
 
   <!-- Dados brutos -->
-  <div class="card" id="card-dados">
+  <div class="card" id="card-dados" role="region" aria-label="Tabela de Dados">
     <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex-shrink:0"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>Dados <span id="dados-info" style="font-size:11px;font-weight:normal;color:#888;text-transform:none"></span></h2>
     <div style="margin-bottom:10px">
       <div style="display:flex;align-items:center;gap:0">
         <div class="search-wrap" style="position:relative">
           <span class="search-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
-          <input id="busca" type="text" placeholder="Buscar em todos os campos..." oninput="filtrarTabela()" style="padding-right:28px">
+          <input id="busca" type="text" placeholder="Buscar em todos os campos..." oninput="filtrarTabela()" aria-label="Buscar em todos os campos" style="padding-right:28px">
           <button class="busca-clear" id="busca-clear" onclick="_limparBusca()" title="Limpar busca">✕</button>
         </div>
         <span class="busca-info" id="busca-info"></span>
@@ -1416,7 +1432,7 @@ tr:hover td{background:#EEF4FF;transition:background .15s}
         <button onclick="_limparFiltros()" style="font-size:11px;padding:4px 10px;border:1.5px solid var(--border);border-radius:6px;background:none;cursor:pointer;color:var(--text-2)">✕ Limpar</button>
       </div>
     </div>
-    <div class="tbl-wrap"><table id="tabela-dados"><thead id="thead-dados"></thead><tbody id="tbody-dados"></tbody></table></div>
+    <div class="tbl-wrap"><table id="tabela-dados" role="table"><thead id="thead-dados"></thead><tbody id="tbody-dados"></tbody></table></div>
   </div>
 
   <!-- Comparativo de Períodos -->
@@ -1523,6 +1539,11 @@ function _animarContador(el, valorFinal, tipo, duracao) {
     if (t < 1) el._rafId = requestAnimationFrame(tick);
     else { el.textContent = fmt(valorFinal); el._rafId = null; }
   })(performance.now());
+}
+
+function _mostrarErro(msg) {
+  _toast(msg, 7000, 'erro');
+  mostrarLoader(false);
 }
 
 function _toast(msg, ms=3000, tipo='') {
@@ -1754,10 +1775,10 @@ function carregarArquivo(file) {
       _sortCol = null; _sortDir = 1; _paginaAtual = 1;
     } catch(err) {
       mostrarLoader(false);
-      alert('Erro ao ler o arquivo: ' + err.message);
+      _mostrarErro('Erro ao ler o arquivo: ' + err.message);
     }
   };
-  reader.onerror = () => { mostrarLoader(false); alert('Erro ao ler o arquivo. Verifique se ele não está aberto em outro programa.'); };
+  reader.onerror = () => { _mostrarErro('Erro ao ler o arquivo. Verifique se ele não está aberto em outro programa.'); };
   if (file.name.toLowerCase().endsWith('.ofx'))
     reader.readAsArrayBuffer(file);
   else if (file.name.toLowerCase().endsWith('.csv') || file.name.toLowerCase().endsWith('.tsv'))
@@ -1831,10 +1852,10 @@ function carregarArquivoComparativo(file) {
     } catch(err) {
       _kpisComparativos = null; _colsComparativos = null; _nomeArquivoComp = '';
       mostrarLoader(false);
-      alert('Erro ao ler arquivo comparativo: ' + err.message);
+      _mostrarErro('Erro ao ler arquivo comparativo: ' + err.message);
     }
   };
-  reader.onerror = () => { mostrarLoader(false); alert('Erro ao ler o arquivo comparativo. Verifique se ele não está aberto em outro programa.'); };
+  reader.onerror = () => { _mostrarErro('Erro ao ler o arquivo comparativo. Verifique se ele não está aberto em outro programa.'); };
   if (file.name.toLowerCase().endsWith('.ofx'))
     reader.readAsArrayBuffer(file);
   else if (file.name.toLowerCase().endsWith('.csv') || file.name.toLowerCase().endsWith('.tsv'))
