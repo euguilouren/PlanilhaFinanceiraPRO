@@ -390,7 +390,7 @@ function calcularPareto(dados, colEntidade, colValor, top = 15) {
   });
   const lista = Object.entries(mapa)
     .map(([nome, total]) => ({ nome, total }))
-    .sort((a,b) => b.total - a.total);
+    .sort((a,b) => Math.abs(b.total) - Math.abs(a.total));
   const totalGeral     = lista.reduce((s,i)=>s+i.total, 0);
   const totalEntidades = lista.length;
   // Base para % = soma dos valores positivos (receitas); se não há positivos usa abs total
@@ -450,11 +450,13 @@ function construirDRE(dados, colCat, colValor) {
     const totalClassificado = Object.values(valores).reduce((a,b)=>a+Math.abs(b),0);
     if (totalClassificado === 0) {
       modo = 'sinal';
+      // Zero all accumulators before fallback pass to avoid double-counting
+      MAPA_DRE.forEach(({ linha }) => { valores[linha] = 0; });
       dados.forEach(row => {
         const v = toNum(row[colValor]);
         if (isNaN(v)) return;
-        if (v >= 0) valores['Receita Bruta'] += v;
-        else valores['(-) Despesas Operacionais'] += v;
+        if (v > 0) valores['Receita Bruta'] += v;
+        else if (v < 0) valores['(-) Despesas Operacionais'] += v;
       });
     }
   }
@@ -723,14 +725,30 @@ function parseOFX(text) {
   const blocos = [...body.matchAll(/<STMTTRN>([\s\S]*?)<\/STMTTRN>/gi)].map(m => m[1]);
   if (!blocos.length) throw new Error('Nenhuma transação encontrada no arquivo OFX.');
 
+  // Decodes HTML entities including named + numeric
+  function decodeEnt(s) {
+    return s
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'")
+      .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+      .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCharCode(parseInt(h, 16)));
+  }
+
   // Extrai valor do campo: funciona com tags sem fechamento (SGML) e com (XML)
   function campo(bloco, tag) {
     const m = new RegExp(`<${tag}>([^<\\r\\n]*)`, 'i').exec(bloco);
-    return m ? m[1].trim() : '';
+    return m ? decodeEnt(m[1].trim()) : '';
   }
 
-  // YYYYMMDD[HHMMSS[tz]] → DD/MM/YYYY
+  // Handles YYYYMMDD[HHMMSS[tz]] and ISO YYYY-MM-DD → DD/MM/YYYY
   function parseDt(dt) {
+    // ISO: 2024-01-15 or 2024-01-15T10:30:00
+    const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(dt);
+    if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`;
+    // OFX SGML: 20240115 or 20240115120000[-3:BRT]
     const s = dt.replace(/[^\d].*/, '').slice(0, 8);
     return s.length === 8 ? `${s.slice(6)}/${s.slice(4,6)}/${s.slice(0,4)}` : '';
   }
@@ -743,10 +761,10 @@ function parseOFX(text) {
 
   const dados = blocos.map(b => {
     const data  = parseDt(campo(b, 'DTPOSTED'));
-    const valor = parseFloat((campo(b, 'TRNAMT') || '0').replace(',', '.')) || 0;
-    const descr = (campo(b, 'MEMO') || campo(b, 'NAME') || '')
-                    .replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>');
-    const id    = campo(b, 'FITID');
+    const valor = toNum(campo(b, 'TRNAMT') || '0');
+    const descr = campo(b, 'MEMO') || campo(b, 'NAME') || '';
+    // Synthetic FITID when missing to avoid false auditoria CRÍTICA
+    const id    = campo(b, 'FITID') || `ofx-${data}-${valor}`;
     const tipo  = TIPO_MAP[(campo(b, 'TRNTYPE') || '').toUpperCase()] || campo(b, 'TRNTYPE');
     return { 'Data': data, 'Vencimento': data, 'Valor': valor, 'Descrição': descr, 'ID': id, 'Tipo': tipo };
   });
@@ -998,6 +1016,7 @@ tr:hover td{background:#EEF4FF;transition:background .15s}
   background:var(--azul);color:#fff;padding:10px 22px;border-radius:20px;
   font-size:12.5px;font-weight:600;z-index:1000;transition:.3s;pointer-events:none;opacity:0}
 #toast.show{transform:translateX(-50%) translateY(0);opacity:1}
+#toast.toast-erro{background:#9C0006}
 /* DRE */
 .dre-total td{font-weight:700;background:#EEF4FB;color:var(--navy-2);border-top:2px solid var(--border)}
 .dre-lucro td{font-weight:700;background:var(--success-bg);color:var(--success);border-top:2px solid var(--success)}
@@ -1150,6 +1169,14 @@ tr:hover td{background:#EEF4FF;transition:background .15s}
 .chart-box-sm{position:relative;height:200px;margin-top:14px}
 @media(max-width:900px){.score-pilares{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:600px){.score-pilares{grid-template-columns:repeat(2,1fr)}}
+.score-acoes-titulo{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--text-2);margin-bottom:8px}
+.score-acao{display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border-radius:6px;margin-bottom:6px;font-size:12.5px}
+.score-acao-urgente{background:#FEF2F2;border-left:3px solid #9C0006;color:#7F1D1D}
+.score-acao-atencao{background:#FFFBEB;border-left:3px solid #D97706;color:#78350F}
+.score-acao-ok{background:#F0FDF4;border-left:3px solid #16A34A;color:#14532D}
+.score-acao-icone{font-size:15px;flex-shrink:0;margin-top:1px}
+.score-acao-texto strong{display:block;font-weight:700;margin-bottom:2px}
+.score-acao-texto span{color:inherit;opacity:.85}
 </style>
 </head>
 <body>
@@ -1300,6 +1327,7 @@ tr:hover td{background:#EEF4FF;transition:background .15s}
       </div>
     </div>
     <div class="score-pilares" id="score-pilares"></div>
+    <div id="score-acoes" style="display:none;margin-top:14px"></div>
   </div>
 
   <!-- KPIs -->
@@ -1359,19 +1387,20 @@ tr:hover td{background:#EEF4FF;transition:background .15s}
     <h2 style="color:#5B21B6">Análise com Inteligência Artificial</h2>
     <p style="font-size:12px;color:#6B7280;margin:0 0 14px">
       Insira sua chave de API para obter uma análise automática e inteligente dos dados carregados.
-      A chave é salva <strong>apenas neste navegador</strong> (localStorage) para sua conveniência — nunca enviada a servidores próprios. Use "Limpar" para removê-la.
+      A chave é salva <strong>apenas nesta sessão do navegador</strong> (sessionStorage) — apagada ao fechar a aba e nunca enviada a servidores próprios. Use "Limpar" para removê-la imediatamente.
     </p>
     <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
       <input id="claude-api-key" type="password" placeholder="sk-ant-api03-..."
+        autocomplete="off" autocorrect="off" spellcheck="false"
         style="flex:1;min-width:200px;padding:8px 12px;border:1px solid #C4B5FD;border-radius:8px;font-size:13px;font-family:inherit;outline:none;color:#1F1B4B"
-        oninput="try{localStorage.setItem('_cak',this.value)}catch(e){}"
+        oninput="try{sessionStorage.setItem('_cak',this.value)}catch(e){}"
         onkeydown="if(event.key==='Enter')analisarComClaude(document.getElementById('btn-analisar-claude'))">
       <button id="btn-analisar-claude"
         style="background:#7C3AED;color:#fff;border:none;padding:8px 20px;border-radius:8px;cursor:pointer;font-weight:600;font-size:13px;white-space:nowrap"
         onclick="analisarComClaude(this)">Analisar</button>
       <button title="Esquecer chave salva"
         style="background:#EDE9FE;color:#7C3AED;border:none;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:11px;font-weight:600"
-        onclick="localStorage.removeItem('_cak');document.getElementById('claude-api-key').value='';alert('Chave removida.')">Limpar</button>
+        onclick="sessionStorage.removeItem('_cak');document.getElementById('claude-api-key').value='';alert('Chave removida.')">Limpar</button>
     </div>
     <div id="claude-resultado" style="display:none">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
@@ -1446,12 +1475,13 @@ function _animarContador(el, valorFinal, tipo, duracao) {
   })(performance.now());
 }
 
-function _toast(msg, ms=3000) {
+function _toast(msg, ms=3000, tipo='') {
   const el = document.getElementById('toast');
   el.textContent = msg;
+  el.classList.toggle('toast-erro', tipo === 'erro');
   el.classList.add('show');
   clearTimeout(_toastTimer);
-  _toastTimer = setTimeout(() => el.classList.remove('show'), ms);
+  _toastTimer = setTimeout(() => { el.classList.remove('show'); el.classList.remove('toast-erro'); }, ms);
 }
 
 function _atualizarStep(n) {
@@ -1472,14 +1502,56 @@ dz.addEventListener('dragleave', () => dz.classList.remove('drag'));
 dz.addEventListener('drop', e => {
   e.preventDefault(); dz.classList.remove('drag');
   const f = e.dataTransfer.files[0];
-  if (f) carregarArquivo(f);
-});
-document.getElementById('file-input').addEventListener('change', e => {
-  if (e.target.files[0]) {
-    carregarArquivo(e.target.files[0]);
-    e.target.value = '';
+  if (f) {
+    if (!_tipoPermitido(f.name)) {
+      _mostrarErroTipo(f.name);
+      return;
+    }
+    carregarArquivo(f);
   }
 });
+document.getElementById('file-input').addEventListener('change', e => {
+  const f = e.target.files[0];
+  e.target.value = '';
+  if (!f) return;
+  if (!_tipoPermitido(f.name)) { _mostrarErroTipo(f.name); return; }
+  carregarArquivo(f);
+});
+
+const _EXTS_OK = new Set(['.xlsx', '.xls', '.xlsm', '.csv', '.ofx']);
+function _tipoPermitido(nome) {
+  const ext = nome.slice(nome.lastIndexOf('.')).toLowerCase();
+  return _EXTS_OK.has(ext);
+}
+function _mostrarErroTipo(nome) {
+  const ext = nome.slice(nome.lastIndexOf('.')).toLowerCase() || nome;
+  _toast(`Formato "${ext}" não suportado. Use Excel (.xlsx / .xls), CSV ou OFX.`, 5000, 'erro');
+}
+
+// Detects OFX encoding from ArrayBuffer: checks BOM, XML declaration, SGML header.
+// Fallback chain: utf-8-sig → utf-8 → windows-1252 (legacy Brazilian banks).
+function _decodeOFXBuffer(buffer) {
+  const bytes = new Uint8Array(buffer);
+  // UTF-8 BOM
+  if (bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF) {
+    return new TextDecoder('utf-8').decode(buffer);
+  }
+  // Peek at first 1 KB as ASCII to inspect OFX/XML header
+  const peek = new TextDecoder('ascii', { fatal: false }).decode(bytes.slice(0, 1024));
+  // XML OFX 2.x: <?xml ... encoding="UTF-8" ?>
+  if (/encoding\s*=\s*["']?utf-8/i.test(peek)) {
+    return new TextDecoder('utf-8').decode(buffer);
+  }
+  // OFX SGML header: ENCODING:UTF-8
+  if (/^ENCODING\s*:\s*UTF-?8/im.test(peek)) {
+    return new TextDecoder('utf-8').decode(buffer);
+  }
+  // Modern banks without explicit header: try UTF-8 first
+  const utf8 = new TextDecoder('utf-8', { fatal: false }).decode(buffer);
+  if (!utf8.includes('�')) return utf8;
+  // Fallback: windows-1252 (Itaú, Bradesco, Santander legacy)
+  return new TextDecoder('windows-1252').decode(buffer);
+}
 
 // ══════════════════════════════════════════════════════
 // CARREGAR ARQUIVO
@@ -1498,7 +1570,9 @@ function carregarArquivo(file) {
     try {
       let dados, headers;
       if (file.name.toLowerCase().endsWith('.ofx')) {
-        ({ headers, dados } = parseOFX(e.target.result));
+        const buf  = e.target.result;
+        const text = _decodeOFXBuffer(buf);
+        ({ headers, dados } = parseOFX(text));
         if (!dados.length) throw new Error('Nenhuma transação encontrada no arquivo OFX.');
       } else if (file.name.toLowerCase().match(/\.(csv|tsv)$/)) {
         const txt   = e.target.result;
@@ -1570,7 +1644,7 @@ function carregarArquivo(file) {
   };
   reader.onerror = () => { mostrarLoader(false); alert('Erro ao ler o arquivo. Verifique se ele não está aberto em outro programa.'); };
   if (file.name.toLowerCase().endsWith('.ofx'))
-    reader.readAsText(file, 'windows-1252');
+    reader.readAsArrayBuffer(file);
   else if (file.name.toLowerCase().endsWith('.csv') || file.name.toLowerCase().endsWith('.tsv'))
     reader.readAsText(file, 'utf-8');
   else
@@ -1584,7 +1658,9 @@ function abrirComparativo() {
   const inp = document.createElement('input');
   inp.type = 'file';
   inp.accept = '.xlsx,.xls,.csv,.xlsm,.ofx';
-  inp.onchange = e => { if (e.target.files[0]) carregarArquivoComparativo(e.target.files[0]); };
+  inp.style.display = 'none';
+  inp.onchange = e => { if (e.target.files[0]) carregarArquivoComparativo(e.target.files[0]); document.body.removeChild(inp); };
+  document.body.appendChild(inp);
   inp.click();
 }
 
@@ -1597,7 +1673,9 @@ function carregarArquivoComparativo(file) {
     try {
       let dados, headers;
       if (file.name.toLowerCase().endsWith('.ofx')) {
-        ({ headers, dados } = parseOFX(e.target.result));
+        const buf  = e.target.result;
+        const text = _decodeOFXBuffer(buf);
+        ({ headers, dados } = parseOFX(text));
         if (!dados.length) throw new Error('Nenhuma transação encontrada no arquivo OFX comparativo.');
       } else if (file.name.toLowerCase().match(/\.(csv|tsv)$/)) {
         const sep = file.name.toLowerCase().endsWith('.tsv') ? '\t' : undefined;
@@ -1643,7 +1721,7 @@ function carregarArquivoComparativo(file) {
   };
   reader.onerror = () => { mostrarLoader(false); alert('Erro ao ler o arquivo comparativo. Verifique se ele não está aberto em outro programa.'); };
   if (file.name.toLowerCase().endsWith('.ofx'))
-    reader.readAsText(file, 'windows-1252');
+    reader.readAsArrayBuffer(file);
   else if (file.name.toLowerCase().endsWith('.csv') || file.name.toLowerCase().endsWith('.tsv'))
     reader.readAsText(file, 'utf-8');
   else reader.readAsArrayBuffer(file);
@@ -1663,16 +1741,18 @@ function mostrarConfigColunas(headers, cols, erpDetectado) {
   const banner = document.getElementById('erp-banner');
   if (erpDetectado) {
     banner.style.display = 'flex';
-    banner.innerHTML = `<span class="erp-badge-tag">${erpDetectado.nome}</span>
+    banner.innerHTML = `<span class="erp-badge-tag">${esc(erpDetectado.nome)}</span>
       <span>Sistema detectado automaticamente</span>
       <span class="erp-confianca">— colunas pré-preenchidas</span>`;
     // Pre-select ERP dropdown
     const selErp = document.getElementById('sel-erp-sistema');
     if (selErp) selErp.value = erpDetectado.erp;
-    // Merge ERP column mapping into cols
+    // Merge ERP column mapping into a local copy — never mutate the caller's _cols
+    const localCols = Object.assign({}, cols);
     Object.entries(erpDetectado.mapa).forEach(([orig, campo]) => {
-      if (headers.includes(orig) && !cols[campo]) cols[campo] = orig;
+      if (headers.includes(orig) && !localCols[campo]) localCols[campo] = orig;
     });
+    cols = localCols;
     _toast(`ERP detectado: ${erpDetectado.nome}`);
   } else {
     banner.style.display = 'none';
@@ -1712,8 +1792,8 @@ function lerColsSelecionadas() {
   const tipos = ['valor','data','vencimento','entidade','chave','categoria'];
   const c = {};
   tipos.forEach(t => { c[t] = document.getElementById(`sel-${t}`)?.value || null; });
-  // tipo é detectado automaticamente pelo ERP/detectarColunas — não exposto na UI
-  c.tipo = _cols.tipo || null;
+  // Re-detect 'tipo' from current headers to avoid stale value after ERP remapping
+  c.tipo = detectarColunas(_headers).tipo || null;
   return c;
 }
 
@@ -1864,6 +1944,48 @@ function renderScoreFinanceiro(s) {
       <div class="score-pilar-lbl">${esc(p.label)}</div>
       <div style="font-size:10px;color:var(--text-3)">${esc(p.detalhe)}</div>
     </div>`).join('');
+
+  // Ações recomendadas por pilar
+  const acoes = [];
+  const p = s.pilares;
+
+  if (p.margem.pts === 0)
+    acoes.push({ tipo:'urgente', icone:'🔴', titulo:'Margem crítica — revisar precificação', detalhe:'Margem líquida abaixo de 5%. Analise custos fixos, variáveis e reposicione preços urgentemente.' });
+  else if (p.margem.pts <= 10)
+    acoes.push({ tipo:'atencao', icone:'🟡', titulo:'Margem baixa — otimizar custos', detalhe:`Margem entre 5–15% (${p.margem.detalhe}). Revise despesas operacionais e negocie fornecedores.` });
+  else if (p.margem.pts < 30)
+    acoes.push({ tipo:'atencao', icone:'🟡', titulo:'Margem moderada — buscar eficiência', detalhe:`Margem entre 15–30% (${p.margem.detalhe}). Avalie redução de custos indiretos para ampliar resultado.` });
+
+  if (p.aging.pts === 0 && p.aging.detalhe !== 'Sem dados (vencimento não mapeado)')
+    acoes.push({ tipo:'urgente', icone:'🔴', titulo:'Inadimplência crítica — acionar cobrança', detalhe:`Mais de 25% da carteira em atraso (${p.aging.detalhe}). Implemente régua de cobrança imediatamente e avalie provisão para devedores duvidosos.` });
+  else if (p.aging.pts <= 10 && p.aging.detalhe !== 'Sem dados (vencimento não mapeado)')
+    acoes.push({ tipo:'atencao', icone:'🟡', titulo:'Inadimplência elevada — intensificar cobrança', detalhe:`Entre 10–25% da carteira vencida (${p.aging.detalhe}). Revise prazos de crédito e reforce contato preventivo com clientes.` });
+
+  if (p.pareto.pts === 0)
+    acoes.push({ tipo:'urgente', icone:'🔴', titulo:'Concentração extrema de receita', detalhe:`Top 3 clientes representam 80%+ do faturamento (${p.pareto.detalhe}). Perder um deles impacta criticamente o negócio — diversifique a carteira com prioridade.` });
+  else if (p.pareto.pts <= 6)
+    acoes.push({ tipo:'atencao', icone:'🟡', titulo:'Alta dependência dos top 3 clientes', detalhe:`60–80% do faturamento concentrado (${p.pareto.detalhe}). Crie estratégia de prospecção para reduzir dependência.` });
+  else if (p.pareto.pts <= 12)
+    acoes.push({ tipo:'atencao', icone:'🟡', titulo:'Concentração moderada — monitorar carteira', detalhe:`40–60% concentrado nos top 3 (${p.pareto.detalhe}). Acompanhe mensalmente e busque novos clientes.` });
+
+  if (p.auditoria.pts === 0)
+    acoes.push({ tipo:'urgente', icone:'🔴', titulo:'Qualidade de dados crítica — não use esses dados', detalhe:`Mais de 5 problemas críticos detectados (${p.auditoria.detalhe}). Corrija os erros na fonte antes de qualquer análise ou relatório.` });
+  else if (p.auditoria.pts <= 10)
+    acoes.push({ tipo:'atencao', icone:'🟡', titulo:'Inconsistências na base — revisar dados', detalhe:`2–5 problemas críticos encontrados (${p.auditoria.detalhe}). Verifique duplicatas e campos obrigatórios ausentes na aba Auditoria.` });
+  else if (p.auditoria.pts < 25)
+    acoes.push({ tipo:'atencao', icone:'🟡', titulo:'Auditoria com alertas — investigar', detalhe:`1–2 problemas críticos (${p.auditoria.detalhe}). Confira a aba de auditoria e corrija antes do fechamento.` });
+
+  if (acoes.length === 0)
+    acoes.push({ tipo:'ok', icone:'✅', titulo:'Saúde financeira excelente', detalhe:'Todos os indicadores estão dentro dos parâmetros ideais. Mantenha o monitoramento mensal.' });
+
+  const acoesEl = document.getElementById('score-acoes');
+  acoesEl.style.display = 'block';
+  acoesEl.innerHTML = `<div class="score-acoes-titulo">Ações Recomendadas</div>` +
+    acoes.map(a => `
+      <div class="score-acao score-acao-${a.tipo}">
+        <span class="score-acao-icone">${a.icone}</span>
+        <div class="score-acao-texto"><strong>${esc(a.titulo)}</strong><span>${esc(a.detalhe)}</span></div>
+      </div>`).join('');
 }
 
 // ══════════════════════════════════════════════════════
@@ -2215,7 +2337,7 @@ Destaque valores monetários no formato brasileiro: R$ 1.234,56.`;
 function abrirPainelClaude() {
   const card  = document.getElementById('card-claude');
   const input = document.getElementById('claude-api-key');
-  const saved = localStorage.getItem('_cak');
+  const saved = sessionStorage.getItem('_cak');
   if (saved) input.value = saved;
   card.style.display = 'block';
   card.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -2333,7 +2455,7 @@ async function analisarComClaude(btn) {
         'anthropic-dangerous-allow-browser': 'true',
       },
       body: JSON.stringify({
-        model: 'claude-opus-4-7',
+        model: 'claude-opus-4-5',
         max_tokens: 2048,
         system: _CLAUDE_SYSTEM,
         messages: [{ role: 'user', content: _gerarBriefing() }],
@@ -2442,6 +2564,7 @@ function baixarTemplate() {
 }
 
 function exportarJSON() {
+  if (!_dadosOriginais.length) { alert('Nenhum dado carregado para exportar.'); return; }
   const _par = _ultimoPareto ?? calcularPareto(_dadosOriginais, _cols.entidade, _cols.valor);
   const obj = {
     arquivo:   _nomeArquivo,
@@ -2452,12 +2575,15 @@ function exportarJSON() {
     dre:       _ultimoDre        ?? construirDRE(_dadosOriginais, _cols.categoria, _cols.valor),
     pareto: _par ? { items: Array.from(_par), totalEntidades: _par.totalEntidades, totalGeral: _par.totalGeral } : null,
   };
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([JSON.stringify(obj,null,2)], {type:'application/json'}));
+  const url  = URL.createObjectURL(new Blob([JSON.stringify(obj,null,2)], {type:'application/json'}));
   const base = (_nomeArquivo || 'export').replace(/\.[^.]+$/,'');
+  const a    = document.createElement('a');
+  a.href     = url;
   a.download = `analise_${base}_${Date.now()}.json`;
+  document.body.appendChild(a);
   a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
 // PWA — Service Worker

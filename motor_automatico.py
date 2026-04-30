@@ -11,7 +11,6 @@ Execução:
 """
 
 import os
-import sys
 import ssl
 import html as _html_mod
 import time
@@ -19,7 +18,6 @@ import logging
 import smtplib
 import argparse
 import traceback
-from difflib                import get_close_matches
 from email.mime.text        import MIMEText
 from email.mime.multipart   import MIMEMultipart
 from datetime               import datetime, timezone
@@ -30,7 +28,7 @@ import pandas as pd
 
 from toolkit_financeiro import (
     Leitor, Auditor, AnalistaFinanceiro, AnalistaComercial,
-    MontadorPlanilha, Verificador, Util, Status, validar_config,
+    MontadorPlanilha, Status, validar_config,
     Normalizador,
 )
 from relatorio_html import GeradorHTML
@@ -78,7 +76,7 @@ class AnalisadorClaudeAPI:
     def __init__(self, cfg: dict):
         self.cfg_api = cfg.get('claude_api', {})
         self.ativo   = self.cfg_api.get('ativo', False)
-        self.modelo  = self.cfg_api.get('modelo', 'claude-opus-4-7')
+        self.modelo  = self.cfg_api.get('modelo', 'claude-opus-4-5')
         self.max_tok = self.cfg_api.get('max_tokens', 1024)
         self._client = None
         self._system_prompt = ''
@@ -771,10 +769,6 @@ class ProcessadorArquivo:
             pts_a = 0
             if df_aging is not None and len(df_aging):
                 total_ag = df_aging['Total_RS'].sum() if 'Total_RS' in df_aging.columns else 0
-                vencido  = df_aging[df_aging.get('Faixa_Aging', df_aging.columns[0]).name
-                    if hasattr(df_aging.get('Faixa_Aging', None), 'name') else 'Faixa_Aging'
-                    ]['Total_RS'].sum() if 'Faixa_Aging' in df_aging.columns else 0
-                # Simpler: sum all rows that aren't "A vencer"
                 col_faixa = next((c for c in df_aging.columns if 'faixa' in c.lower()), None)
                 if col_faixa and 'Total_RS' in df_aging.columns:
                     vencido  = df_aging[~df_aging[col_faixa].str.contains('vencer|Sem', na=False)]['Total_RS'].sum()
@@ -797,8 +791,8 @@ class ProcessadorArquivo:
             linhas.append(f"  Margem ({pts_m}/30) | Inadimplência ({pts_a}/25) | Concentração ({pts_p}/20) | Auditoria ({pts_aud}/25)")
             linhas.append(f"  Margem líquida: {margem:.1f}% | Críticos auditoria: {criticos}")
             linhas.append("")
-        except Exception:
-            pass  # Score é informativo — não bloquear briefing em caso de erro
+        except Exception as _e:
+            logging.getLogger(__name__).warning("Score financeiro não calculado: %s", _e)
 
         linhas += [
             "---",
@@ -860,13 +854,22 @@ class ProcessadorArquivo:
             msg['To']      = ', '.join(dests)
             msg.attach(MIMEText(corpo, 'html'))
 
+            # Port 465 = SMTP_SSL (implicit TLS); port 587/25 = STARTTLS
+            use_ssl = (porta == 465)
+            ctx = ssl.create_default_context()
+
             max_tentativas = 3
             for tentativa in range(1, max_tentativas + 1):
                 try:
-                    with smtplib.SMTP(smtp, porta, timeout=10) as server:
-                        server.starttls(context=ssl.create_default_context())
-                        server.login(rem, senha)
-                        server.sendmail(rem, dests, msg.as_string())
+                    if use_ssl:
+                        with smtplib.SMTP_SSL(smtp, porta, context=ctx, timeout=10) as server:
+                            server.login(rem, senha)
+                            server.sendmail(rem, dests, msg.as_string())
+                    else:
+                        with smtplib.SMTP(smtp, porta, timeout=10) as server:
+                            server.starttls(context=ctx)
+                            server.login(rem, senha)
+                            server.sendmail(rem, dests, msg.as_string())
                     logger.info("E-mail de alerta enviado para %s", dests)
                     return
                 except smtplib.SMTPAuthenticationError as e:
@@ -907,6 +910,14 @@ class ObservadorPasta:
     def varrer_uma_vez(self):
         """Verifica a pasta e processa arquivos ainda não processados."""
         pasta_real = self.pasta.resolve()
+        # Clean up _estados_pendentes for files that no longer exist
+        arquivos_atuais = {
+            f.name for f in self.pasta.iterdir()
+            if f.suffix.lower() in ProcessadorArquivo.EXTENSOES_SUPORTADAS
+        }
+        for nome in list(self._estados_pendentes):
+            if nome not in arquivos_atuais:
+                del self._estados_pendentes[nome]
         for arquivo in self.pasta.iterdir():
             try:
                 # Bloqueia symlinks que apontam para fora da pasta monitorada
