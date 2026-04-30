@@ -918,10 +918,10 @@ body{font-family:'Inter',Arial,sans-serif;font-size:13.5px;background:#E8EDF4;
   margin-top:20px;
   box-shadow:0 12px 48px rgba(0,0,0,.3),inset 0 1px 0 rgba(255,255,255,.9);
   position:relative;z-index:1;max-width:860px;width:100%;
-  backdrop-filter:blur(8px)
+  backdrop-filter:blur(8px);overflow:hidden
 }
 .col-config h3{color:var(--azul);margin-bottom:12px;font-size:14px;font-weight:700}
-.col-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+.col-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
 .col-group label{font-size:11px;color:var(--text-2);display:block;margin-bottom:4px;
   text-transform:uppercase;letter-spacing:.4px;font-weight:600}
 .col-group select{width:100%;padding:7px 8px;border:1.5px solid var(--border);
@@ -1142,7 +1142,6 @@ tr:hover td{background:#EEF4FF;transition:background .15s}
 }
 @media(max-width:900px){
   .kpis{grid-template-columns:repeat(3,1fr)}
-  .col-grid{grid-template-columns:repeat(3,1fr)}
 }
 @media(max-width:600px){
   .header{padding:10px 14px;flex-direction:column;align-items:flex-start;gap:4px}
@@ -1151,7 +1150,7 @@ tr:hover td{background:#EEF4FF;transition:background .15s}
   #header-info{display:none}
   .kpis{grid-template-columns:repeat(2,1fr)}
   .grid2{grid-template-columns:1fr}
-  .col-grid{grid-template-columns:repeat(2,1fr)}
+  .col-grid{grid-template-columns:repeat(auto-fill,minmax(130px,1fr))}
   .kpi .val{font-size:clamp(18px,5vw,26px)}
   .kpi{padding:16px 14px 12px}
   .card{padding:16px}
