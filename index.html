@@ -506,7 +506,7 @@ function calcularKPIs(dados, cols) {
   dados.forEach(r => {
     const v    = toNum(r[colVal]);
     if (isNaN(v)) return;
-    const tipo = String(r[colTipo] || r['Tipo'] || '').trim().toUpperCase();
+    const tipo = String(r[colTipo] || '').trim().toUpperCase();
     if (/^(RECEITA|CR[EÉ]DITO|ENTRADA)$/.test(tipo) || /RECEI|ENTRA|CRÉDI|VENDA|FATURAMENTO/.test(tipo)) { receita += v; nfRec++; }
     else if (/^(DESPESA|D[EÉ]BITO|SA[IÍ]DA)$/.test(tipo) || /DESPE|SAÍDA|SAIDA|DÉBITO|DEBITO/.test(tipo)) { despesa += Math.abs(v); nfDesp++; }
     else if (v > 0) { receita += v; nfRec++; }
