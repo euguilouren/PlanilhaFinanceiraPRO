@@ -506,7 +506,7 @@ function calcularKPIs(dados, cols) {
   dados.forEach(r => {
     const v    = toNum(r[colVal]);
     if (isNaN(v)) return;
-    const tipo = String(r[colTipo] || r['Tipo'] || '').trim().toUpperCase();
+    const tipo = String(r[colTipo] || '').trim().toUpperCase();
     if (/^(RECEITA|CR[EÉ]DITO|ENTRADA)$/.test(tipo) || /RECEI|ENTRA|CRÉDI|VENDA|FATURAMENTO/.test(tipo)) { receita += v; nfRec++; }
     else if (/^(DESPESA|D[EÉ]BITO|SA[IÍ]DA)$/.test(tipo) || /DESPE|SAÍDA|SAIDA|DÉBITO|DEBITO/.test(tipo)) { despesa += Math.abs(v); nfDesp++; }
     else if (v > 0) { receita += v; nfRec++; }
@@ -1010,8 +1010,9 @@ body{font-family:'Inter',Arial,sans-serif;font-size:13.5px;background:#E8EDF4;
 .check-ok{background:#D1FAE5;color:#065F46}
 .check-info{background:#EFF6FF;color:#1E40AF}
 .check-alerta,.check-media,.check-parcial{background:#FEF3C7;color:#92400E}
-.check-divergente,.check-baixa{background:#FEE2E2;color:#991B1B}
-.check-alta{background:#D1FAE5;color:#065F46}
+.check-divergente{background:#FEE2E2;color:#991B1B}
+.check-baixa{background:#D1FAE5;color:#065F46}
+.check-alta{background:#FEF3C7;color:#92400E}
 .check-item{margin-bottom:6px}
 .check-como{font-size:11px;color:#64748B;background:#F8FAFC;border-left:3px solid #CBD5E1;
   padding:6px 10px;margin-bottom:4px;border-radius:0 6px 6px 0;line-height:1.5}
