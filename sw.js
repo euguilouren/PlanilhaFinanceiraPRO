@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pfp-v47';
+const CACHE_NAME = 'pfp-v48';
 
 // Only static shell assets — never cache dynamic/financial responses
 const PRECACHE_URLS = [
@@ -56,7 +56,8 @@ self.addEventListener('fetch', event => {
         cache.match(req).then(cached => {
           if (cached) {
             const date = cached.headers.get('sw-cached-at');
-            if (date && Date.now() - Number(date) < CDN_MAX_AGE_MS) {
+            const age  = Date.now() - Number(date);
+            if (date && isFinite(age) && age >= 0 && age < CDN_MAX_AGE_MS) {
               return cached;
             }
           }
@@ -91,7 +92,7 @@ self.addEventListener('fetch', event => {
               // Offline fallback for navigation requests
               if (req.mode === 'navigate') {
                 return cache.match(self.registration.scope + 'index.html')
-                  || cache.match(self.registration.scope);
+                  .then(r => r || cache.match(self.registration.scope));
               }
               return Response.error();
             })
