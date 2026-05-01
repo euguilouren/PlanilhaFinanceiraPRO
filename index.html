@@ -592,7 +592,8 @@ function renderFluxoPeriodo(dados, cols) {
     const rows = linhas.map(r => {
       const cor = r.resultado >= 0 ? '#D1FAE5' : '#FEE2E2';
       const corR = r.resultado >= 0 ? 'var(--success)' : 'var(--danger)';
-      const pctStr = (r.pct >= 0 ? '+' : '') + r.pct.toFixed(1) + '%';
+      const _pct  = isFinite(r.pct) ? r.pct : 0;
+      const pctStr = (_pct >= 0 ? '+' : '') + _pct.toFixed(1) + '%';
       return `<tr style="background:${cor}">
         <td style="font-weight:600">${esc(r.periodo)}</td>
         <td style="text-align:right;color:var(--success)">${fmtBRL(r.receita)}</td>
@@ -1549,6 +1550,7 @@ let _sortDir = 1;
 let _paginaAtual = 1;
 let _dadosVisivelArr = [];
 let _todasAbas = {};
+let _analisandoAgora = false;
 
 window.addEventListener('beforeinstallprompt', e => {
   e.preventDefault();
@@ -1611,19 +1613,21 @@ const _yield = () => new Promise(r => setTimeout(r, 0));
 function _toggleDarkMode() {
   const dark = document.documentElement.getAttribute('data-theme') === 'dark';
   document.documentElement.setAttribute('data-theme', dark ? '' : 'dark');
-  localStorage.setItem('pfp_theme', dark ? 'light' : 'dark');
+  try { localStorage.setItem('pfp_theme', dark ? 'light' : 'dark'); } catch (e) { /* storage indisponível */ }
   const btn = document.getElementById('btn-darkmode');
   if (btn) btn.textContent = dark ? '🌙' : '☀️';
 }
 (function(){
-  const t = localStorage.getItem('pfp_theme');
-  if (t === 'dark') {
-    document.documentElement.setAttribute('data-theme','dark');
-    window.addEventListener('DOMContentLoaded',()=>{
-      const b = document.getElementById('btn-darkmode');
-      if(b) b.textContent='☀️';
-    });
-  }
+  try {
+    const t = localStorage.getItem('pfp_theme');
+    if (t === 'dark') {
+      document.documentElement.setAttribute('data-theme','dark');
+      window.addEventListener('DOMContentLoaded',()=>{
+        const b = document.getElementById('btn-darkmode');
+        if(b) b.textContent='☀️';
+      });
+    }
+  } catch (e) { /* storage indisponível */ }
 })();
 
 function _atualizarStep(n) {
@@ -1730,6 +1734,7 @@ function carregarArquivo(file) {
           rawH.forEach((h,i) => { if (h && !h.startsWith('__EMPTY')) obj[h] = r[i] ?? ''; });
           return obj;
         });
+        if (!dados.length) throw new Error('O arquivo contém apenas o cabeçalho, sem linhas de dados.');
       } else {
         const wb  = XLSX.read(e.target.result, { type:'array', cellDates:true });
         // Escolhe a primeira aba com dados reais (ignora abas vazias)
@@ -1759,6 +1764,7 @@ function carregarArquivo(file) {
             });
             return obj;
           });
+        if (!dados.length) throw new Error('O arquivo contém apenas o cabeçalho, sem linhas de dados.');
 
         // Multi-sheet: detectar e exibir seletor de abas
         _todasAbas = {};
@@ -2004,6 +2010,8 @@ function lerColsSelecionadas() {
 // EXECUTAR ANÁLISE
 // ══════════════════════════════════════════════════════
 async function executarAnalise() {
+  if (_analisandoAgora) return;
+  _analisandoAgora = true;
   mostrarLoader(true);
   _setLoaderStep('Preparando análise...');
   await _yield();
@@ -2077,6 +2085,8 @@ async function executarAnalise() {
       document.getElementById('upload-area').style.display = 'block';
       document.getElementById('dashboard').style.display   = 'none';
       _atualizarStep(2);
+    } finally {
+      _analisandoAgora = false;
     }
     mostrarLoader(false);
     _setLoaderStep('');
@@ -2498,7 +2508,7 @@ function renderComparativo() {
     { label:'Receitas',        a:fmtBRL(comp.receita.a),        b:fmtBRL(comp.receita.b),        d:fmtDelta(comp.receita) },
     { label:'Despesas',        a:fmtBRL(comp.despesa.a),        b:fmtBRL(comp.despesa.b),        d:fmtDelta(comp.despesa) },
     { label:'Resultado',       a:fmtBRL(comp.resultado.a),      b:fmtBRL(comp.resultado.b),      d:fmtDelta(comp.resultado) },
-    { label:'Margem %',        a:`${comp.margem.a.toFixed(1)}%`,b:`${comp.margem.b.toFixed(1)}%`,d:fmtDelta(comp.margem, false, true) },
+    { label:'Margem %',        a:`${isFinite(comp.margem.a)?comp.margem.a.toFixed(1):'—'}%`,b:`${isFinite(comp.margem.b)?comp.margem.b.toFixed(1):'—'}%`,d:fmtDelta(comp.margem, false, true) },
     { label:'Ticket Médio',    a:fmtBRL(comp.ticket.a),         b:fmtBRL(comp.ticket.b),         d:fmtDelta(comp.ticket) },
     { label:'Total Registros', a:fmtNum(comp.totalRegistros.a), b:fmtNum(comp.totalRegistros.b), d:fmtDelta(comp.totalRegistros, false) },
   ];
@@ -2795,13 +2805,16 @@ function _markdownParaHTML(md) {
 }
 
 async function analisarComClaude(btn) {
-  const apiKey = (document.getElementById('claude-api-key').value || '').trim();
+  const keyEl = document.getElementById('claude-api-key');
+  if (!keyEl) return;
+  const apiKey = (keyEl.value || '').trim();
   if (!apiKey) { _toast('Insira sua chave de API.',3500,'aviso'); return; }
   if (!_ultimosKpis) { _toast('Carregue e analise uma planilha primeiro.',3500,'aviso'); return; }
 
   const resultado = document.getElementById('claude-resultado');
   const erro      = document.getElementById('claude-erro');
   const texto     = document.getElementById('claude-texto');
+  if (!resultado || !erro || !texto) return;
   resultado.style.display = 'none';
   erro.style.display      = 'none';
 
