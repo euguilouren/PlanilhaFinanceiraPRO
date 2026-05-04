@@ -157,13 +157,13 @@ def main() -> None:
 
         if pode:
             if aplicar_patch(bug):
-                print(f"       ✅ Patch aplicado automaticamente.")
+                print("       ✅ Patch aplicado automaticamente.")
                 corrigidos += 1
             else:
-                print(f"       ⚠  Patch não pôde ser aplicado (trecho não encontrado).")
+                print("       ⚠  Patch não pôde ser aplicado (trecho não encontrado).")
                 nao_aplicados += 1
         else:
-            print(f"       📌 Requer revisão manual.")
+            print("       📌 Requer revisão manual.")
             nao_aplicados += 1
         print()
 
