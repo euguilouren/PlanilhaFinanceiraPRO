@@ -36,17 +36,22 @@ if grep -qE '^(<<<<<<<|=======|>>>>>>>)' "$HTML"; then
 fi
 
 # ── 3. innerHTML sem esc() — padrão XSS ──────────────────────────────────────
-# Detecta innerHTML = `...${variavel}...` onde variavel não passa por esc()
-XSS_HITS=$(grep -nP 'innerHTML\s*[+=]\s*`[^`]*\$\{(?!esc\()[^}]+\}[^`]*`' "$HTML" \
-  | grep -v '^\s*//' \
-  | grep -v 'fmtBRL\|fmtNum\|fmtData\|\.length\|\.toFixed\|\.toLocaleString' \
-  | wc -l)
+# set +o pipefail no subshell evita que grep sem correspondência aborte o script
+XSS_HITS=$(
+  set +o pipefail
+  grep -nP 'innerHTML\s*[+=]\s*`[^`]*\$\{(?!esc\()[^}]+\}[^`]*`' "$HTML" \
+    | grep -v '^\s*//' \
+    | grep -v 'fmtBRL\|fmtNum\|fmtData\|\.length\|\.toFixed\|\.toLocaleString' \
+    | wc -l
+)
 if [ "$XSS_HITS" -gt 0 ]; then
   aviso "${XSS_HITS} potencial(is) innerHTML sem esc() — revise manualmente:"
+  set +o pipefail
   grep -nP 'innerHTML\s*[+=]\s*`[^`]*\$\{(?!esc\()[^}]+\}[^`]*`' "$HTML" \
     | grep -v '^\s*//' \
     | grep -v 'fmtBRL\|fmtNum\|fmtData\|\.length\|\.toFixed\|\.toLocaleString' \
     | head -5 | sed 's/^/         /'
+  set -o pipefail
 else
   ok "Nenhum innerHTML sem esc() óbvio"
 fi
