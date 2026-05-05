@@ -33,6 +33,19 @@ warnings.filterwarnings('ignore', category=UserWarning, module='openpyxl')
 logger = logging.getLogger(__name__)
 
 
+def _termo_em_texto(texto: str, termo: str) -> bool:
+    """Verifica se ``termo`` aparece em ``texto``.
+
+    Para termos curtos (≤3 chars) usa fronteira de palavra (\\b) para evitar
+    falsos positivos por substring (ex.: 'IR' casando com 'EXPIRADO', 'GIRO',
+    'PIS' casando com 'PISCINA'). Termos longos seguem ``in`` para manter
+    flexibilidade com variações ortográficas.
+    """
+    if len(termo) <= 3:
+        return re.search(r'\b' + re.escape(termo) + r'\b', texto) is not None
+    return termo in texto
+
+
 # ══════════════════════════════════════════════════════════════════
 # CONSTANTES DE STATUS
 # ══════════════════════════════════════════════════════════════════
@@ -844,18 +857,20 @@ class AnalistaFinanceiro:
         """Estrutura DRE a partir de dados categorizados."""
         mapa_dre = OrderedDict([
             ('Receita Bruta',               ['RECEITA', 'VENDA', 'FATURAMENTO']),
-            ('(-) Deduções',                ['DEDUCAO', 'DEDUÇÃO', 'IMPOSTO SOBRE VENDA', 'DEVOLUCAO', 'DEVOLUÇÃO', 'ABATIMENTO']),
+            ('(-) Deduções',                ['DEDUCAO', 'DEDUÇÃO', 'IMPOSTO SOBRE VENDA', 'DEVOLUCAO', 'DEVOLUÇÃO', 'ABATIMENTO',
+                                             'PIS', 'COFINS', 'ICMS', 'ISS']),
             ('(-) CMV/CPV',                 ['CMV', 'CPV', 'CUSTO DA MERCADORIA', 'CUSTO DO PRODUTO', 'CUSTO VARIÁVEL']),
             ('(-) Despesas Operacionais',   ['DESPESA ADMINISTRATIVA', 'DESPESA COMERCIAL', 'DESPESA OPERACIONAL', 'DESPESA GERAL']),
             ('(-/+) Resultado Financeiro',  ['RECEITA FINANCEIRA', 'DESPESA FINANCEIRA', 'JUROS', 'VARIAÇÃO CAMBIAL']),
-            ('(-) IR/CSLL',                 ['IR', 'CSLL', 'IMPOSTO DE RENDA', 'CONTRIBUIÇÃO SOCIAL']),
+            ('(-) IR/CSLL',                 ['IR', 'IRPJ', 'IRRF', 'IRPF', 'CSLL', 'IMPOSTO DE RENDA', 'CONTRIBUIÇÃO SOCIAL']),
         ])
 
         df = df.copy()
         cat_upper = df[col_categoria].astype(str).str.upper().str.strip()
+
         resultados = []
         for linha_dre, termos in mapa_dre.items():
-            mask = cat_upper.apply(lambda x: any(t in x for t in termos))
+            mask = cat_upper.apply(lambda x: any(_termo_em_texto(x, t) for t in termos))
             valor = pd.to_numeric(df.loc[mask, col_valor], errors='coerce').sum()
             resultados.append({'Linha_DRE': linha_dre, 'Valor_RS': round(valor, 2)})
         dre = pd.DataFrame(resultados)
@@ -935,11 +950,11 @@ class AnalistaFinanceiro:
 
         def _classif(c):
             for x in DEDUCAO:
-                if x in c: return 'Dedução de Receita'
+                if _termo_em_texto(c, x): return 'Dedução de Receita'
             for x in RESULTADO:
-                if x in c: return 'IR/CSLL (após resultado)'
+                if _termo_em_texto(c, x): return 'IR/CSLL (após resultado)'
             for x in ENCARGOS:
-                if x in c: return 'Despesa Operacional (encargos)'
+                if _termo_em_texto(c, x): return 'Despesa Operacional (encargos)'
             return 'Verificar classificação'
 
         df['Classificação_DRE'] = cat.apply(_classif)
