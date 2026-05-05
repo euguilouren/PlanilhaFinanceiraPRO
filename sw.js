@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pfp-v50';
+const CACHE_NAME = 'pfp-v51';
 
 // Only static shell assets — never cache dynamic/financial responses
 const PRECACHE_URLS = [
