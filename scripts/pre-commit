@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# pre-commit — Validações estáticas do index.html antes de cada commit.
+# Instale com: bash scripts/install-hooks.sh
+set -euo pipefail
+
+HTML="index.html"
+ERROS=0
+AVISOS=0
+
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+GREEN='\033[0;32m'
+RESET='\033[0m'
+
+erro()  { echo -e "${RED}[ERRO]${RESET}  $*"; ((ERROS++))  || true; }
+aviso() { echo -e "${YELLOW}[AVISO]${RESET} $*"; ((AVISOS++)) || true; }
+ok()    { echo -e "${GREEN}[OK]${RESET}    $*"; }
+
+# Só valida se index.html estiver na staging area
+if ! git diff --cached --name-only | grep -q "^index\.html$"; then
+  exit 0
+fi
+
+echo "🔎 Validando index.html..."
+
+# ── 1. Estrutura obrigatória ──────────────────────────────────────────────────
+grep -q '<!DOCTYPE html>'       "$HTML" && ok "DOCTYPE presente"      || erro "DOCTYPE html ausente"
+grep -q 'Luan Guilherme'        "$HTML" && ok "Branding presente"     || erro "Branding 'Luan Guilherme' ausente"
+grep -q 'Planilha Financeira Pro' "$HTML" && ok "Título correto"      || erro "Título 'Planilha Financeira Pro' ausente"
+grep -q 'SheetJS\|xlsx\.full'   "$HTML" && ok "SheetJS referenciado"  || erro "CDN SheetJS ausente"
+grep -q 'chart\.js\|Chart\.js'  "$HTML" && ok "Chart.js referenciado" || erro "CDN Chart.js ausente"
+
+# ── 2. Marcadores de conflito git ─────────────────────────────────────────────
+if grep -qE '^(<<<<<<<|=======|>>>>>>>)' "$HTML"; then
+  erro "Marcadores de conflito git encontrados em index.html"
+fi
+
+# ── 3. innerHTML sem esc() — padrão XSS ──────────────────────────────────────
+# Detecta innerHTML = `...${variavel}...` onde variavel não passa por esc()
+XSS_HITS=$(grep -nP 'innerHTML\s*[+=]\s*`[^`]*\$\{(?!esc\()[^}]+\}[^`]*`' "$HTML" \
+  | grep -v '^\s*//' \
+  | grep -v 'fmtBRL\|fmtNum\|fmtData\|\.length\|\.toFixed\|\.toLocaleString' \
+  | wc -l)
+if [ "$XSS_HITS" -gt 0 ]; then
+  aviso "${XSS_HITS} potencial(is) innerHTML sem esc() — revise manualmente:"
+  grep -nP 'innerHTML\s*[+=]\s*`[^`]*\$\{(?!esc\()[^}]+\}[^`]*`' "$HTML" \
+    | grep -v '^\s*//' \
+    | grep -v 'fmtBRL\|fmtNum\|fmtData\|\.length\|\.toFixed\|\.toLocaleString' \
+    | head -5 | sed 's/^/         /'
+else
+  ok "Nenhum innerHTML sem esc() óbvio"
+fi
+
+# ── 4. console.log em produção ────────────────────────────────────────────────
+LOG_HITS=$(grep -c 'console\.log(' "$HTML" || true)
+if [ "$LOG_HITS" -gt 0 ]; then
+  aviso "${LOG_HITS} console.log() encontrado(s) — remover antes do deploy"
+fi
+
+# ── 5. Chart.js — destroy() antes de new Chart() ─────────────────────────────
+NEW_CHARTS=$(grep -c 'new Chart(' "$HTML" || true)
+DESTROYS=$(grep -c '\.destroy()' "$HTML" || true)
+if [ "$NEW_CHARTS" -gt "$DESTROYS" ]; then
+  aviso "Possível memory leak: ${NEW_CHARTS}x 'new Chart()' mas apenas ${DESTROYS}x '.destroy()'"
+fi
+
+# ── 6. Variáveis de estado global íntegras ────────────────────────────────────
+for VAR in _dadosOriginais _headers _cols _nomeArquivo _chartAging; do
+  grep -q "$VAR" "$HTML" && ok "Estado global '$VAR' presente" || aviso "Estado global '$VAR' não encontrado"
+done
+
+# ── 7. Resultado final ────────────────────────────────────────────────────────
+echo ""
+if [ "$ERROS" -gt 0 ]; then
+  echo -e "${RED}✗ ${ERROS} erro(s) encontrado(s) — commit bloqueado.${RESET}"
+  exit 1
+elif [ "$AVISOS" -gt 0 ]; then
+  echo -e "${YELLOW}⚠ ${AVISOS} aviso(s) — commit permitido, mas revise.${RESET}"
+  exit 0
+else
+  echo -e "${GREEN}✅ Todas as validações passaram.${RESET}"
+  exit 0
+fi
