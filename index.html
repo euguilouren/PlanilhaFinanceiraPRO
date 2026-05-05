@@ -762,12 +762,14 @@ function parseOFX(text) {
     XFER:'TRANSFERÊNCIA',
   };
 
-  const dados = blocos.map(b => {
+  const dados = blocos.map((b, i) => {
     const data  = parseDt(campo(b, 'DTPOSTED'));
     const valor = toNum(campo(b, 'TRNAMT') || '0');
     const descr = campo(b, 'MEMO') || campo(b, 'NAME') || '';
-    // Synthetic FITID when missing to avoid false auditoria CRÍTICA
-    const id    = campo(b, 'FITID') || `ofx-${data}-${valor}`;
+    // Synthetic FITID when missing — inclui índice da linha para não
+    // gerar duplicatas falsas em transações legítimas com mesma
+    // data/valor (ex.: duas compras de R$50 no mesmo dia).
+    const id    = campo(b, 'FITID') || `ofx-${i}-${data}-${valor}`;
     const tipo  = TIPO_MAP[(campo(b, 'TRNTYPE') || '').toUpperCase()] || campo(b, 'TRNTYPE');
     return { 'Data': data, 'Vencimento': data, 'Valor': valor, 'Descrição': descr, 'ID': id, 'Tipo': tipo };
   });
@@ -1328,7 +1330,7 @@ tr:hover td{background:#EEF4FF;transition:background .15s}
     <button class="btn-upload btn-template" onclick="baixarTemplate()">
       ↓ Baixar Template Padrão
     </button>
-    <input type="file" id="file-input" accept=".xlsx,.xls,.csv,.xlsm,.ofx">
+    <input type="file" id="file-input" accept=".xlsx,.xls,.xlsm,.csv,.tsv,.ofx">
   </div>
 
   <!-- Histórico de arquivos recentes -->
@@ -1845,9 +1847,15 @@ function carregarArquivo(file) {
 function abrirComparativo() {
   const inp = document.createElement('input');
   inp.type = 'file';
-  inp.accept = '.xlsx,.xls,.csv,.xlsm,.ofx';
+  inp.accept = '.xlsx,.xls,.xlsm,.csv,.tsv,.ofx';
   inp.style.display = 'none';
-  inp.onchange = e => { if (e.target.files[0]) carregarArquivoComparativo(e.target.files[0]); document.body.removeChild(inp); };
+  inp.onchange = e => {
+    const f = e.target.files[0];
+    document.body.removeChild(inp);
+    if (!f) return;
+    if (!_tipoPermitido(f.name)) { _mostrarErroTipo(f.name); return; }
+    carregarArquivoComparativo(f);
+  };
   document.body.appendChild(inp);
   inp.click();
 }
@@ -2626,7 +2634,11 @@ function _filtrarTabelaImediato() {
   const q    = document.getElementById('busca').value.toLowerCase();
   const de   = document.getElementById('filtro-de')?.value;
   const ate  = document.getElementById('filtro-ate')?.value;
-  const colD = _cols.data || 'Data';
+  // Resolve coluna de data: se _cols.data não mapeada, tenta header 'Data'
+  // literal; se nenhum existir, desabilita filtro de data para evitar
+  // excluir silenciosamente todos os registros.
+  const colD = (_cols.data && _headers.includes(_cols.data)) ? _cols.data
+             : (_headers.includes('Data') ? 'Data' : null);
 
   let filtrado = _dadosOriginais;
 
@@ -2635,7 +2647,7 @@ function _filtrarTabelaImediato() {
       _headers.some(h => String(row[h]??'').toLowerCase().includes(q))
     );
   }
-  if (de || ate) {
+  if ((de || ate) && colD) {
     filtrado = filtrado.filter(row => {
       const raw = row[colD];
       if (!raw) return false;
@@ -2645,6 +2657,8 @@ function _filtrarTabelaImediato() {
       if (ate && d > ate) return false;
       return true;
     });
+  } else if ((de || ate) && !colD) {
+    _toast('Filtro de data ignorado — coluna Data não mapeada', 3500, 'aviso');
   }
 
   _sortCol = null; _sortDir = 1; _paginaAtual = 1;
@@ -2993,7 +3007,9 @@ function exportarCSV() {
   const ws = XLSX.utils.aoa_to_sheet(rows);
   const wb2 = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb2, ws, 'Dados');
-  XLSX.writeFile(wb2, (_nomeArquivo||'dados').replace(/\.[^.]+$/,'') + '_exportado.xlsx');
+  // CSV com BOM UTF-8 para compatibilidade com Excel/PT-BR
+  XLSX.writeFile(wb2, (_nomeArquivo||'dados').replace(/\.[^.]+$/,'') + '_exportado.csv',
+    { bookType: 'csv', FS: ';' });
   _toast(`${dados.length.toLocaleString('pt-BR')} registros exportados`, 3000, 'sucesso');
 }
 
@@ -3005,6 +3021,8 @@ function _trocarAba(nomAba) {
   const info = document.getElementById('sel-aba-info');
   if (info) info.textContent = `${aba.dados.length.toLocaleString('pt-BR')} registros`;
   const det = detectarColunas(_headers);
+  // Re-detectar ERP por aba — abas diferentes podem ter schemas diferentes
+  _erpDetectado = detectarERP(_headers);
   mostrarConfigColunas(_headers, det, _erpDetectado);
 }
 
@@ -3044,7 +3062,7 @@ document.addEventListener('keydown', e => {
 const _ONB_KEY  = 'pfp_onboarding_done';
 let   _onbPasso = 0;
 const _onbPassos = [
-  { icon:'📁', titulo:'Importe sua planilha', texto:'Arraste um arquivo <strong>Excel (.xlsx/.xls)</strong>, <strong>CSV</strong> ou <strong>extrato OFX</strong> direto para a área de upload — tudo é processado 100% no seu navegador, sem enviar dados para servidores.' },
+  { icon:'📁', titulo:'Importe sua planilha', texto:'Arraste um arquivo <strong>Excel (.xlsx/.xls/.xlsm)</strong>, <strong>CSV/TSV</strong> ou <strong>extrato OFX</strong> direto para a área de upload — tudo é processado 100% no seu navegador, sem enviar dados para servidores.' },
   { icon:'⚙️', titulo:'Configure as colunas', texto:'O sistema detecta automaticamente os campos do seu ERP. Se necessário, ajuste os mapeamentos de <strong>Valor, Data, Vencimento, Entidade</strong> e <strong>Chave</strong> antes de analisar.' },
   { icon:'📊', titulo:'Explore a análise', texto:'Visualize <strong>Score Financeiro</strong>, <strong>KPIs</strong>, <strong>Aging de recebíveis</strong>, <strong>DRE</strong>, <strong>Análise de Pareto</strong> e muito mais. Use <kbd>Alt+D</kbd> para alternar o tema escuro.' },
 ];
