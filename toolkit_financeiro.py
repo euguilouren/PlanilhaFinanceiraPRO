@@ -481,7 +481,8 @@ class Auditor:
             datas2 = pd.to_datetime(df[col_data2], errors='coerce', dayfirst=True)
             if hasattr(datas2.dtype, 'tz') and datas2.dtype.tz is not None:
                 datas2 = datas2.dt.tz_convert(None)
-            for idx, row in df[datas2 < datas].iterrows():
+            mask = (datas2 < datas).fillna(False)
+            for idx, row in df[mask.values].iterrows():
                 inconsistencias.append({
                     'aba': aba, 'linha': idx + 2,
                     'coluna': f"{col_data} / {col_data2}",
@@ -619,10 +620,13 @@ class Conciliador:
                 return f'NÃO ENCONTRADO em {nome_fonte2}'
             if row['_merge'] == 'right_only':
                 return f'NÃO ENCONTRADO em {nome_fonte1}'
-            if abs(row['Diferença_R$']) <= tolerancia:
+            diff = abs(row['Diferença_R$'])
+            if diff == 0:
                 return Status.OK
-            if abs(row['Diferença_R$']) <= 0.05:
+            if diff <= 0.05 and tolerancia == 0.0:
                 return 'DIVERGÊNCIA DE ARREDONDAMENTO'
+            if diff <= tolerancia:
+                return Status.OK
             return Status.DIVERGENTE
 
         merged['Status_Conciliação'] = merged.apply(_status, axis=1)
@@ -824,7 +828,7 @@ class AnalistaFinanceiro:
         resumo = resumo.sort_values('_ord').drop(columns='_ord').reset_index(drop=True)
         resumo['Total_RS'] = resumo['Total_RS'].round(2)
         _total_aging = resumo['Total_RS'].sum()
-        resumo['Percentual'] = (resumo['Total_RS'] / _total_aging * 100).round(1) if _total_aging else 0.0
+        resumo['Percentual'] = (resumo['Total_RS'] / _total_aging * 100).round(1) if _total_aging else pd.Series([0.0] * len(resumo), index=resumo.index)
         return resumo
 
     @staticmethod
@@ -885,6 +889,8 @@ class AnalistaFinanceiro:
         resultado = pd.DataFrame(dre_final)
         if receita_liq != 0:
             resultado['AV_%'] = (resultado['Valor_RS'] / abs(receita_liq) * 100).round(1)
+        else:
+            resultado['AV_%'] = None
         return resultado
 
     @staticmethod
@@ -963,7 +969,7 @@ class AnalistaFinanceiro:
             indicadores.append({
                 'Indicador': nome, 'Fórmula': formula, 'Valor': valor,
                 'Referência': ref,
-                'Status': 'SAUDÁVEL' if ok_cond(valor) else ('ATENÇÃO' if ok_cond(valor / 0.8) else 'CRÍTICO'),
+                'Status': 'SAUDÁVEL' if ok_cond(valor) else ('ATENÇÃO' if ok_cond(valor * 0.8) else 'CRÍTICO'),
             })
 
         if passivo_circulante != 0:
@@ -980,7 +986,7 @@ class AnalistaFinanceiro:
         indicadores.append({'Indicador': 'Capital de Giro (NCG)', 'Fórmula': 'Ativo Circ. - Passivo Circ.',
                             'Valor': cg, 'Referência': '> 0', 'Status': 'SAUDÁVEL' if cg > 0 else 'CRÍTICO'})
 
-        if receita_liquida > 0 and lucro_liquido != 0:
+        if receita_liquida > 0:
             ml = round(lucro_liquido / receita_liquida * 100, 1)
             _add('Margem Líquida (%)', 'Lucro Líq. / Receita Líq. × 100', ml, f'> {th["ml_min"]}%', lambda v: v >= th['ml_min'])
 
@@ -2015,8 +2021,8 @@ class Normalizador:
         if 'Tipo' in df_norm.columns:
             _REC_CATS = r'RECEITA|VENDA|FATURAMENTO|SERVI[ÇC]O|HONOR[ÁA]RIO'
             _DESP_CATS = r'CMV|CPV|CUSTO|DESPESA|IMPOSTO|DEVOLU[ÇC][ÃA]O'
+            _SAIDA_VALS   = r'\bSA[ÍI]DA\b|\bVENDA\b|\bEMITIDA\b|\bNF[ _-]?S\b'
             _ENTRADA_VALS = r'\bENTRADA\b|\bCOMPRA\b|\bRECEBIDA\b|\bNF[ _-]?E\b'
-            _SAIDA_VALS = r'\bSA[ÍI]DA\b|\bVENDA\b|\bEMITIDA\b|\bNF[ _-]?S\b'
 
             tipo_serie = df_norm['Tipo'].astype(str).str.strip().str.upper()
 

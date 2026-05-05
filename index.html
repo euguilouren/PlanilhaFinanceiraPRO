@@ -181,7 +181,7 @@ function toNum(v) {
       s = s.replace(/,/g, '');                   // US:    1,234.56
     }
   } else if (s.includes(',')) {
-    s = s.replace(',', '.'); // só vírgula → decimal BR
+    s = s.replace(/,/g, '.'); // só vírgula → decimal BR
   }
   const result = parseFloat(s);
   return neg ? -result : result;
@@ -507,7 +507,7 @@ function calcularKPIs(dados, cols) {
     const v    = toNum(r[colVal]);
     if (isNaN(v)) return;
     const tipo = String(r[colTipo] || '').trim().toUpperCase();
-    if (/^(RECEITA|CR[EÉ]DITO|ENTRADA)$/.test(tipo) || /RECEI|ENTRA|CRÉDI|VENDA|FATURAMENTO/.test(tipo)) { receita += v; nfRec++; }
+    if (/^(RECEITA|CR[EÉ]DITO|ENTRADA)$/.test(tipo) || /RECEI|ENTRA|CRÉDI|VENDA|FATURAMENTO/.test(tipo)) { receita += Math.abs(v); nfRec++; }
     else if (/^(DESPESA|D[EÉ]BITO|SA[IÍ]DA)$/.test(tipo) || /DESPE|SAÍDA|SAIDA|DÉBITO|DEBITO/.test(tipo)) { despesa += Math.abs(v); nfDesp++; }
     else if (v > 0) { receita += v; nfRec++; }
     else if (v < 0) { despesa += Math.abs(v); nfDesp++; }
@@ -1913,18 +1913,6 @@ function carregarArquivoComparativo(file) {
   else reader.readAsArrayBuffer(file);
 }
 
-// ══════════════════════════════════════════════════════
-function _trocarAba(nomeAba) {
-  const aba = _todasAbas[nomeAba];
-  if (!aba) return;
-  _dadosOriginais = aba.dados;
-  _headers = aba.headers;
-  const info = document.getElementById('sel-aba-info');
-  if (info) info.textContent = `${aba.dados.length.toLocaleString('pt-BR')} registros`;
-  const det = detectarColunas(_headers);
-  mostrarConfigColunas(_headers, det, null);
-}
-
 // CONFIG COLUNAS
 // ══════════════════════════════════════════════════════
 function mostrarConfigColunas(headers, cols, erpDetectado) {
@@ -2613,8 +2601,8 @@ function _ordenarTabela(col) {
   _paginaAtual = 1;
   const sorted = [..._dadosVisivelArr].sort((a, b) => {
     const va = a[col] ?? '', vb = b[col] ?? '';
-    const na = parseFloat(String(va).replace(/[^\d.,\-]/g,'').replace(',','.'));
-    const nb = parseFloat(String(vb).replace(/[^\d.,\-]/g,'').replace(',','.'));
+    const na = parseFloat(String(va).replace(/[^\d.,\-]/g,'').replace(/\./g,'').replace(',','.'));
+    const nb = parseFloat(String(vb).replace(/[^\d.,\-]/g,'').replace(/\./g,'').replace(',','.'));
     if (!isNaN(na) && !isNaN(nb)) return (na - nb) * _sortDir;
     return String(va).localeCompare(String(vb), 'pt-BR') * _sortDir;
   });
@@ -2938,18 +2926,6 @@ function baixarTemplate() {
 
   XLSX.writeFile(wb, 'template_planilha_financeira_pro.xlsx');
   _toast('Template baixado! Preencha e importe aqui.');
-}
-
-function exportarCSV() {
-  const dados = (typeof _dadosVisivelArr !== 'undefined' && _dadosVisivelArr.length) ? _dadosVisivelArr : _dadosOriginais;
-  if (!dados.length) { _toast('Sem dados para exportar', 2500, 'aviso'); return; }
-  if (typeof XLSX === 'undefined') { _toast('SheetJS não carregado', 2500, 'erro'); return; }
-  const rows = [_headers, ...dados.map(r => _headers.map(h => r[h] ?? ''))];
-  const ws = XLSX.utils.aoa_to_sheet(rows);
-  const wb2 = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb2, ws, 'Dados');
-  XLSX.writeFile(wb2, (_nomeArquivo||'dados').replace(/\.[^.]+$/,'') + '_exportado.xlsx');
-  _toast(`${dados.length.toLocaleString('pt-BR')} registros exportados`, 3000, 'sucesso');
 }
 
 function _renderChartFluxoM(linhas) {
