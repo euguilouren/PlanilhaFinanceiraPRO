@@ -398,7 +398,8 @@ class GeradorHTML:
     def _secao_fluxo(self, df_d, df_m, df_a) -> str:
         """Renderiza seção de fluxo de caixa por período (diário/mensal/anual)."""
         def _tabela(df, label_id):
-            if df is None or len(df) == 0:
+            _cols_req = {'Receita_RS', 'Despesa_RS', 'Resultado_RS', 'Resultado_Pct', 'Periodo', 'NFs_Receita', 'NFs_Despesa'}
+            if df is None or len(df) == 0 or not _cols_req.issubset(df.columns):
                 return '<p style="color:#6B7280;font-size:13px">Nenhum dado disponível.</p>'
             tot_rec  = df['Receita_RS'].sum()
             tot_desp = df['Despesa_RS'].sum()
