@@ -804,7 +804,7 @@ class ProcessadorArquivo:
             linhas.append(f"  Margem líquida: {margem:.1f}% | Críticos auditoria: {criticos}")
             linhas.append("")
         except Exception as _e:
-            logging.getLogger(__name__).warning("Score financeiro não calculado: %s", _e)
+            logger.warning("Score financeiro não calculado: %s", _e)
 
         linhas += [
             "---",

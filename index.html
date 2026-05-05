@@ -1980,7 +1980,7 @@ function aplicarMapeamentoERP(erpKey) {
   const mapa = MAPAS_ERP_JS[erpKey].mapa;
   Object.entries(mapa).forEach(([orig, campo]) => {
     const sel = document.getElementById(`sel-${campo}`);
-    if (sel && _headers.includes(orig)) sel.value = orig;
+    if (sel && _headers.includes(orig)) { sel.value = orig; _atualizarPreview(campo); }
   });
   _toast(`Mapeamento aplicado: ${NOMES_ERP[erpKey]}`);
 }
@@ -2332,8 +2332,8 @@ function renderAuditoria(lista) {
 // RENDER AGING
 // ══════════════════════════════════════════════════════
 function renderAging(lista) {
-  if (_chartAging) { _chartAging.destroy(); _chartAging = null; }
   if (!lista || !lista.length) {
+    if (_chartAging) { _chartAging.destroy(); _chartAging = null; }
     document.getElementById('aging-content').innerHTML = `
       <div style="padding:14px;background:#FFF7ED;border-left:4px solid #F59E0B;border-radius:0 8px 8px 0">
         <strong style="color:#92400E">⚠ Coluna de vencimento não mapeada</strong>
@@ -2373,6 +2373,7 @@ function renderAging(lista) {
   // Gráfico
   const _canvAging = document.getElementById('chart-aging');
   if (!_canvAging) return;
+  if (_chartAging) { _chartAging.destroy(); _chartAging = null; }
   const ctx = _canvAging.getContext('2d');
   _chartAging = new Chart(ctx, {
     type:'doughnut',
@@ -2517,9 +2518,9 @@ function renderComparativo() {
       </tr>`).join('')}</tbody>
     </table></div>`;
 
-  if (_chartComparativo) _chartComparativo.destroy();
   const canvas = document.getElementById('chart-comparativo');
   if (!canvas) return;
+  if (_chartComparativo) { _chartComparativo.destroy(); _chartComparativo = null; }
   _chartComparativo = new Chart(canvas.getContext('2d'), {
     type: 'bar',
     data: {
@@ -2851,7 +2852,8 @@ async function analisarComClaude(btn) {
 }
 
 function copiarAnalise() {
-  const t = _ultimaAnaliseClaude || document.getElementById('claude-texto').innerText;
+  const _clEl = document.getElementById('claude-texto');
+  const t = _ultimaAnaliseClaude || (_clEl ? _clEl.innerText : '');
   if (!t || !t.trim()) { _toast('Nenhuma análise para copiar.',2500,'aviso'); return; }
   if (navigator.clipboard) {
     navigator.clipboard.writeText(t).then(() => _toast('Análise copiada!',2500,'sucesso')).catch(() => _copiarFallback(t));

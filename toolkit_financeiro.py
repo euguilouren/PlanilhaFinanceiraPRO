@@ -506,7 +506,7 @@ class Auditor:
                     'impacto_rs': 0,
                 })
                 continue
-            vazio_mask = df[col].isnull() | df[col].astype(str).str.strip().isin(['', 'nan', 'None'])
+            vazio_mask = df[col].isnull() | df[col].astype(str).str.strip().isin(['', 'nan', 'None', 'NaT', 'NAN', '<NA>'])
             vazios = df[vazio_mask]
             if len(vazios) > 0:
                 inconsistencias.append({
