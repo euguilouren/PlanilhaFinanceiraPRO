@@ -76,7 +76,7 @@ class AnalisadorClaudeAPI:
     def __init__(self, cfg: dict):
         self.cfg_api = cfg.get('claude_api', {})
         self.ativo   = self.cfg_api.get('ativo', False)
-        self.modelo  = self.cfg_api.get('modelo', 'claude-opus-4-5')
+        self.modelo  = self.cfg_api.get('modelo', 'claude-opus-4-7')
         self.max_tok = self.cfg_api.get('max_tokens', 1024)
         self._client = None
         self._system_prompt = ''

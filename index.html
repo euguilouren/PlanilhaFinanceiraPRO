@@ -1664,14 +1664,16 @@ document.getElementById('file-input').addEventListener('change', e => {
   carregarArquivo(f);
 });
 
-const _EXTS_OK = new Set(['.xlsx', '.xls', '.xlsm', '.csv', '.ofx']);
+const _EXTS_OK = new Set(['.xlsx', '.xls', '.xlsm', '.csv', '.tsv', '.ofx']);
 function _tipoPermitido(nome) {
-  const ext = nome.slice(nome.lastIndexOf('.')).toLowerCase();
-  return _EXTS_OK.has(ext);
+  const i = nome.lastIndexOf('.');
+  if (i < 0) return false;
+  return _EXTS_OK.has(nome.slice(i).toLowerCase());
 }
 function _mostrarErroTipo(nome) {
-  const ext = nome.slice(nome.lastIndexOf('.')).toLowerCase() || nome;
-  _toast(`Formato "${ext}" não suportado. Use Excel (.xlsx / .xls), CSV ou OFX.`, 5000, 'erro');
+  const i = nome.lastIndexOf('.');
+  const ext = i >= 0 ? nome.slice(i).toLowerCase() : nome;
+  _toast(`Formato "${ext}" não suportado. Use Excel (.xlsx / .xls / .xlsm), CSV, TSV ou OFX.`, 5000, 'erro');
 }
 
 // Detects OFX encoding from ArrayBuffer: checks BOM, XML declaration, SGML header.
@@ -1971,10 +1973,11 @@ function _atualizarPreview(tipo) {
 }
 
 function aplicarMapeamentoERP(erpKey) {
-  // Zera todos os selects antes para não deixar valores de ERP anterior
+  // Zera todos os selects e previews antes para não deixar valores de ERP anterior
   ['valor','data','vencimento','entidade','chave','categoria'].forEach(t => {
     const s = document.getElementById(`sel-${t}`);
     if (s) s.value = '';
+    _atualizarPreview(t);
   });
   if (!erpKey || !MAPAS_ERP_JS[erpKey]) return;
   const mapa = MAPAS_ERP_JS[erpKey].mapa;
@@ -2821,7 +2824,7 @@ async function analisarComClaude(btn) {
         'anthropic-dangerous-allow-browser': 'true',
       },
       body: JSON.stringify({
-        model: 'claude-opus-4-5',
+        model: 'claude-opus-4-7',
         max_tokens: 2048,
         system: _CLAUDE_SYSTEM,
         messages: [{ role: 'user', content: _gerarBriefing() }],
@@ -2931,9 +2934,12 @@ function baixarTemplate() {
 }
 
 function _renderChartFluxoM(linhas) {
-  if (_chartFluxoM) { _chartFluxoM.destroy(); _chartFluxoM = null; }
   const ctx = document.getElementById('chart-fluxo-m')?.getContext('2d');
-  if (!ctx || !linhas || !linhas.length) return;
+  if (!ctx || !linhas || !linhas.length) {
+    if (_chartFluxoM) { _chartFluxoM.destroy(); _chartFluxoM = null; }
+    return;
+  }
+  if (_chartFluxoM) { _chartFluxoM.destroy(); _chartFluxoM = null; }
   _chartFluxoM = new Chart(ctx, {
     type: 'bar',
     data: {
