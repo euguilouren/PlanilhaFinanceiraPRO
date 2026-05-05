@@ -59,11 +59,12 @@ ARQUIVO_SAIDA    = "resultado.xlsx"        # nome do arquivo de saída
 ARQUIVO_BRIEFING = "briefing.txt"          # resumo para colar no Claude
 
 # Nomes das colunas — lidos do config.yaml; edite aqui para sobrescrever
-COL_VALOR    = _COLS_CFG.get('valor',     'Valor')
-COL_CATEGORIA= _COLS_CFG.get('categoria', 'Categoria')
-COL_DATA     = _COLS_CFG.get('data',      'Data')
-COL_CHAVE    = _COLS_CFG.get('chave',     'NF')
-COL_ENTIDADE = _COLS_CFG.get('entidade',  'Cliente')
+COL_VALOR      = _COLS_CFG.get('valor',      'Valor')
+COL_CATEGORIA  = _COLS_CFG.get('categoria',  'Categoria')
+COL_DATA       = _COLS_CFG.get('data',       'Data')
+COL_VENCIMENTO = _COLS_CFG.get('vencimento', 'Vencimento')
+COL_CHAVE      = _COLS_CFG.get('chave',      'NF')
+COL_ENTIDADE   = _COLS_CFG.get('entidade',   'Cliente')
 
 # Colunas obrigatórias para checar se estão vazias
 COLUNAS_OBRIGATORIAS = [c for c in _CFG.get('colunas_obrigatorias', [COL_VALOR, COL_DATA, COL_CHAVE])]
@@ -148,11 +149,12 @@ def main() -> None:
     # ── 4. Análises ──────────────────────────────────────────────
     print("[3/5] Gerando análises financeiras e comerciais...")
 
-    # Aging (se tiver coluna de data e valor)
+    # Aging (se tiver coluna de vencimento e valor)
     df_aging = None
-    if COL_DATA in df.columns and COL_VALOR in df.columns:
+    _col_aging = COL_VENCIMENTO if COL_VENCIMENTO in df.columns else COL_DATA
+    if _col_aging in df.columns and COL_VALOR in df.columns:
         try:
-            df_aging = AnalistaFinanceiro.calcular_aging(df, COL_DATA, COL_VALOR)
+            df_aging = AnalistaFinanceiro.calcular_aging(df, _col_aging, COL_VALOR)
             print("      Aging calculado")
         except (KeyError, ValueError, TypeError) as e:
             logger.warning("Aging ignorado: %s", e)

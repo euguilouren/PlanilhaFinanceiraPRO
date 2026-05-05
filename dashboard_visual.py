@@ -365,7 +365,7 @@ def _secao_dre(df: pd.DataFrame | None) -> str:
         nivel = str(r.get('Nivel', '')).strip()
         is_total = linha in _TOTAIS_DRE
         peso = 'font-weight:bold' if is_total else ''
-        cor_v = '#065F46' if val >= 0 else '#991B1B'
+        cor_v = 'color:#065F46' if val >= 0 else 'color:#991B1B'
         indent = 'padding-left:24px' if nivel == '2' else ''
         rows += (
             f"<tr><td style='{peso};{indent}'>{linha}</td>"
