@@ -327,7 +327,7 @@ function auditoria(dados, cols) {
             severidade: 'MÉDIA', tipo: 'OUTLIER',
             coluna: cols.valor, linha: i + 2,
             valor: fmtBRL(v),
-            descricao: `Valor fora do padrão (média ${fmtBRL(media)}, ±3σ = ${fmtBRL(desvio)})`,
+            descricao: `Valor fora do padrão (média ${fmtBRL(media)}, ±3σ = ${fmtBRL(3*desvio)})`,
           });
         }
       });
@@ -833,6 +833,7 @@ function calcularAntiFraude(dados, cols) {
       const grupos = new Map();
       dados.forEach(r => {
         const ent = String(r[colEnt]||'').trim().toUpperCase();
+        if (!ent) return;
         const v = Math.abs(toNum(r[col]) || 0);
         grupos.set(ent, (grupos.get(ent)||{total:0,n:0}));
         grupos.get(ent).total += v; grupos.get(ent).n++;
@@ -1976,7 +1977,8 @@ function carregarArquivo(file) {
         ({ headers, dados } = parseOFX(text));
         if (!dados.length) throw new Error('Nenhuma transação encontrada no arquivo OFX.');
       } else if (file.name.toLowerCase().match(/\.(csv|tsv)$/)) {
-        const txt   = e.target.result;
+        let txt = e.target.result;
+        if (txt.charCodeAt(0) === 0xFEFF) txt = txt.slice(1); // remove UTF-8 BOM
         const sep   = file.name.toLowerCase().endsWith('.tsv') ? '\t' : undefined;
         const wb    = XLSX.read(txt, { type:'string', raw:false, FS: sep });
         const ws    = wb.Sheets[wb.SheetNames[0]];
@@ -2062,6 +2064,7 @@ function carregarArquivo(file) {
       _salvarHistorico(_nomeArquivo, dados.length);
       _auditConfirmados.clear();
       _ultimosKpis = _ultimaAuditoria = _ultimoAging = _ultimoDre = _ultimoPareto = _ultimoAntiFraude = null;
+      _scoreAnterior = null;
       _ultimaAnaliseClaude = '';
       _colsComparativos = null;
       _kpisComparativos = null;
@@ -2984,14 +2987,18 @@ function _filtrarTabelaImediato() {
 
   if (q) {
     filtrado = filtrado.filter(row =>
-      _headers.some(h => String(row[h]??'').toLowerCase().includes(q))
+      _headers.some(h => {
+        const v = row[h];
+        const s = v instanceof Date ? fmtData(v) : String(v ?? '');
+        return s.toLowerCase().includes(q);
+      })
     );
   }
   if ((de || ate) && colD) {
     filtrado = filtrado.filter(row => {
       const raw = row[colD];
       if (!raw) return false;
-      const d = _parseDataBR(String(raw));
+      const d = _parseDataBR(raw);
       if (!d) return false;
       if (de  && d < de)  return false;
       if (ate && d > ate) return false;
@@ -3007,11 +3014,16 @@ function _filtrarTabelaImediato() {
 }
 
 function _parseDataBR(s) {
-  // Converts DD/MM/YYYY or YYYY-MM-DD or Date object to YYYY-MM-DD string
+  // Converts DD/MM/YYYY, YYYY-MM-DD, Date object, or Excel serial to YYYY-MM-DD string
   if (!s) return null;
-  const m1 = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (s instanceof Date) return isNaN(s) ? null : s.toISOString().slice(0, 10);
+  if (typeof s === 'number') {
+    const d = new Date(Math.round((s - 25569) * 86400 * 1000));
+    return isNaN(d) ? null : d.toISOString().slice(0, 10);
+  }
+  const m1 = String(s).match(/^(\d{2})\/(\d{2})\/(\d{4})/);
   if (m1) return `${m1[3]}-${m1[2]}-${m1[1]}`;
-  const m2 = s.match(/^(\d{4}-\d{2}-\d{2})/);
+  const m2 = String(s).match(/^(\d{4}-\d{2}-\d{2})/);
   if (m2) return m2[1];
   return null;
 }
