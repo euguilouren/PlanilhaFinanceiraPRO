@@ -154,7 +154,13 @@ def _outlier_descricao(row, col_val) -> str:
     try:
         valor  = float(row.get(col_val, 0))
         media  = float(row.get('_media_grupo', 0))
-        desvio = float(row.get('_desvio_padrao', 1)) or 1
+        desvio_raw = row.get('_desvio_padrao', 1)
+        try:
+            desvio = float(desvio_raw)
+            if not desvio or pd.isna(desvio):
+                desvio = 1.0
+        except (TypeError, ValueError):
+            desvio = 1.0
         zscore = abs((valor - media) / desvio)
         return f"Valor R$ {valor:,.2f} está {zscore:.1f}× acima do desvio padrão (média R$ {media:,.2f})"
     except (TypeError, ValueError):

@@ -1166,7 +1166,7 @@ class AnalistaComercial:
         merged['Desvio_RS']    = (merged['Realizado_RS'] - merged['Meta_RS']).round(2)
         merged['Atingimento_%'] = np.where(
             merged['Meta_RS'] != 0,
-            (merged['Realizado_RS'] / merged['Meta_RS'] * 100).round(1),
+            (merged['Realizado_RS'] / merged['Meta_RS'].replace(0, np.nan) * 100).round(1),
             0,
         )
         merged['Status'] = np.where(
@@ -1861,8 +1861,9 @@ class PipelineFinanceiro:
             'status': Status.OK if resumo['percentual_ok'] >= 95 else Status.PENDENTE,
             'obs': f"{resumo['conciliados_ok']} de {resumo['total_registros']} registros",
         }
-        logger.info("Conciliação: %.1f%% OK | divergências: R$ %,.2f",
-                    resumo['percentual_ok'], resumo['soma_divergencias_rs'])
+        logger.info("Conciliação: %.1f%% OK | divergências: R$ %s",
+                    resumo['percentual_ok'],
+                    f"{resumo['soma_divergencias_rs']:,.2f}")
         return df_concil
 
     # ── Análise Financeira ───────────────────────────────────────
