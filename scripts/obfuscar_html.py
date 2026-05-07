@@ -49,7 +49,15 @@ def processar(src_path: Path, dst_path: Path) -> None:
     pattern = re.compile(r'(<script(?:\s[^>]*)?>)(.*?)(</script>)', re.DOTALL | re.IGNORECASE)
     scripts = pattern.findall(html)
     # Exclude external scripts (<script src=...>) — only obfuscate inline JS
-    inline_scripts = [s for s in scripts if 'src=' not in s[0].lower()]
+    def _is_js(tag: str) -> bool:
+        t = tag.lower()
+        if 'src=' in t:
+            return False
+        if 'type=' in t and 'javascript' not in t and 'module' not in t:
+            return False
+        return True
+
+    inline_scripts = [s for s in scripts if _is_js(s[0])]
 
     if not inline_scripts:
         print('[obfuscar] Nenhum bloco <script> inline encontrado.', file=sys.stderr)
@@ -70,8 +78,8 @@ def processar(src_path: Path, dst_path: Path) -> None:
 
     def substituir(m: re.Match) -> str:
         nonlocal first
-        if 'src=' in m.group(1).lower():
-            return m.group(0)  # preserve external script tags unchanged
+        if not _is_js(m.group(1)):
+            return m.group(0)  # preserve non-JS script tags (external or typed) unchanged
         if first:
             first = False
             return f'<script>{bundle_obf}</script>'
