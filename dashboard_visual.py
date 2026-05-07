@@ -49,6 +49,8 @@ class GeradorDashboard:
         arquivo = _esc(Path(arquivo_origem).name)
 
         kpis = _calcular_kpis(df_dados, df_fluxo_mensal)
+        _margem_raw = kpis['margem']
+        _margem_str = f"{_margem_raw:.1f}" if _margem_raw == _margem_raw else '—'
         chart_data = _montar_chart_data(df_fluxo_mensal)
 
         banner_cor  = '#D1FAE5' if total_criticos == 0 else '#FEE2E2'
@@ -137,7 +139,7 @@ tr:hover td{{background:#F9FAFB}}
     <div class="label">Resultado Líquido</div>
     <div class="valor" style="color:{'#065F46' if kpis['resultado']>=0 else '#991B1B'}">
       {_fmt_brl(kpis['resultado'])}</div>
-    <div class="sub">Margem: {kpis['margem']:.1f}%</div>
+    <div class="sub">Margem: {_margem_str}%</div>
   </div>
   <div class="kpi">
     <div class="label">Total de Registros</div>
@@ -193,7 +195,7 @@ def _fmt_brl(val, dec: int = 2) -> str:
             return '—'
         us = f"{abs(v):,.{dec}f}"
         br = us.replace(',', 'X').replace('.', ',').replace('X', '.')
-        return f"R$ {'-' if v < 0 else ''}{br}"
+        return f"{'-' if v < 0 else ''}R$ {br}"
     except (ValueError, TypeError):
         return '—'
 
@@ -205,26 +207,29 @@ def _calcular_kpis(df: pd.DataFrame, df_mensal: pd.DataFrame | None) -> dict:
         'total_registros': len(df) if df is not None else 0,
         'ticket_medio': 0.0,
     }
-    if df_mensal is not None and len(df_mensal):
-        kpis['receita_total'] = float(df_mensal['Receita_RS'].sum()) if 'Receita_RS' in df_mensal.columns else 0.0
-        kpis['despesa_total'] = float(df_mensal['Despesa_RS'].sum()) if 'Despesa_RS' in df_mensal.columns else 0.0
-        kpis['resultado']     = float(df_mensal['Resultado_RS'].sum()) if 'Resultado_RS' in df_mensal.columns else 0.0
-        kpis['nf_receita']    = int(df_mensal['NFs_Receita'].sum()) if 'NFs_Receita' in df_mensal.columns else 0
-        kpis['nf_despesa']    = int(df_mensal['NFs_Despesa'].sum()) if 'NFs_Despesa' in df_mensal.columns else 0
+    _mensal_cols_req = {'Receita_RS', 'Despesa_RS', 'Resultado_RS'}
+    if df_mensal is not None and len(df_mensal) and _mensal_cols_req.issubset(df_mensal.columns):
+        kpis['receita_total'] = float(df_mensal['Receita_RS'].sum())
+        kpis['despesa_total'] = float(df_mensal['Despesa_RS'].sum())
+        kpis['resultado']     = float(df_mensal['Resultado_RS'].sum())
+        kpis['nf_receita']    = int(pd.to_numeric(df_mensal['NFs_Receita'], errors='coerce').fillna(0).sum()) if 'NFs_Receita' in df_mensal.columns else 0
+        kpis['nf_despesa']    = int(pd.to_numeric(df_mensal['NFs_Despesa'], errors='coerce').fillna(0).sum()) if 'NFs_Despesa' in df_mensal.columns else 0
     elif df is not None and len(df) and 'Valor' in df.columns:
         valores = pd.to_numeric(df['Valor'], errors='coerce').fillna(0)
         if 'Tipo' in df.columns:
             tipos = df['Tipo'].astype(str).str.upper()
-            kpis['receita_total'] = float(valores[tipos == 'RECEITA'].sum())
-            kpis['despesa_total'] = float(valores[tipos == 'DESPESA'].abs().sum())
-            kpis['nf_receita']    = int((tipos == 'RECEITA').sum())
-            kpis['nf_despesa']    = int((tipos == 'DESPESA').sum())
+            rec_mask  = tipos.str.contains('RECEITA|VENDA|FATURAMENTO', na=False, regex=True)
+            desp_mask = tipos.str.contains('DESPESA|CUSTO|COMPRA', na=False, regex=True)
+            kpis['receita_total'] = float(valores[rec_mask].sum())
+            kpis['despesa_total'] = float(valores[desp_mask].abs().sum())
+            kpis['nf_receita']    = int(rec_mask.sum())
+            kpis['nf_despesa']    = int(desp_mask.sum())
         else:
             kpis['receita_total'] = float(valores[valores >= 0].sum())
             kpis['despesa_total'] = float(valores[valores < 0].abs().sum())
         kpis['resultado'] = kpis['receita_total'] - kpis['despesa_total']
 
-    if kpis['receita_total'] != 0:
+    if kpis['receita_total'] and pd.notna(kpis['receita_total']) and kpis['receita_total'] != 0:
         kpis['margem'] = kpis['resultado'] / kpis['receita_total'] * 100
         kpis['ticket_medio'] = (kpis['receita_total'] / kpis['nf_receita']
                                 if kpis['nf_receita'] else 0)
@@ -240,11 +245,13 @@ def _montar_chart_data(df_mensal: pd.DataFrame | None) -> dict:
         f = float(v)
         return 0.0 if f != f else round(f, 2)  # replace NaN with 0
 
+    labels = [str(p) for p in df.get('Periodo', [])]
+    n = len(labels)
     return {
-        'labels':     [str(p) for p in df.get('Periodo', [])],
-        'receitas':   [_safe(v) for v in df['Receita_RS']] if 'Receita_RS' in df.columns else [],
-        'despesas':   [_safe(v) for v in df['Despesa_RS']] if 'Despesa_RS' in df.columns else [],
-        'resultados': [_safe(v) for v in df['Resultado_RS']] if 'Resultado_RS' in df.columns else [],
+        'labels':     labels,
+        'receitas':   [_safe(v) for v in df['Receita_RS']] if 'Receita_RS' in df.columns else [0.0] * n,
+        'despesas':   [_safe(v) for v in df['Despesa_RS']] if 'Despesa_RS' in df.columns else [0.0] * n,
+        'resultados': [_safe(v) for v in df['Resultado_RS']] if 'Resultado_RS' in df.columns else [0.0] * n,
     }
 
 
@@ -338,22 +345,32 @@ def _tabela_fluxo(df: pd.DataFrame | None) -> str:
 
 
 def _secao_fluxo_tabs(df_d, df_m, df_a) -> str:
-    if not any(df is not None and len(df) > 0 for df in [df_d, df_m, df_a]):
+    _cols_req = {'Receita_RS', 'Despesa_RS', 'Resultado_RS', 'Resultado_Pct', 'Periodo'}
+    _has_d = df_d is not None and len(df_d) > 0 and _cols_req.issubset(df_d.columns)
+    _has_m = df_m is not None and len(df_m) > 0 and _cols_req.issubset(df_m.columns)
+    _has_a = df_a is not None and len(df_a) > 0 and _cols_req.issubset(df_a.columns)
+    if not (_has_d or _has_m or _has_a):
         return ''
     tab_d = _tabela_fluxo(df_d)
     tab_m = _tabela_fluxo(df_m)
     tab_a = _tabela_fluxo(df_a)
+    # Show first available tab by default
+    default = 'm' if _has_m else ('d' if _has_d else 'a')
+    _act = {'d': '', 'm': '', 'a': ''}
+    _act[default] = ' active'
+    _vis = {'d': 'none', 'm': 'none', 'a': 'none'}
+    _vis[default] = 'block'
     return f"""
 <div class="card">
   <h2>📅 Fluxo por Período — Receitas × Despesas</h2>
   <div class="tabs">
-    <button class="tab-btn active" onclick="showFluxo('m',this)">Mensal</button>
-    <button class="tab-btn" onclick="showFluxo('d',this)">Diário</button>
-    <button class="tab-btn" onclick="showFluxo('a',this)">Anual</button>
+    <button class="tab-btn{_act['m']}" onclick="showFluxo('m',this)">Mensal</button>
+    <button class="tab-btn{_act['d']}" onclick="showFluxo('d',this)">Diário</button>
+    <button class="tab-btn{_act['a']}" onclick="showFluxo('a',this)">Anual</button>
   </div>
-  <div id="fluxo-d" style="display:none">{tab_d}</div>
-  <div id="fluxo-m" style="display:block">{tab_m}</div>
-  <div id="fluxo-a" style="display:none">{tab_a}</div>
+  <div id="fluxo-d" style="display:{_vis['d']}">{tab_d}</div>
+  <div id="fluxo-m" style="display:{_vis['m']}">{tab_m}</div>
+  <div id="fluxo-a" style="display:{_vis['a']}">{tab_a}</div>
 </div>"""
 
 
@@ -401,13 +418,14 @@ def _secao_pareto(df: pd.DataFrame | None) -> str:
     rows = ''
     for _, r in df.head(15).iterrows():
         nome    = _esc(str(r[col_ent]))
-        val     = float(r.get('Total_RS') or 0)
-        pct     = float(r.get('Percentual') or 0)
-        acum    = float(r.get('Acumulado_%') or 0)
-        classe  = _esc(str(r.get('Classe_Pareto') or ''))
-        rank    = int(r.get('Ranking') or 0)
+        _tv = r.get('Total_RS', 0); val  = float(_tv) if pd.notna(_tv) else 0.0
+        _pv = r.get('Percentual', 0); pct = float(_pv) if pd.notna(_pv) else 0.0
+        _av = r.get('Acumulado_%', 0); acum = float(_av) if pd.notna(_av) else 0.0
+        _classe_raw = str(r.get('Classe_Pareto') or '').strip().upper()
+        classe  = _esc(_classe_raw)
+        _rv = r.get('Ranking', 0); rank = int(_rv) if pd.notna(_rv) else 0
         pct_bar = min(val / max_val * 100, 100)
-        cor_cls = '#C9A227' if 'A' in classe else '#9BA8B5'
+        cor_cls = '#C9A227' if _classe_raw == 'A' else '#9BA8B5'
         rows += (
             f"<tr><td style='text-align:center'>{rank}</td>"
             f"<td>{nome}</td>"

@@ -159,6 +159,8 @@ class FraudeDetector:
 
         digitos = valores.map(_primeiro_digito).dropna().astype(int)
         total = len(digitos)
+        if total < 30:
+            return {"valido": False, "motivo": f"Apenas {total} dígitos válidos após filtragem (mínimo: 30)"}
         contagem = digitos.value_counts().reindex(range(1, 10), fill_value=0)
 
         esperado_s = pd.Series(_BENFORD)
@@ -171,7 +173,7 @@ class FraudeDetector:
             nivel = "CRÍTICO"
         elif chi2 > 15.51:
             nivel = "ALTO"
-        elif chi2 > 9.49:
+        elif chi2 > 13.36:
             nivel = "MÉDIO"
         else:
             nivel = "OK"
@@ -215,22 +217,31 @@ class FraudeDetector:
             mask = df_w[col_chave].notna() & (
                 df_w[col_chave].astype(str).str.strip() != ""
             )
-            chaves = df_w.loc[mask, col_chave].astype(str)
-            dup_idx = chaves[chaves.duplicated(keep=False)].index
-            for idx in dup_idx:
-                row = df_w.loc[idx]
+            def _norm_chave(v):
+                try:
+                    f = float(v)
+                    return str(int(f)) if f == int(f) else str(f)
+                except (ValueError, TypeError):
+                    return str(v)
+            chaves = df_w.loc[mask, col_chave].map(_norm_chave)
+            dup_mask = chaves.duplicated(keep=False)
+            dup_chaves = chaves[dup_mask]
+            for chave_val, grupo_idx in dup_chaves.groupby(dup_chaves):
+                linhas = sorted(int(i) + 2 for i in grupo_idx.index)
+                primeira_row = df_w.loc[grupo_idx.index[0]]
                 alertas.append({
                     "tipo": "DUPLICATA_EXATA",
                     "severidade": "CRÍTICA",
-                    "linha": int(idx) + 2,
-                    "descricao": f"Chave '{row[col_chave]}' duplicada",
-                    "valor": row["_val"],
-                    "entidade": str(row[col_entidade]) if col_entidade and col_entidade in df_w.columns else "",
+                    "linha": linhas,
+                    "descricao": f"Chave '{chave_val}' duplicada",
+                    "valor": primeira_row["_val"],
+                    "entidade": str(primeira_row[col_entidade]) if col_entidade and col_entidade in df_w.columns else "",
                 })
 
         # Duplicatas fuzzy por valor + entidade + janela de data
         if col_entidade and col_entidade in df_w.columns:
             df_w["_ent"] = df_w[col_entidade].astype(str).str.strip().str.upper()
+            df_w = df_w[~df_w["_ent"].isin(["NAN", "NONE", "NAT", ""])]
             if col_data and col_data in df_w.columns:
                 df_w["_dt"] = pd.to_datetime(df_w[col_data], errors="coerce", dayfirst=True)
             else:
@@ -255,7 +266,7 @@ class FraudeDetector:
                         alertas.append({
                             "tipo": "DUPLICATA_FUZZY",
                             "severidade": "ALTA",
-                            "linha": int(idxs[i]) + 2,
+                            "linha": [int(idxs[i]) + 2, int(idxs[j]) + 2],
                             "descricao": (
                                 f"Valor similar (R$ {va:,.2f} ≈ R$ {vb:,.2f}) "
                                 f"para '{ent}' — linha {idxs[j] + 2}"
@@ -481,7 +492,7 @@ class FraudeDetector:
         df_w["_ent"] = df_w[col_entidade].astype(str).str.strip().str.upper()
 
         total_geral = df_w["_val"].sum()
-        if total_geral == 0:
+        if total_geral <= 0:
             return _empty
 
         resumo = (
@@ -519,7 +530,7 @@ class FraudeDetector:
         alertas: list[str] = []
 
         b = resultado.get("benford") or {}
-        nivel_b = b.get("nivel", "OK")
+        nivel_b = b.get("nivel", "OK") if b.get("valido", False) else "OK"
         if nivel_b == "CRÍTICO":
             score += 30
             alertas.append(f"Lei de Benford CRÍTICA (χ²={b.get('chi2','?')}) — possível adulteração em massa")
