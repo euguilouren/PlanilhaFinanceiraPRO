@@ -2750,15 +2750,16 @@ function renderComparativo() {
     ? `${fmtData(kB.periodoInicio)} – ${fmtData(kB.periodoFim)}` : _nomeArquivoComp;
   document.getElementById('comparativo-labels').textContent = `${labelA}  ×  ${labelB}`;
 
-  const fmtDelta = (d, isBRL=true, isPP=false) => {
+  // inv=true inverts color semantics (used for expenses: increase = bad)
+  const fmtDelta = (d, isBRL=true, isPP=false, inv=false) => {
     if (d.pct === null) {
       if (!d.abs) return '<span class="delta-neu">—</span>';
       const sinal = d.abs > 0 ? '↑' : '↓';
-      const cls   = d.abs > 0 ? 'delta-pos' : 'delta-neg';
-      return `<span class="${cls}">${sinal} ${isBRL ? fmtBRL(Math.abs(d.abs)) : fmtNum(Math.abs(Math.round(d.abs)))}</span>`;
+      const pos   = inv ? (d.abs > 0 ? 'delta-neg' : 'delta-pos') : (d.abs > 0 ? 'delta-pos' : 'delta-neg');
+      return `<span class="${pos}">${sinal} ${isBRL ? fmtBRL(Math.abs(d.abs)) : fmtNum(Math.abs(Math.round(d.abs)))}</span>`;
     }
     const sinal = d.abs >= 0 ? '↑' : '↓';
-    const cls   = d.abs >= 0 ? 'delta-pos' : 'delta-neg';
+    const cls   = inv ? (d.abs >= 0 ? 'delta-neg' : 'delta-pos') : (d.abs >= 0 ? 'delta-pos' : 'delta-neg');
     const abs   = isPP ? `${d.abs >= 0 ? '+' : ''}${d.abs.toFixed(1)}pp`
                 : isBRL ? fmtBRL(d.abs) : fmtNum(Math.round(d.abs));
     const pct   = !isPP && d.pct !== null ? ` (${d.pct >= 0 ? '+' : ''}${d.pct.toFixed(1)}%)` : '';
@@ -2767,7 +2768,7 @@ function renderComparativo() {
 
   const linhas = [
     { label:'Receitas',        a:fmtBRL(comp.receita.a),        b:fmtBRL(comp.receita.b),        d:fmtDelta(comp.receita) },
-    { label:'Despesas',        a:fmtBRL(comp.despesa.a),        b:fmtBRL(comp.despesa.b),        d:fmtDelta(comp.despesa) },
+    { label:'Despesas',        a:fmtBRL(comp.despesa.a),        b:fmtBRL(comp.despesa.b),        d:fmtDelta(comp.despesa, true, false, true) },
     { label:'Resultado',       a:fmtBRL(comp.resultado.a),      b:fmtBRL(comp.resultado.b),      d:fmtDelta(comp.resultado) },
     { label:'Margem %',        a:`${isFinite(comp.margem.a)?comp.margem.a.toFixed(1):'—'}%`,b:`${isFinite(comp.margem.b)?comp.margem.b.toFixed(1):'—'}%`,d:fmtDelta(comp.margem, false, true) },
     { label:'Ticket Médio',    a:fmtBRL(comp.ticket.a),         b:fmtBRL(comp.ticket.b),         d:fmtDelta(comp.ticket) },
@@ -3372,6 +3373,10 @@ function _trocarAba(nomAba) {
   _headers = aba.headers;
   const info = document.getElementById('sel-aba-info');
   if (info) info.textContent = `${aba.dados.length.toLocaleString('pt-BR')} registros`;
+  // Invalidar caches da análise anterior para evitar dados da aba antiga
+  _ultimosKpis = null; _ultimaAuditoria = null; _ultimoAging = null;
+  _ultimoDre = null; _ultimoPareto = null; _ultimoAntiFraude = null;
+  _scoreAnterior = null;
   const det = detectarColunas(_headers);
   // Re-detectar ERP por aba — abas diferentes podem ter schemas diferentes
   _erpDetectado = detectarERP(_headers);

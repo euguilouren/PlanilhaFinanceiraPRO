@@ -189,6 +189,8 @@ def _esc(v) -> str:
 def _fmt_brl(val, dec: int = 2) -> str:
     try:
         v = float(val)
+        if v != v:  # NaN check
+            return '—'
         us = f"{abs(v):,.{dec}f}"
         br = us.replace(',', 'X').replace('.', ',').replace('X', '.')
         return f"R$ {'-' if v < 0 else ''}{br}"
@@ -204,17 +206,17 @@ def _calcular_kpis(df: pd.DataFrame, df_mensal: pd.DataFrame | None) -> dict:
         'ticket_medio': 0.0,
     }
     if df_mensal is not None and len(df_mensal):
-        kpis['receita_total'] = float(df_mensal['Receita_RS'].sum())
-        kpis['despesa_total'] = float(df_mensal['Despesa_RS'].sum())
-        kpis['resultado']     = float(df_mensal['Resultado_RS'].sum())
-        kpis['nf_receita']    = int(df_mensal['NFs_Receita'].sum())
-        kpis['nf_despesa']    = int(df_mensal['NFs_Despesa'].sum())
+        kpis['receita_total'] = float(df_mensal['Receita_RS'].sum()) if 'Receita_RS' in df_mensal.columns else 0.0
+        kpis['despesa_total'] = float(df_mensal['Despesa_RS'].sum()) if 'Despesa_RS' in df_mensal.columns else 0.0
+        kpis['resultado']     = float(df_mensal['Resultado_RS'].sum()) if 'Resultado_RS' in df_mensal.columns else 0.0
+        kpis['nf_receita']    = int(df_mensal['NFs_Receita'].sum()) if 'NFs_Receita' in df_mensal.columns else 0
+        kpis['nf_despesa']    = int(df_mensal['NFs_Despesa'].sum()) if 'NFs_Despesa' in df_mensal.columns else 0
     elif df is not None and len(df) and 'Valor' in df.columns:
         valores = pd.to_numeric(df['Valor'], errors='coerce').fillna(0)
         if 'Tipo' in df.columns:
             tipos = df['Tipo'].astype(str).str.upper()
             kpis['receita_total'] = float(valores[tipos == 'RECEITA'].sum())
-            kpis['despesa_total'] = float(valores[tipos == 'DESPESA'].sum())
+            kpis['despesa_total'] = float(valores[tipos == 'DESPESA'].abs().sum())
             kpis['nf_receita']    = int((tipos == 'RECEITA').sum())
             kpis['nf_despesa']    = int((tipos == 'DESPESA').sum())
         else:
@@ -233,11 +235,16 @@ def _montar_chart_data(df_mensal: pd.DataFrame | None) -> dict:
     if df_mensal is None or len(df_mensal) == 0:
         return {'labels': [], 'receitas': [], 'despesas': [], 'resultados': []}
     df = df_mensal.tail(24)  # últimos 24 períodos
+
+    def _safe(v):
+        f = float(v)
+        return 0.0 if f != f else round(f, 2)  # replace NaN with 0
+
     return {
-        'labels':     [str(p) for p in df['Periodo']],
-        'receitas':   [round(float(v), 2) for v in df['Receita_RS']],
-        'despesas':   [round(float(v), 2) for v in df['Despesa_RS']],
-        'resultados': [round(float(v), 2) for v in df['Resultado_RS']],
+        'labels':     [str(p) for p in df.get('Periodo', [])],
+        'receitas':   [_safe(v) for v in df['Receita_RS']] if 'Receita_RS' in df.columns else [],
+        'despesas':   [_safe(v) for v in df['Despesa_RS']] if 'Despesa_RS' in df.columns else [],
+        'resultados': [_safe(v) for v in df['Resultado_RS']] if 'Resultado_RS' in df.columns else [],
     }
 
 
@@ -394,11 +401,11 @@ def _secao_pareto(df: pd.DataFrame | None) -> str:
     rows = ''
     for _, r in df.head(15).iterrows():
         nome    = _esc(str(r[col_ent]))
-        val     = float(r.get('Total_RS', 0))
-        pct     = float(r.get('Percentual', 0))
-        acum    = float(r.get('Acumulado_%', 0))
-        classe  = _esc(str(r.get('Classe_Pareto', '')))
-        rank    = int(r.get('Ranking', 0))
+        val     = float(r.get('Total_RS') or 0)
+        pct     = float(r.get('Percentual') or 0)
+        acum    = float(r.get('Acumulado_%') or 0)
+        classe  = _esc(str(r.get('Classe_Pareto') or ''))
+        rank    = int(r.get('Ranking') or 0)
         pct_bar = min(val / max_val * 100, 100)
         cor_cls = '#C9A227' if 'A' in classe else '#9BA8B5'
         rows += (

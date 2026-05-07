@@ -5,6 +5,7 @@ Produz um arquivo .html autocontido que abre em qualquer navegador.
 
 import html
 import logging
+import re
 from datetime import datetime
 
 import pandas as pd
@@ -215,6 +216,8 @@ class GeradorHTML:
     def _fmt_brl(val, dec: int = 2) -> str:
         try:
             v = float(val)
+            if v != v:  # NaN check
+                return '—'
             us = f"{abs(v):,.{dec}f}"
             br = us.replace(',', 'X').replace('.', ',').replace('X', '.')
             return f"R$ {'-' if v < 0 else ''}{br}"
@@ -305,14 +308,15 @@ class GeradorHTML:
             return '<section class="card"><h2>📅 Aging de Recebíveis</h2><p style="color:#888;font-size:13px">Colunas de aging não encontradas no DataFrame (Total_RS / Faixa_Aging).</p></section>'
         total = df['Total_RS'].sum()
         rows = ''
-        for _, r in df.iterrows():
+        for i, (_, r) in enumerate(df.iterrows()):
             faixa = str(r['Faixa_Aging'])
-            pct   = float(r.get('Percentual', 0))
-            qtd   = int(r.get('Quantidade', 0))
-            tot   = float(r.get('Total_RS', 0))
-            if 'vencer' in faixa.lower():
+            pct   = float(r.get('Percentual', 0) or 0)
+            qtd   = int(r.get('Quantidade', 0) or 0)
+            tot   = float(r.get('Total_RS', 0) or 0)
+            faixa_l = faixa.lower()
+            if 'vencer' in faixa_l or i == 0:
                 bar_cls = 'bar-ok'
-            elif '1-30' in faixa or '31-60' in faixa:
+            elif i <= 2 or re.search(r'\b[1-9]\d?-\d+\b', faixa):
                 bar_cls = 'bar-atencao'
             else:
                 bar_cls = 'bar-critico'
