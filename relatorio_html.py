@@ -67,7 +67,7 @@ class GeradorHTML:
         total_registros = len(df_dados)
         col_valor = self.cfg.get('colunas', {}).get('valor', 'Valor')
         total_valor = pd.to_numeric(df_dados.get(col_valor, pd.Series(dtype=float)), errors='coerce').sum() if col_valor in df_dados.columns else 0
-        total_criticos = len(df_auditoria[df_auditoria['Severidade'] == 'CRÍTICA']) if len(df_auditoria) else 0
+        total_criticos = len(df_auditoria[df_auditoria['Severidade'] == 'CRÍTICA']) if (len(df_auditoria) and 'Severidade' in df_auditoria.columns) else 0
         total_problemas = len(df_auditoria)
 
         html_content = f"""<!DOCTYPE html>
@@ -346,7 +346,10 @@ class GeradorHTML:
         for _, r in df.iterrows():
             linha = str(r.get('Linha_DRE', ''))
             valor = float(r.get('Valor_RS', 0))
-            av    = f"{float(r['AV_%']):.1f}%" if 'AV_%' in r and pd.notna(r.get('AV_%')) else ''
+            try:
+                av = f"{float(r['AV_%']):.1f}%" if 'AV_%' in r and pd.notna(r.get('AV_%')) else ''
+            except (ValueError, TypeError):
+                av = ''
             cls   = 'dre-total' if linha in totais else ('dre-sub' if (linha.startswith('(-)') or linha.startswith('(-/+)')) else '')
             cor   = '#C0392B' if valor < 0 and linha in totais else ''
             rows += (f"<tr class='{cls}'><td>{self._esc(linha)}</td>"
@@ -368,16 +371,20 @@ class GeradorHTML:
 
     def _secao_pareto(self, df: pd.DataFrame) -> str:
         col_ent = df.columns[0]
-        max_val = float(df['Total_RS'].max()) if len(df) else 1
+        max_val = float(df['Total_RS'].max()) if 'Total_RS' in df.columns and len(df) else 1
         if not max_val or pd.isna(max_val):
             max_val = 1
         rows = ''
         for _, r in df.head(15).iterrows():
-            pct_bar = min(float(r.get('Total_RS', 0)) / max_val * 100, 100)
-            classe  = str(r.get('Classe_Pareto', ''))
+            total_rs = r.get('Total_RS', 0)
+            total_rs_f = float(total_rs) if pd.notna(total_rs) else 0.0
+            pct_bar = min(total_rs_f / max_val * 100, 100)
+            classe  = str(r.get('Classe_Pareto') or '')
             cor_cls = '#C9A227' if 'A' in classe else '#9BA8B5'
             bar = f'<div class="bar-wrap"><div class="bar" style="width:{pct_bar:.1f}%;background:{cor_cls}"></div></div>'
-            rows += (f"<tr><td style='text-align:center'>{int(r.get('Ranking',0))}</td>"
+            rank_raw = r.get('Ranking', 0)
+            rank_val = int(rank_raw) if pd.notna(rank_raw) else 0
+            rows += (f"<tr><td style='text-align:center'>{rank_val}</td>"
                      f"<td>{self._esc(r[col_ent])}</td>"
                      f"<td style='text-align:right'>{self._fmt_brl(r.get('Total_RS', 0))}</td>"
                      f"<td style='text-align:right'>{float(r.get('Percentual',0)):.1f}%</td>"
@@ -418,9 +425,9 @@ class GeradorHTML:
                     f"<tr style='background:{cor}'>"
                     f"<td style='font-weight:600'>{self._esc(str(r['Periodo']))}</td>"
                     f"<td style='text-align:right;color:#065F46'>{self._fmt_brl(r['Receita_RS'])}</td>"
-                    f"<td style='text-align:center'>{int(r['NFs_Receita'])}</td>"
+                    f"<td style='text-align:center'>{int(r['NFs_Receita']) if pd.notna(r['NFs_Receita']) else 0}</td>"
                     f"<td style='text-align:right;color:#991B1B'>{self._fmt_brl(r['Despesa_RS'])}</td>"
-                    f"<td style='text-align:center'>{int(r['NFs_Despesa'])}</td>"
+                    f"<td style='text-align:center'>{int(r['NFs_Despesa']) if pd.notna(r['NFs_Despesa']) else 0}</td>"
                     f"<td style='text-align:right;font-weight:bold;color:{'#065F46' if res>=0 else '#991B1B'}'>"
                     f"{self._fmt_brl(res)}</td>"
                     f"<td style='text-align:center'>{pct_str}</td></tr>"
