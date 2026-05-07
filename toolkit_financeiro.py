@@ -92,13 +92,13 @@ def validar_config(cfg: dict) -> List[str]:
         if not pastas.get(campo):
             avisos.append(f"pastas.{campo} não pode ser vazio")
 
-    audit = cfg.get('auditoria', {})
+    audit = cfg.get('auditoria') or {}
     if not isinstance(audit.get('outlier_desvios', 3.0), (int, float)):
         avisos.append("auditoria.outlier_desvios deve ser numérico")
     if not isinstance(audit.get('minimo_registros_analise', 5), int):
         avisos.append("auditoria.minimo_registros_analise deve ser inteiro")
 
-    ind = cfg.get('indicadores', {})
+    ind = cfg.get('indicadores') or {}
     for chave in ('liquidez_corrente_min', 'liquidez_seca_min', 'margem_liquida_min',
                   'endividamento_max', 'roe_min'):
         val = ind.get(chave)
@@ -107,7 +107,7 @@ def validar_config(cfg: dict) -> List[str]:
         elif val is not None and val < 0:
             avisos.append(f"indicadores.{chave} deve ser >= 0, recebeu {val}")
 
-    email = cfg.get('email', {})
+    email = cfg.get('email') or {}
     if email.get('ativo', False):
         for campo in ('smtp_servidor', 'remetente', 'destinatarios'):
             if not email.get(campo):
@@ -116,7 +116,10 @@ def validar_config(cfg: dict) -> List[str]:
         if not isinstance(porta, int) or not (1 <= porta <= 65535):
             avisos.append(f"email.smtp_porta deve ser inteiro 1-65535, recebeu {porta}")
         _email_re = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
-        for dest in email.get('destinatarios', []):
+        destinatarios = email.get('destinatarios', [])
+        if isinstance(destinatarios, str):
+            destinatarios = [destinatarios]
+        for dest in (destinatarios or []):
             if not _email_re.match(str(dest)):
                 avisos.append(f"Email inválido em destinatarios: '{dest}'")
 
@@ -647,7 +650,8 @@ class Conciliador:
 
         if chaves_dup:
             for idx, row in merged.iterrows():
-                if tuple(row[c] for c in chave) in chaves_dup:
+                if (tuple(row[c] for c in chave) in chaves_dup
+                        and 'NÃO ENCONTRADO' not in str(merged.at[idx, 'Status_Conciliação'])):
                     merged.at[idx, 'Status_Conciliação'] = 'DUPLICADO (verificar)'
 
         return merged
@@ -905,7 +909,7 @@ class AnalistaFinanceiro:
         if receita_liq != 0:
             resultado['AV_%'] = (resultado['Valor_RS'] / abs(receita_liq) * 100).round(1)
         else:
-            resultado['AV_%'] = None
+            resultado['AV_%'] = np.nan
         return resultado
 
     @staticmethod
@@ -1080,6 +1084,11 @@ class AnalistaFinanceiro:
         rec = _agg(df_valid['_tipo'] == 'RECEITA')
         dep = _agg(df_valid['_tipo'] == 'DESPESA', abs_val=True)
 
+        # Union of both resampled indices so months present in only one side still appear
+        all_idx = rec.index.union(dep.index)
+        rec = rec.reindex(all_idx, fill_value=0)
+        dep = dep.reindex(all_idx, fill_value=0)
+
         combined = rec.join(dep, how='outer', lsuffix='_r', rsuffix='_d').fillna(0)
         combined.index.name = 'Periodo'
         combined = combined.reset_index()
@@ -1189,14 +1198,30 @@ class Util:
 
     @staticmethod
     def converter_moeda_br(series: pd.Series) -> pd.Series:
-        return (
-            series.astype(str)
-            .str.replace('R$', '', regex=False)
-            .str.replace('.', '', regex=False)
-            .str.replace(',', '.', regex=False)
-            .str.strip()
-            .apply(pd.to_numeric, errors='coerce')
-        )
+        def _parse(raw):
+            s = str(raw).replace('R$', '').replace('\xa0', '').strip()
+            if not s or s.lower() in ('nan', 'none', ''):
+                return float('nan')
+            # Remove currency symbol artifacts; keep digits, separators, sign
+            s = re.sub(r'[^\d.,-]', '', s)
+            if not s:
+                return float('nan')
+            # Detect format by which separator comes last:
+            # BR: last meaningful separator is ',' → dot=thousands, comma=decimal
+            # US/clean: last meaningful separator is '.' or no comma → dot=decimal
+            last_dot = s.rfind('.')
+            last_comma = s.rfind(',')
+            if last_comma > last_dot:
+                # BR format: "1.234,56" or "1234,56"
+                s = s.replace('.', '').replace(',', '.')
+            else:
+                # US format or already a float: "1,234.56" or "1234.56"
+                s = s.replace(',', '')
+            try:
+                return float(s)
+            except ValueError:
+                return float('nan')
+        return series.apply(_parse)
 
     @staticmethod
     def normalizar_cnpj_cpf(series: pd.Series) -> pd.Series:
@@ -1208,7 +1233,7 @@ class Util:
     @staticmethod
     def corrigir_encoding(series: pd.Series) -> pd.Series:
         mapa = {
-            'Ã£': 'ã', 'Ã¡': 'á', 'Ã ': 'à', 'Ã¢': 'â', 'Ã¤': 'ä',
+            'Ã£': 'ã', 'Ã¡': 'á', 'Ã\xa0': 'à', 'Ã¢': 'â', 'Ã¤': 'ä',
             'Ã©': 'é', 'Ãª': 'ê', 'Ã¨': 'è', 'Ã­': 'í', 'Ã®': 'î',
             'Ã¯': 'ï', 'Ã³': 'ó', 'Ã´': 'ô', 'Ãµ': 'õ', 'Ã¶': 'ö',
             'Ãº': 'ú', 'Ã¼': 'ü', 'Ã»': 'û', 'Ã§': 'ç', 'Ã±': 'ñ',
@@ -1275,7 +1300,10 @@ class PrestadorContas:
 
         if col_tipo and col_tipo in df.columns:
             tipo_upper = df[col_tipo].astype(str).str.upper()
-            entradas_mask = tipo_upper.str.contains('RECEI|ENTRA|CRÉDI|VENDA|FATURAMENTO', na=False)
+            entradas_mask = (
+                tipo_upper.str.contains('RECEI|ENTRA|CRÉDI|VENDA|FATURAMENTO', na=False)
+                & ~tipo_upper.str.contains('DEVOL', na=False)
+            )
         else:
             entradas_mask = valores >= 0
         saidas_mask = ~entradas_mask
