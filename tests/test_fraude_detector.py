@@ -127,7 +127,10 @@ class TestDuplicatasFuzzy:
         r = FraudeDetector.duplicatas_fuzzy(df, "Valor", "Cliente", "NF")
         assert not r.empty
         exatas = r[r["tipo"] == "DUPLICATA_EXATA"]
-        assert len(exatas) == 2  # ambas as ocorrências da chave duplicada
+        # Uma linha por chave duplicada única (com lista de linhas no campo 'linha')
+        assert len(exatas) == 1
+        linhas = exatas.iloc[0]["linha"]
+        assert isinstance(linhas, list) and len(linhas) == 2
 
     def test_sem_duplicata(self):
         df = _df(NF=["001", "002", "003"], Valor=[100, 200, 300], Cliente=["A", "B", "C"])

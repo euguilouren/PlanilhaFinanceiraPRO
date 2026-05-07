@@ -225,16 +225,17 @@ class FraudeDetector:
                     return str(v)
             chaves = df_w.loc[mask, col_chave].map(_norm_chave)
             dup_mask = chaves.duplicated(keep=False)
-            dup_idx = chaves[dup_mask].index
-            for idx in dup_idx:
-                row = df_w.loc[idx]
+            dup_chaves = chaves[dup_mask]
+            for chave_val, grupo_idx in dup_chaves.groupby(dup_chaves):
+                linhas = sorted(int(i) + 2 for i in grupo_idx.index)
+                primeira_row = df_w.loc[grupo_idx.index[0]]
                 alertas.append({
                     "tipo": "DUPLICATA_EXATA",
                     "severidade": "CRÍTICA",
-                    "linha": [int(idx) + 2],
-                    "descricao": f"Chave '{chaves[idx]}' duplicada",
-                    "valor": row["_val"],
-                    "entidade": str(row[col_entidade]) if col_entidade and col_entidade in df_w.columns else "",
+                    "linha": linhas,
+                    "descricao": f"Chave '{chave_val}' duplicada",
+                    "valor": primeira_row["_val"],
+                    "entidade": str(primeira_row[col_entidade]) if col_entidade and col_entidade in df_w.columns else "",
                 })
 
         # Duplicatas fuzzy por valor + entidade + janela de data
