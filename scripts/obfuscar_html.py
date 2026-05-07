@@ -35,7 +35,7 @@ def obfuscar(js_src: str) -> str:
         out = Path(tmp) / 'bundle.obf.js'
         inp.write_text(js_src, encoding='utf-8')
         cmd = ['javascript-obfuscator', str(inp), '--output', str(out)] + OBFUSCATOR_FLAGS
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
         if result.returncode != 0:
             print('[obfuscar] ERRO:', result.stderr, file=sys.stderr)
             sys.exit(1)
@@ -43,30 +43,35 @@ def obfuscar(js_src: str) -> str:
 
 
 def processar(src_path: Path, dst_path: Path) -> None:
-    html = src_path.read_text(encoding='utf-8')
+    html = src_path.read_text(encoding='utf-8-sig')  # utf-8-sig strips BOM if present
 
-    # Encontra blocos <script> inline (ignora <script src=...>)
-    pattern = re.compile(r'(<script>)(.*?)(</script>)', re.DOTALL)
+    # Encontra blocos <script> inline (casa atributos, mas ignora src=)
+    pattern = re.compile(r'(<script(?:\s[^>]*)?>)(.*?)(</script>)', re.DOTALL | re.IGNORECASE)
     scripts = pattern.findall(html)
+    # Exclude external scripts (<script src=...>) — only obfuscate inline JS
+    inline_scripts = [s for s in scripts if 'src=' not in s[0].lower()]
 
-    if not scripts:
+    if not inline_scripts:
         print('[obfuscar] Nenhum bloco <script> inline encontrado.', file=sys.stderr)
         dst_path.parent.mkdir(parents=True, exist_ok=True)
         dst_path.write_text(html, encoding='utf-8')
         return
 
     # Concatena todos os scripts inline em um bundle
-    bundle = '\n'.join(s[1] for s in scripts)
+    bundle = '\n'.join(s[1] for s in inline_scripts)
     print(f'[obfuscar] {len(scripts)} bloco(s) JS encontrado(s), {len(bundle)} chars')
 
     bundle_obf = obfuscar(bundle)
     print(f'[obfuscar] Obfuscado: {len(bundle_obf)} chars')
 
     # Substitui todos os blocos inline pelo bundle ofuscado (apenas no primeiro, remove os demais)
+    # Scripts externos (src=) são mantidos intactos
     first = True
 
     def substituir(m: re.Match) -> str:
         nonlocal first
+        if 'src=' in m.group(1).lower():
+            return m.group(0)  # preserve external script tags unchanged
         if first:
             first = False
             return f'<script>{bundle_obf}</script>'

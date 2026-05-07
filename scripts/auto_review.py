@@ -92,12 +92,17 @@ def analisar(client: anthropic.Anthropic, codigo: str) -> dict:
             }
         ],
     )
-    texto = msg.content[0].text.strip()
-    # Extrai JSON mesmo que o modelo adicione markdown ao redor
-    match = re.search(r"\{.*\}", texto, re.DOTALL)
-    if not match:
+    # Safely extract text content (guard against refusal/tool-use blocks)
+    text_blocks = [b for b in msg.content if hasattr(b, 'text')]
+    if not text_blocks:
+        raise ValueError("Resposta da API sem bloco de texto")
+    texto = text_blocks[0].text.strip()
+    # Extrai JSON usando busca de chaves balanceadas para evitar greedy regex
+    start = texto.find('{')
+    end   = texto.rfind('}')
+    if start == -1 or end == -1 or end <= start:
         raise ValueError(f"Resposta inesperada da API:\n{texto[:500]}")
-    return json.loads(match.group())
+    return json.loads(texto[start:end + 1])
 
 
 def aplicar_patch(bug: dict) -> bool:
