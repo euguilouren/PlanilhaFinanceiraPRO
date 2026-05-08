@@ -218,7 +218,7 @@ jobs:
           cache: "npm"
 
       - name: Instalar dependências JS
-        run: npm ci
+        run: npm install --no-audit
 
       - name: Rodar testes Vitest
         run: npm run test:js
