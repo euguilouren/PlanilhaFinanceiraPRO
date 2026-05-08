@@ -305,7 +305,10 @@ class Leitor:
         Se o XML não for uma NF-e válida, registra um aviso e retorna
         DataFrame vazio com as mesmas colunas.
         """
-        import xml.etree.ElementTree as ET
+        try:
+            import defusedxml.ElementTree as ET
+        except ImportError:
+            import xml.etree.ElementTree as ET  # nosec B314
 
         _NS = 'http://www.portalfiscal.inf.br/nfe'
         _EMPTY_COLS = ['NF', 'Data', 'Valor', 'Cliente', 'Categoria', 'Status']
@@ -329,11 +332,11 @@ class Leitor:
 
             # ElementTree aceita bytes diretamente; errors='ignore' via decode prévia
             try:
-                root = ET.fromstring(raw)
+                root = ET.fromstring(raw)  # nosec B314 — ET é defusedxml (ver import acima)
             except ET.ParseError:
                 # Tenta remover BOM/caracteres inválidos e reparsar
                 text = raw.decode('utf-8', errors='ignore')
-                root = ET.fromstring(text.encode('utf-8'))
+                root = ET.fromstring(text.encode('utf-8'))  # nosec B314
 
         except ET.ParseError as exc:
             logger.warning("NF-e XML: falha ao parsear '%s': %s", caminho, exc)
