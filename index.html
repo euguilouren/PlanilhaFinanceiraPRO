@@ -68,6 +68,9 @@ const MAPAS_ERP_JS = {
   TINY:          { sinais:['numero_nota','nome_cliente','valor_nota'],  mapa:{'numero_nota':'chave','valor_nota':'valor','data_emissao':'data','data_vencimento':'vencimento','nome_cliente':'entidade'} },
   GESTAO_CLICK:  { sinais:['Código','Cliente','Vencimento'],            mapa:{'Código':'chave','Valor':'valor','Data':'data','Vencimento':'vencimento','Cliente':'entidade','Categoria':'categoria'} },
   NFE_XML:       { sinais:['nNF','dhEmi','vNF'],                       mapa:{'nNF':'chave','vNF':'valor','dhEmi':'data','dVenc':'vencimento','xNome_dest':'entidade'} },
+  SIENGE:        { sinais:['NumDocumento','Fornecedor','ValorContrato'], mapa:{'NumDocumento':'chave','ValorContrato':'valor','DataEmissao':'data','DataVencimento':'vencimento','Fornecedor':'entidade','CentroCusto':'categoria'} },
+  VHSYS:         { sinais:['numero_nf','cliente_nome','valor_total'],   mapa:{'numero_nf':'chave','valor_total':'valor','data_emissao':'data','data_vencimento':'vencimento','cliente_nome':'entidade','categoria':'categoria'} },
+  NUVEMSHOP:     { sinais:['order_id','customer_name','total_price'],   mapa:{'order_id':'chave','total_price':'valor','created_at':'data','customer_name':'entidade','financial_status':'status'} },
 };
 
 const NOMES_ERP = {
@@ -77,6 +80,7 @@ const NOMES_ERP = {
   CIGAM:'Cigam', ALTERDATA:'Alterdata', LINX:'Linx', MEGA:'Mega Sistemas',
   NIBO:'Nibo', GRANATUM:'Granatum', CONTA_AZUL:'Conta Azul',
   BLING:'Bling', TINY:'Tiny ERP', GESTAO_CLICK:'GestãoClick', NFE_XML:'NFe XML',
+  SIENGE:'Sienge (Softplan)', VHSYS:'VHSYS', NUVEMSHOP:'Nuvemshop',
 };
 
 function detectarERP(headers) {
@@ -712,6 +716,75 @@ function calcularKPIsComparativo(kpisA, kpisB) {
   };
 }
 
+// ══════════════════════════════════════════════════════
+// MÓDULO 8: PROJEÇÃO DE FLUXO (regressão linear simples)
+// ══════════════════════════════════════════════════════
+function calcularProjecao(linhas, nProjecoes) {
+  nProjecoes = nProjecoes || 3;
+  if (!linhas || linhas.length < 3) return null;
+  const n = linhas.length;
+  const xm = (n - 1) / 2;
+  function _lr(ys) {
+    const ym = ys.reduce(function(a, b) { return a + b; }, 0) / n;
+    let num = 0, den = 0;
+    for (let i = 0; i < n; i++) { num += (i - xm) * (ys[i] - ym); den += (i - xm) * (i - xm); }
+    const b = den ? num / den : 0;
+    return { a: ym - b * xm, b };
+  }
+  const lrRec  = _lr(linhas.map(function(l) { return l.receita; }));
+  const lrDesp = _lr(linhas.map(function(l) { return l.despesa; }));
+  const nomesMes = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  const last = linhas[n - 1];
+  let baseAno = 2000, baseMes = 0;
+  if (last && last.periodo) {
+    const p = last.periodo.split('/');
+    if (p.length === 2) { baseMes = parseInt(p[0], 10) - 1; baseAno = parseInt(p[1], 10); }
+  }
+  return Array.from({ length: nProjecoes }, function(_, k) {
+    const idx = n + k;
+    const rec  = Math.max(0, Math.round((lrRec.a  + lrRec.b  * idx) * 100) / 100);
+    const desp = Math.max(0, Math.round((lrDesp.a + lrDesp.b * idx) * 100) / 100);
+    const mIdx = (baseMes + k + 1) % 12;
+    const ano  = baseAno + Math.floor((baseMes + k + 1) / 12);
+    return { periodo: nomesMes[mIdx] + '/' + ano, rec, desp, res: Math.round((rec - desp) * 100) / 100, projetado: true };
+  });
+}
+
+// ══════════════════════════════════════════════════════
+// MÓDULO 9: SAZONALIDADE (médias mensais Jan–Dez)
+// ══════════════════════════════════════════════════════
+function calcularSazonalidade(dados, colData, colValor, colTipo) {
+  if (!colData || !colValor) return null;
+  const buckets = Array.from({ length: 12 }, function() { return { rec: 0, desp: 0, anos: new Set() }; });
+  dados.forEach(function(r) {
+    const d = toDate(r[colData]);
+    if (!d || isNaN(d.getTime())) return;
+    const v = toNum(r[colValor]);
+    if (isNaN(v) || v === 0) return;
+    const m = d.getMonth();
+    buckets[m].anos.add(d.getFullYear());
+    const tipo = colTipo ? String(r[colTipo] || '').trim().toUpperCase() : '';
+    const isRec = /^(RECEITA|CR[EÉ]DITO|ENTRADA)$/.test(tipo) ||
+                  /RECEI|ENTRA|CR[EÉ]DI|VENDA|FATURAMENTO/.test(tipo) ||
+                  (!(/^(DESPESA|D[EÉ]BITO|SA[IÍ]DA)$/.test(tipo) || /DESPE|SA[IÍ]DA|D[EÉ]BITO/.test(tipo)) && v > 0);
+    if (isRec) buckets[m].rec  += v;
+    else        buckets[m].desp += Math.abs(v);
+  });
+  const nomes = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  const result = buckets.map(function(b, i) {
+    const nAnos = b.anos.size || 1;
+    return {
+      mes:      nomes[i],
+      receita:  Math.round(b.rec  / nAnos * 100) / 100,
+      despesa:  Math.round(b.desp / nAnos * 100) / 100,
+      resultado:Math.round((b.rec - b.desp) / nAnos * 100) / 100,
+      nAnos,
+    };
+  });
+  const temDados = result.some(function(r) { return r.receita > 0 || r.despesa > 0; });
+  return temDados ? result : null;
+}
+
 // Exportar para uso no app.js
 // (module.exports removido para uso direto no navegador)
 
@@ -1330,7 +1403,7 @@ tr:hover td{background:#EEF4FF;transition:background .15s}
     <button class="btn-upload btn-template" onclick="baixarTemplate()">
       ↓ Baixar Template Padrão
     </button>
-    <input type="file" id="file-input" accept=".xlsx,.xls,.xlsm,.csv,.tsv,.ofx">
+    <input type="file" id="file-input" accept=".xlsx,.xls,.xlsm,.csv,.tsv,.ofx,.xml">
   </div>
 
   <!-- Histórico de arquivos recentes -->
@@ -1365,6 +1438,9 @@ tr:hover td{background:#EEF4FF;transition:background .15s}
         <option value="TINY">Tiny ERP</option>
         <option value="GESTAO_CLICK">GestãoClick</option>
         <option value="NFE_XML">NFe XML exportada</option>
+        <option value="SIENGE">Sienge (Softplan)</option>
+        <option value="VHSYS">VHSYS</option>
+        <option value="NUVEMSHOP">Nuvemshop</option>
       </select>
     </div>
     <div id="erp-banner" class="erp-banner" style="display:none"></div>
@@ -1387,7 +1463,7 @@ tr:hover td{background:#EEF4FF;transition:background .15s}
   <div class="toolbar">
     <span class="tag-arquivo" id="tag-arquivo">—</span>
     <button class="btn-sm btn-outline" id="btn-darkmode" onclick="_toggleDarkMode()" title="Alternar tema claro/escuro" aria-label="Alternar tema claro/escuro" style="padding:5px 9px;font-size:15px">🌙</button>
-    <button class="btn-sm" onclick="document.getElementById('upload-area').style.display='block';document.getElementById('dashboard').style.display='none';document.getElementById('col-config').style.display='none';_dashboardVisivel=false;document.getElementById('btn-comparar').style.display='none';const _cc=document.getElementById('card-comparativo');if(_cc)_cc.style.display='none';_atualizarStep(1)">
+    <button class="btn-sm" onclick="document.getElementById('upload-area').style.display='block';document.getElementById('dashboard').style.display='none';document.getElementById('col-config').style.display='none';_dashboardVisivel=false;document.getElementById('btn-comparar').style.display='none';const _cc=document.getElementById('card-comparativo');if(_cc)_cc.style.display='none';_atualizarStep(1);_DB.limpar();window._sessaoRestaurada=null;">
       Novo arquivo
     </button>
     <button class="btn-sm btn-outline btn-imprimir" onclick="window.print()" aria-label="Imprimir relatório">Imprimir</button>
@@ -1432,6 +1508,20 @@ tr:hover td{background:#EEF4FF;transition:background .15s}
   <div class="card" id="card-fluxo" role="region" aria-label="Fluxo por Período" style="display:none">
     <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex-shrink:0"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>Fluxo por Período</h2>
     <div id="fluxo-content"></div>
+  </div>
+
+  <!-- Projeção de Fluxo -->
+  <div class="card" id="card-projecao" role="region" aria-label="Projeção de Fluxo de Caixa" style="display:none">
+    <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex-shrink:0"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>Projeção de Fluxo — Próximos 3 meses</h2>
+    <div id="projecao-content"></div>
+    <canvas id="chart-projecao" height="160" style="margin-top:14px;max-width:100%"></canvas>
+  </div>
+
+  <!-- Sazonalidade -->
+  <div class="card" id="card-sazonalidade" role="region" aria-label="Análise de Sazonalidade" style="display:none">
+    <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Sazonalidade — Médias por Mês <span id="sazon-anos" style="font-size:11px;font-weight:400;color:var(--text-2);text-transform:none;letter-spacing:0"></span></h2>
+    <div id="sazonalidade-content"></div>
+    <canvas id="chart-sazonalidade" height="180" style="margin-top:14px;max-width:100%"></canvas>
   </div>
 
   <!-- Verificação de integridade -->
@@ -1524,13 +1614,50 @@ tr:hover td{background:#EEF4FF;transition:background .15s}
 const esc = v => String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 
 // ══════════════════════════════════════════════════════
+// INDEXEDDB — PERSISTÊNCIA LOCAL
+// ══════════════════════════════════════════════════════
+const _DB = (() => {
+  const DB_NAME = 'PlanilhaFinanceiraPRO', STORE = 'sessao', KEY = 'ultima';
+  let _db = null;
+  function _open() {
+    return new Promise((res, rej) => {
+      if (_db) { res(_db); return; }
+      const req = indexedDB.open(DB_NAME, 1);
+      req.onupgradeneeded = e => e.target.result.createObjectStore(STORE);
+      req.onsuccess = e => { _db = e.target.result; res(_db); };
+      req.onerror   = () => rej(req.error);
+    });
+  }
+  return {
+    salvar(payload) {
+      _open().then(db => {
+        const tx = db.transaction(STORE, 'readwrite');
+        tx.objectStore(STORE).put(payload, KEY);
+      }).catch(() => {});
+    },
+    restaurar() {
+      return _open().then(db => new Promise((res, rej) => {
+        const req = db.transaction(STORE).objectStore(STORE).get(KEY);
+        req.onsuccess = () => res(req.result || null);
+        req.onerror   = () => rej(req.error);
+      })).catch(() => null);
+    },
+    limpar() {
+      _open().then(db => db.transaction(STORE, 'readwrite').objectStore(STORE).delete(KEY)).catch(() => {});
+    },
+  };
+})();
+
+// ══════════════════════════════════════════════════════
 // ESTADO GLOBAL
 // ══════════════════════════════════════════════════════
 let _dadosOriginais = [];
 let _headers        = [];
 let _cols           = {};
 let _nomeArquivo    = '';
-let _chartAging     = null;
+let _chartAging        = null;
+let _chartProjecao     = null;
+let _chartSazonalidade = null;
 let _erpDetectado   = null;
 let _toastTimer     = null;
 let _ultimosKpis     = null;
@@ -1666,7 +1793,7 @@ document.getElementById('file-input').addEventListener('change', e => {
   carregarArquivo(f);
 });
 
-const _EXTS_OK = new Set(['.xlsx', '.xls', '.xlsm', '.csv', '.tsv', '.ofx']);
+const _EXTS_OK = new Set(['.xlsx', '.xls', '.xlsm', '.csv', '.tsv', '.ofx', '.xml']);
 function _tipoPermitido(nome) {
   const i = nome.lastIndexOf('.');
   if (i < 0) return false;
@@ -1847,7 +1974,7 @@ function carregarArquivo(file) {
 function abrirComparativo() {
   const inp = document.createElement('input');
   inp.type = 'file';
-  inp.accept = '.xlsx,.xls,.xlsm,.csv,.tsv,.ofx';
+  inp.accept = '.xlsx,.xls,.xlsm,.csv,.tsv,.ofx,.xml';
   inp.style.display = 'none';
   inp.onchange = e => {
     const f = e.target.files[0];
@@ -2058,10 +2185,13 @@ async function executarAnalise() {
       const _scoreData = calcularScoreFinanceiro(kpis, ag, par, audit);
       renderScoreFinanceiro(_scoreData);
 
-      // Fluxo por Período
-      _setLoaderStep('Gerando fluxo de caixa e relatórios...');
+      // Fluxo por Período + Projeção + Sazonalidade
+      _setLoaderStep('Gerando fluxo de caixa, projeção e sazonalidade...');
       await _yield();
       renderFluxoPeriodo(dados, _cols);
+      const _linhasM = calcularFluxoPeriodo(dados, _cols.data, _cols.valor, _cols.tipo, 'M');
+      renderProjecao(_linhasM);
+      renderSazonalidade(dados, _cols);
 
       // Verificação de integridade
       const integ = calcularIntegridade(dados, _cols, kpis, dre, par);
@@ -2079,6 +2209,8 @@ async function executarAnalise() {
       document.getElementById('tag-arquivo').textContent   = _nomeArquivo;
       _atualizarStep(3);
       _toast(`${_dadosOriginais.length.toLocaleString('pt-BR')} registros analisados com sucesso`, 3500, 'sucesso');
+      // Salvar sessão no IndexedDB
+      _DB.salvar({ dados: _dadosOriginais, headers: _headers, cols: _cols, nome: _nomeArquivo });
     } catch(err) {
       _mostrarErro('Erro na análise: ' + err.message);
       document.getElementById('upload-area').style.display = 'block';
@@ -2381,6 +2513,25 @@ function renderAging(lista) {
       </tr></tfoot>
     </table></div>`;
 
+  // Score de inadimplência ponderado (0% = tudo a vencer, 100% = tudo +90d)
+  const _PESOS_AGING = { 'A vencer':0, 'Vencido 1-30d':1, 'Vencido 31-60d':2, 'Vencido 61-90d':3, 'Vencido +90d':4, 'Sem data':0 };
+  const _pesoTotal = lista.reduce((s, i) => s + (_PESOS_AGING[i.faixa] || 0) * i.total, 0);
+  const _scoreInadimp = total > 0 ? Math.min(100, Math.round(_pesoTotal / (4 * total) * 100)) : 0;
+  const _corScore = _scoreInadimp < 15 ? '#2e7d32' : _scoreInadimp < 40 ? '#e8a020' : '#C00000';
+  const _labelScore = _scoreInadimp < 15 ? 'Saudável' : _scoreInadimp < 40 ? 'Atenção' : 'Crítico';
+  const _elContent = document.getElementById('aging-content');
+  if (_elContent) {
+    _elContent.insertAdjacentHTML('beforeend',
+      `<div style="margin-top:12px;padding:10px 14px;background:var(--surface-2);border-radius:var(--radius-sm);display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        <span style="font-size:12px;color:var(--text-2);font-weight:600">Score de Inadimplência</span>
+        <div style="flex:1;min-width:120px;background:#E2E8F0;border-radius:6px;height:8px">
+          <div style="width:${_scoreInadimp}%;height:8px;border-radius:6px;background:${_corScore};transition:width .6s ease-out"></div>
+        </div>
+        <span style="font-size:13px;font-weight:700;color:${_corScore}">${_scoreInadimp}% — ${_labelScore}</span>
+        <span style="font-size:11px;color:var(--text-3)">(0% = tudo a vencer · 100% = tudo +90d)</span>
+      </div>`);
+  }
+
   // Gráfico
   const _canvAging = document.getElementById('chart-aging');
   if (!_canvAging) return;
@@ -2456,6 +2607,12 @@ function renderPareto(lista) {
       </p></div>`;
     return;
   }
+  const top3Pct = lista.slice(0, 3).reduce((s, i) => s + i.pct, 0);
+  const alertaConc = top3Pct > 60
+    ? `<div style="background:#FEF3C7;border:1px solid #FCD34D;border-radius:var(--radius-sm);padding:8px 14px;margin-bottom:10px;font-size:12px;color:#92400E">
+        ⚠ <strong>Concentração de risco:</strong> Top 3 entidades representam <strong>${fmtNum(top3Pct,1)}%</strong> do total — risco elevado de dependência.
+       </div>` : '';
+
   const rows = lista.map(i => `
     <tr>
       <td style="text-align:center;font-weight:bold">${esc(i.ranking)}</td>
@@ -2466,10 +2623,113 @@ function renderPareto(lista) {
       <td><span class="badge" style="background:${i.classe==='A'?'var(--gold-bg)':'var(--surface-2)'};color:${i.classe==='A'?'var(--gold)':'var(--text-3)'};border:1px solid ${i.classe==='A'?'rgba(201,162,39,.3)':'var(--border)'}">${i.classe}</span></td>
     </tr>`).join('');
   document.getElementById('pareto-content').innerHTML = `
+    ${alertaConc}
     <div class="tbl-wrap"><table>
       <thead><tr><th>#</th><th>Entidade</th><th>Total R$</th><th>%</th><th>Acum.</th><th>Classe</th></tr></thead>
       <tbody>${rows}</tbody>
     </table></div>`;
+}
+
+// ══════════════════════════════════════════════════════
+// RENDER PROJEÇÃO DE FLUXO
+// ══════════════════════════════════════════════════════
+function renderProjecao(linhasHistorico) {
+  const card = document.getElementById('card-projecao');
+  if (!card) return;
+  const proj = calcularProjecao(linhasHistorico, 3);
+  if (!proj || !proj.length) { card.style.display = 'none'; return; }
+  card.style.display = 'block';
+  const rows = proj.map(p => {
+    const cor = p.res >= 0 ? 'var(--success)' : 'var(--danger)';
+    return `<tr style="background:${p.res>=0?'#D1FAE5':'#FEE2E2'}">
+      <td style="font-weight:600">${esc(p.periodo)} <span style="font-size:10px;background:#E0E7FF;color:#3730A3;padding:1px 6px;border-radius:10px;margin-left:4px">Proj.</span></td>
+      <td style="text-align:right;color:var(--success)">${fmtBRL(p.rec)}</td>
+      <td style="text-align:right;color:var(--danger)">${fmtBRL(p.desp)}</td>
+      <td style="text-align:right;font-weight:bold;color:${cor}">${fmtBRL(p.res)}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('projecao-content').innerHTML = `
+    <p style="font-size:11px;color:var(--text-2);margin-bottom:8px">Projeção baseada em regressão linear dos ${linhasHistorico.length} meses anteriores.</p>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Período</th><th style="text-align:right">Receita Est.</th><th style="text-align:right">Despesa Est.</th><th style="text-align:right">Resultado Est.</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>`;
+
+  const _canvP = document.getElementById('chart-projecao');
+  if (!_canvP) return;
+  if (_chartProjecao) { _chartProjecao.destroy(); _chartProjecao = null; }
+  const hist = linhasHistorico.slice(-6);
+  const allLabels = [...hist.map(l => l.periodo), ...proj.map(p => p.periodo)];
+  const histRec  = hist.map(l => l.receita);
+  const histDesp = hist.map(l => l.despesa);
+  const projRec  = [...Array(hist.length).fill(null), ...proj.map(p => p.rec)];
+  const projDesp = [...Array(hist.length).fill(null), ...proj.map(p => p.desp)];
+  _chartProjecao = new Chart(_canvP.getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: allLabels,
+      datasets: [
+        { label:'Receita (histórico)', data:histRec, backgroundColor:'rgba(46,125,50,.65)', borderRadius:4 },
+        { label:'Despesa (histórico)', data:histDesp, backgroundColor:'rgba(192,0,0,.65)', borderRadius:4 },
+        { label:'Receita (proj.)', data:projRec, backgroundColor:'rgba(46,125,50,.25)', borderColor:'rgba(46,125,50,.8)', borderWidth:2, borderRadius:4 },
+        { label:'Despesa (proj.)', data:projDesp, backgroundColor:'rgba(192,0,0,.2)', borderColor:'rgba(192,0,0,.7)', borderWidth:2, borderRadius:4 },
+      ]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ position:'bottom', labels:{ font:{ size:11 }, boxWidth:12 } } },
+      scales:{ y:{ ticks:{ callback: v => 'R$ '+v.toLocaleString('pt-BR',{minimumFractionDigits:0}) } } }
+    }
+  });
+}
+
+// ══════════════════════════════════════════════════════
+// RENDER SAZONALIDADE
+// ══════════════════════════════════════════════════════
+function renderSazonalidade(dados, cols) {
+  const card = document.getElementById('card-sazonalidade');
+  if (!card) return;
+  const saz = calcularSazonalidade(dados, cols.data, cols.valor, cols.tipo);
+  if (!saz) { card.style.display = 'none'; return; }
+  card.style.display = 'block';
+  const nAnos = Math.max(...saz.map(m => m.nAnos));
+  const elAnos = document.getElementById('sazon-anos');
+  if (elAnos) elAnos.textContent = nAnos > 1 ? `(média de ${nAnos} anos)` : '(1 ano de dados)';
+
+  const melhorMes  = saz.reduce((a, b) => b.resultado > a.resultado ? b : a);
+  const piorMes    = saz.reduce((a, b) => b.resultado < a.resultado ? b : a);
+  document.getElementById('sazonalidade-content').innerHTML = `
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px">
+      <div style="background:#D1FAE5;border-radius:var(--radius-sm);padding:8px 14px;font-size:12px">
+        <span style="color:var(--text-2)">Melhor mês:</span> <strong style="color:#2e7d32">${melhorMes.mes}</strong>
+        <span style="color:#2e7d32;font-weight:600"> (${fmtBRL(melhorMes.resultado)})</span>
+      </div>
+      <div style="background:#FEE2E2;border-radius:var(--radius-sm);padding:8px 14px;font-size:12px">
+        <span style="color:var(--text-2)">Pior mês:</span> <strong style="color:#C00000">${piorMes.mes}</strong>
+        <span style="color:#C00000;font-weight:600"> (${fmtBRL(piorMes.resultado)})</span>
+      </div>
+    </div>`;
+
+  const _canvS = document.getElementById('chart-sazonalidade');
+  if (!_canvS) return;
+  if (_chartSazonalidade) { _chartSazonalidade.destroy(); _chartSazonalidade = null; }
+  _chartSazonalidade = new Chart(_canvS.getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: saz.map(m => m.mes),
+      datasets: [
+        { label:'Receita média', data:saz.map(m=>m.receita), backgroundColor:'rgba(46,125,50,.7)', borderRadius:4 },
+        { label:'Despesa média', data:saz.map(m=>m.despesa), backgroundColor:'rgba(192,0,0,.6)', borderRadius:4 },
+        { label:'Resultado', data:saz.map(m=>m.resultado), type:'line', borderColor:'#C9A84C',
+          backgroundColor:'transparent', borderWidth:2, pointRadius:4, tension:.3 },
+      ]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ position:'bottom', labels:{ font:{size:11}, boxWidth:12 } } },
+      scales:{ y:{ ticks:{ callback: v => 'R$ '+v.toLocaleString('pt-BR',{minimumFractionDigits:0}) } } }
+    }
+  });
 }
 
 // ══════════════════════════════════════════════════════
@@ -3146,6 +3406,34 @@ function _renderHistorico() {
 
 // Renderizar histórico ao carregar a página
 window.addEventListener('DOMContentLoaded', _renderHistorico);
+
+// ══════════════════════════════════════════════════════
+// RESTAURAR SESSÃO INDEXEDDB
+// ══════════════════════════════════════════════════════
+window.addEventListener('DOMContentLoaded', () => {
+  _DB.restaurar().then(sess => {
+    if (!sess || !sess.dados || !sess.dados.length) return;
+    const banner = document.createElement('div');
+    banner.id = 'banner-sessao';
+    banner.style.cssText = 'position:fixed;bottom:68px;left:50%;transform:translateX(-50%);background:#1F4E79;color:#fff;padding:10px 18px;border-radius:10px;font-size:13px;font-weight:600;z-index:9999;display:flex;align-items:center;gap:12px;box-shadow:0 4px 16px #0004;max-width:calc(100vw - 32px)';
+    banner.innerHTML = `<span>📂 Sessão anterior: <strong>${esc(sess.nome || 'arquivo')}</strong> (${sess.dados.length.toLocaleString('pt-BR')} registros)</span>
+      <button onclick="_restaurarSessao()" style="background:#C9A84C;color:#1A1A2E;border:none;padding:5px 14px;border-radius:7px;cursor:pointer;font-weight:700;font-size:12px">Restaurar</button>
+      <button onclick="document.getElementById('banner-sessao')?.remove()" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4);padding:5px 10px;border-radius:7px;cursor:pointer;font-size:12px">✕</button>`;
+    document.body.appendChild(banner);
+    window._sessaoRestaurada = sess;
+  });
+});
+
+function _restaurarSessao() {
+  const sess = window._sessaoRestaurada;
+  if (!sess) return;
+  document.getElementById('banner-sessao')?.remove();
+  _dadosOriginais = sess.dados;
+  _headers        = sess.headers || Object.keys(sess.dados[0] || {});
+  _cols           = sess.cols   || {};
+  _nomeArquivo    = sess.nome   || 'sessão restaurada';
+  executarAnalise();
+}
 
 // ══════════════════════════════════════════════════════
 // PWA — Service Worker

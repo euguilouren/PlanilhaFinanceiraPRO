@@ -321,6 +321,53 @@ MAPAS_ERP: Dict[str, dict] = {
         },
     },
 
+    # ── SIENGE (Softplan — construção civil) ─────────────────────
+    'SIENGE': {
+        'sinais': ['NumDocumento', 'Fornecedor', 'ValorContrato'],
+        'colunas': {
+            'NumDocumento':   'NF',
+            'DataEmissao':    'Data',
+            'DataVencimento': 'Vencimento',
+            'ValorContrato':  'Valor',
+            'Fornecedor':     'Cliente',
+            'CentroCusto':    'Categoria',
+            'Situacao':       'Status',
+            'Obra':           'Projeto',
+            'Contrato':       'Cod_Contrato',
+            'TipoDocumento':  'Tipo',
+        },
+    },
+
+    # ── VHSYS (ERP cloud PMEs) ────────────────────────────────────
+    'VHSYS': {
+        'sinais': ['numero_nf', 'cliente_nome', 'valor_total'],
+        'colunas': {
+            'numero_nf':       'NF',
+            'data_emissao':    'Data',
+            'data_vencimento': 'Vencimento',
+            'valor_total':     'Valor',
+            'cliente_nome':    'Cliente',
+            'categoria':       'Categoria',
+            'status_nf':       'Status',
+            'descricao':       'Historico',
+            'forma_pagamento': 'Forma_Pgto',
+        },
+    },
+
+    # ── NUVEMSHOP (e-commerce — antigo Tiendanube) ────────────────
+    'NUVEMSHOP': {
+        'sinais': ['order_id', 'customer_name', 'total_price'],
+        'colunas': {
+            'order_id':         'NF',
+            'created_at':       'Data',
+            'total_price':      'Valor',
+            'customer_name':    'Cliente',
+            'financial_status': 'Status',
+            'payment_status':   'Tipo',
+            'product_name':     'Categoria',
+        },
+    },
+
     # ── NFe XML (exportada) ───────────────────────────────────
     'NFE_XML': {
         'sinais': ['nNF', 'dhEmi', 'vNF'],
