@@ -204,6 +204,25 @@ jobs:
               sys.exit(1)
           PYEOF
 
+  test-js:
+    name: Testes JavaScript (Vitest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Instalar dependências JS
+        run: npm ci
+
+      - name: Rodar testes Vitest
+        run: npm run test:js
+
   validate-config:
     name: Validar config.yaml
     runs-on: ubuntu-latest
