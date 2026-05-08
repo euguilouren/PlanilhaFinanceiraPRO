@@ -2551,9 +2551,9 @@ async function executarAnalise(colsOverride = null) {
       _atualizarStep(2);
     } finally {
       _analisandoAgora = false;
+      mostrarLoader(false);
+      _setLoaderStep('');
     }
-    mostrarLoader(false);
-    _setLoaderStep('');
     // Stagger de entrada dos cards e KPIs
     const _sc = [...document.querySelectorAll('#dashboard .card')];
     _sc.forEach(el => el.classList.remove('card-animate'));
