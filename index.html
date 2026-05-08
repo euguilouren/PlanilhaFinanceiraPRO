@@ -2276,7 +2276,7 @@ function carregarArquivo(file) {
       _mostrarErro('Erro ao ler o arquivo: ' + err.message);
     }
   };
-  reader.onerror = () => { _mostrarErro('Erro ao ler o arquivo. Verifique se ele não está aberto em outro programa.'); };
+  reader.onerror = () => { mostrarLoader(false); _mostrarErro('Erro ao ler o arquivo. Verifique se ele não está aberto em outro programa.'); };
   if (file.name.toLowerCase().endsWith('.ofx'))
     reader.readAsArrayBuffer(file);
   else if (file.name.toLowerCase().endsWith('.csv') || file.name.toLowerCase().endsWith('.tsv'))
@@ -2359,7 +2359,7 @@ function carregarArquivoComparativo(file) {
       _mostrarErro('Erro ao ler arquivo comparativo: ' + err.message);
     }
   };
-  reader.onerror = () => { _mostrarErro('Erro ao ler o arquivo comparativo. Verifique se ele não está aberto em outro programa.'); };
+  reader.onerror = () => { mostrarLoader(false); _mostrarErro('Erro ao ler o arquivo comparativo. Verifique se ele não está aberto em outro programa.'); };
   if (file.name.toLowerCase().endsWith('.ofx'))
     reader.readAsArrayBuffer(file);
   else if (file.name.toLowerCase().endsWith('.csv') || file.name.toLowerCase().endsWith('.tsv'))
