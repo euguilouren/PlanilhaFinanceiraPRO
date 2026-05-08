@@ -12,8 +12,8 @@ YELLOW='\033[1;33m'
 GREEN='\033[0;32m'
 RESET='\033[0m'
 
-erro()  { echo -e "${RED}[ERRO]${RESET}  $*"; ((ERROS++))  || true; }
-aviso() { echo -e "${YELLOW}[AVISO]${RESET} $*"; ((AVISOS++)) || true; }
+erro()  { echo -e "${RED}[ERRO]${RESET}  $*"; ERROS=$((ERROS+1)); }
+aviso() { echo -e "${YELLOW}[AVISO]${RESET} $*"; AVISOS=$((AVISOS+1)); }
 ok()    { echo -e "${GREEN}[OK]${RESET}    $*"; }
 
 # Só valida se index.html estiver na staging area
@@ -57,9 +57,9 @@ else
 fi
 
 # ── 4. console.log em produção ────────────────────────────────────────────────
-LOG_HITS=$(grep -c 'console\.log(' "$HTML" || true)
+LOG_HITS=$(grep -cE 'console\.(log|warn|error|info|debug)\(' "$HTML" || true)
 if [ "$LOG_HITS" -gt 0 ]; then
-  aviso "${LOG_HITS} console.log() encontrado(s) — remover antes do deploy"
+  aviso "${LOG_HITS} console.log/warn/error() encontrado(s) — remover antes do deploy"
 fi
 
 # ── 5. Chart.js — destroy() antes de new Chart() ─────────────────────────────

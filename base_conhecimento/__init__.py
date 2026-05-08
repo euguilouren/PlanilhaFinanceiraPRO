@@ -9,8 +9,12 @@ Uso:
         df = df.rename(columns=MAPAS_ERP[erp]['colunas'])
 """
 
-from typing import Dict, Optional
+import logging
+from typing import Dict, List, Optional
+
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 
 # Mapeamentos: coluna-original → coluna-padrão do toolkit
@@ -398,18 +402,31 @@ def detectar_erp(df: pd.DataFrame) -> Optional[str]:
 
     Retorna o nome do ERP (chave de MAPAS_ERP) ou None se não reconhecido.
     Critério: pelo menos 2 colunas-sinal do ERP presentes no DataFrame.
+    Comparação case-insensitive. Em empate, prefere o ERP com mais hits.
     """
-    colunas = set(df.columns)
-    melhor_erp: Optional[str] = None
-    melhor_score = 0
+    colunas_lower = {c.lower() for c in df.columns}
+    scores: Dict[str, int] = {}
 
     for erp, sinais in ASSINATURAS_ERP.items():
-        hits = sum(1 for s in sinais if s in colunas)
-        if hits >= 2 and hits > melhor_score:
-            melhor_score = hits
-            melhor_erp = erp
+        hits = sum(1 for s in sinais if s.lower() in colunas_lower)
+        if hits >= 2:
+            scores[erp] = hits
 
-    return melhor_erp
+    if not scores:
+        return None
+
+    melhor_score = max(scores.values())
+    candidatos: List[str] = [erp for erp, s in scores.items() if s == melhor_score]
+
+    if len(candidatos) > 1:
+        # Tiebreak: prefer ERP whose signals are most unique (fewer total signals = more specific)
+        candidatos.sort(key=lambda e: len(ASSINATURAS_ERP[e]))
+        logger.warning(
+            "detectar_erp: empate (%d hits) entre %s — selecionando '%s' (mais específico).",
+            melhor_score, candidatos, candidatos[0],
+        )
+
+    return candidatos[0]
 
 
 def normalizar_colunas(df: pd.DataFrame, erp: Optional[str] = None) -> pd.DataFrame:

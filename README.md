@@ -1,28 +1,69 @@
+<div align="center">
+
+<img src="https://github.com/euguilouren.png?size=120" width="90" style="border-radius:50%" alt="Luan Guilherme Lourenço">
+
 # Planilha Financeira Pro
 
-> Dashboard financeiro 100% no browser + toolkit Python para empresas brasileiras
+**Dashboard financeiro 100% no navegador**
 
-**Powered by [Luan Guilherme Lourenço](https://github.com/euguilouren)**
+[![CI](https://github.com/euguilouren/PlanilhaFinanceiraPRO/actions/workflows/ci.yml/badge.svg)](https://github.com/euguilouren/PlanilhaFinanceiraPRO/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
+![Testes](https://img.shields.io/badge/testes-391%20passando-2e7d32)
+![Anti-Fraude](https://img.shields.io/badge/anti--fraude-8%20algoritmos-C9A84C)
+![License](https://img.shields.io/badge/licença-MIT-22c55e)
 
-![Python](https://img.shields.io/badge/Python-3.10%2B-blue) ![License](https://img.shields.io/badge/license-MIT-green)
+**Criado por [Luan Guilherme Lourenço](https://github.com/euguilouren)**
 
-**[Abrir dashboard online →](https://euguilouren.github.io/Planilhas/)**
+[![GitHub](https://img.shields.io/badge/GitHub-euguilouren-181717?logo=github&logoColor=white)](https://github.com/euguilouren)
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-euguilouren-0A66C2?logo=linkedin&logoColor=white)](https://linkedin.com/in/euguilouren)
+
+**[🚀 Abrir dashboard online →](https://euguilouren.github.io/PlanilhaFinanceiraPRO/)**
+
+</div>
 
 ---
 
-## Visão Geral
+## Sobre o Desenvolvedor
 
-Arraste qualquer planilha `.xlsx` ou `.csv` e obtenha em segundos:
+**Luan Guilherme Lourenço** é desenvolvedor especializado em automação financeira e soluções de dados para empresas brasileiras. Criou a Planilha Financeira Pro para democratizar análises financeiras profissionais — o que antes exigia horas de trabalho em consultoria, agora acontece em segundos, direto no navegador.
 
-- **KPIs financeiros**: receitas, despesas, resultado líquido, ticket médio
-- **Auditoria**: duplicatas, outliers, campos vazios, inconsistências temporais
-- **Aging / Contas a Receber**: faixas de vencimento com gráfico visual
-- **DRE automático**: classifica receitas, CMV e despesas (padrão CPC 26)
-- **Pareto (curva ABC)**: clientes/fornecedores que geram 80% do resultado
-- **Verificação de integridade**: checksum, cross-checks, badges de confiança
-- **Detecção automática de ERP**: mapeia colunas de 20 sistemas brasileiros
+- **GitHub:** [github.com/euguilouren](https://github.com/euguilouren)
+- **LinkedIn:** [linkedin.com/in/euguilouren](https://linkedin.com/in/euguilouren)
 
-**ERPs suportados (20):** TOTVS Protheus · TOTVS RM · TOTVS Datasul · Omie · Questor · SAP B1 · Domínio · Sankhya · Senior · Cigam · Alterdata · Linx · Mega · Nibo · Granatum · Conta Azul · Bling · Tiny · GestãoClick · NFe XML
+---
+
+## O que faz
+
+Arraste qualquer planilha `.xlsx` ou `.csv` e obtenha instantaneamente:
+
+| Análise | O que entrega |
+|---------|--------------|
+| **KPIs financeiros** | Receitas, despesas, resultado líquido, ticket médio |
+| **Auditoria** | Duplicatas, outliers, campos vazios, inconsistências temporais |
+| **Aging / Recebíveis** | Faixas de vencimento com gráfico visual |
+| **DRE automático** | Receitas, CMV e despesas classificados (padrão CPC 26) |
+| **Pareto (curva ABC)** | Clientes/fornecedores que geram 80% do resultado |
+| **Anti-Fraude** | 8 algoritmos: Lei de Benford, fuzzy, fracionamento e mais |
+| **Detecção de ERP** | Mapeamento automático de colunas de 20 sistemas brasileiros |
+
+### Sistema Anti-Fraude (8 algoritmos)
+
+| Algoritmo | Detecta |
+|-----------|---------|
+| Lei de Benford | Distribuição anômala de primeiros dígitos (chi-quadrado) |
+| Duplicatas Fuzzy | Mesmo valor ±1% + mesma entidade + data ±30 dias |
+| Números Redondos | Concentração suspeita de valores redondos (>15%) |
+| Fracionamento | Transações fracionadas abaixo de limites em janela de 30 dias |
+| Anomalias Temporais | Transações em fins de semana e feriados nacionais |
+| Outliers por Entidade | Z-score por fornecedor/cliente (σ ≥ 3) |
+| Concentração | Entidade com >30% do volume total |
+| Score Consolidado | CRÍTICO / ALTO / MÉDIO / BAIXO / LIMPO |
+
+---
+
+## ERPs Suportados (20)
+
+TOTVS Protheus · TOTVS RM · TOTVS Datasul · Omie · Questor · SAP B1 · Domínio · Sankhya · Senior · Cigam · Alterdata · Linx · Mega · Nibo · Granatum · Conta Azul · Bling · Tiny · GestãoClick · NFe XML
 
 ---
 
@@ -30,155 +71,91 @@ Arraste qualquer planilha `.xlsx` ou `.csv` e obtenha em segundos:
 
 | Modo | Arquivo | Descrição |
 |------|---------|-----------|
-| Dashboard web | `index.html` | Abre no navegador, sem servidor, sem instalar Python |
-| CLI interativo | `rodar.py` | Processa um arquivo e gera Excel + briefing |
-| Monitor autônomo | `motor_automatico.py` | Daemon que monitora uma pasta continuamente |
-| Relatório HTML | `relatorio_html.py` | Biblioteca usada pelo daemon |
+| Dashboard web | `index.html` | Abre no navegador — sem servidor, sem Python |
+| CLI interativo | `rodar.py` | Processa arquivo e gera Excel + briefing |
+| Monitor autônomo | `motor_automatico.py` | Daemon que monitora pasta continuamente |
+| Detecção de fraudes | `fraude_detector.py` | Módulo Python independente |
 
 ---
 
-## Instalação Rápida
+## Instalação
 
 ```bash
-# 1. Clone o repositório
-git clone https://github.com/euguilouren/planilhas
-cd planilhas
-
-# 2. Instale as dependências
+git clone https://github.com/euguilouren/PlanilhaFinanceiraPRO
+cd PlanilhaFinanceiraPRO
 pip install -r requirements.txt
 ```
 
-**No Windows** use o instalador incluso:
+**No Windows:**
 ```
 instalar.bat   # instala dependências
 abrir.bat      # abre o dashboard no navegador
 ```
 
----
+### Dashboard (sem Python)
 
-## Uso
+Abra `index.html` diretamente no Chrome, Edge ou Firefox. Arraste uma planilha `.xlsx` ou `.csv` e pronto.
 
-### Opção A — Dashboard no Navegador (sem Python)
-
-Abra `index.html` diretamente no Chrome, Edge ou Firefox.  
-Arraste e solte qualquer planilha `.xlsx` ou `.csv` para analisar instantaneamente.
-
-### Opção B — CLI (um arquivo)
+### CLI
 
 ```bash
-# Edite ARQUIVO_ENTRADA no início do script
 python rodar.py
+# Gera resultado.xlsx e briefing.txt na mesma pasta
 ```
 
-Gera `resultado.xlsx` e `briefing.txt` na mesma pasta.
-
-### Opção C — Monitor Autônomo
+### Monitor Autônomo
 
 ```bash
-# Configure config.yaml (veja seção abaixo)
 python motor_automatico.py              # monitora pasta_entrada/ continuamente
 python motor_automatico.py --once       # processa uma vez e sai
-python motor_automatico.py --arquivo minha.xlsx  # arquivo específico
+python motor_automatico.py --arquivo minha.xlsx
+```
+
+### Detecção de Fraudes (Python)
+
+```python
+from fraude_detector import FraudeDetector
+import pandas as pd
+
+df = pd.read_excel("lancamentos.xlsx")
+resultado = FraudeDetector.analisar(df, col_valor="Valor", col_entidade="Cliente", col_data="Data")
+
+print(f"Score: {resultado['score']} — {resultado['nivel']}")
+print(f"Alertas: {resultado['alertas']}")
 ```
 
 ---
 
-## Configuração (`config.yaml`)
+## Testes
 
-| Chave | Tipo | Padrão | Descrição |
-|-------|------|--------|-----------|
-| `pastas.entrada` | string | `pasta_entrada` | Pasta monitorada pelo daemon |
-| `pastas.saida` | string | `pasta_saida` | Onde os relatórios são gerados |
-| `colunas.valor` | string | `Valor` | Nome da coluna de valores monetários |
-| `colunas.data` | string | `Data` | Coluna de data de emissão |
-| `colunas.vencimento` | string | `Vencimento` | Coluna de data de vencimento |
-| `colunas.chave` | string | `NF` | Chave única (nota fiscal, ID) |
-| `colunas.entidade` | string | `Cliente` | Cliente ou fornecedor |
-| `auditoria.outlier_desvios` | float | `3.0` | Desvios padrão para detectar outlier |
-| `aging.faixa_atencao` | int | `30` | Dias de atraso → ATENÇÃO |
-| `aging.faixa_critica` | int | `90` | Dias de atraso → CRÍTICO |
-| `indicadores.liquidez_corrente_min` | float | `1.0` | Mínimo de liquidez corrente saudável |
-| `indicadores.margem_liquida_min` | float | `5.0` | Margem líquida mínima (%) |
-| `analise_comercial.pareto_corte` | float | `0.80` | Corte da curva ABC (padrão 80%) |
-| `email.ativo` | bool | `false` | Habilita alertas por e-mail |
-| `relatorio.empresa` | string | `Minha Empresa` | Nome exibido nos relatórios |
+```bash
+pip install -r requirements-dev.txt
+pytest tests/ -v
+# 391 testes — Python 3.10, 3.11 e 3.12
+```
 
 ---
 
-## Estrutura do Projeto
+## Segurança
 
-```
-Planilhas/
-├── index.html               # Dashboard web — única fonte (local + entrada do pipeline)
-├── scripts/
-│   └── obfuscar_html.py     # Extrai, obfusca JS e reconstrói HTML para deploy
-├── toolkit_financeiro.py    # Biblioteca core Python (12 classes)
-├── motor_automatico.py      # Daemon que monitora pasta_entrada/ continuamente
-├── rodar.py                 # CLI interativo (gera Excel + briefing)
-├── relatorio_html.py        # Gerador de relatórios HTML
-├── config.yaml              # Configuração central
-├── requirements.txt         # Dependências Python (produção)
-├── requirements-dev.txt     # Dependências de desenvolvimento + testes
-├── tests/                   # Suite de testes pytest
-│   ├── conftest.py
-│   ├── test_toolkit_financeiro.py
-│   └── test_relatorio_html.py
-├── base_conhecimento/
-│   ├── __init__.py          # MAPAS_ERP (20 ERPs), detectar_erp(), normalizar_colunas()
-│   ├── erp_mapeamentos.md   # Documentação dos 20 mapeamentos ERP
-│   └── contabilidade_br.md  # Referência contábil brasileira (CPC 26)
-└── .github/workflows/
-    ├── ci.yml               # Testes Python 3.10/3.11/3.12 + validações
-    └── deploy.yml           # Obfusca JS e publica no gh-pages
-```
+- **CSP** (`Content-Security-Policy`) restringindo scripts, frames e conexões externas
+- **Bandit SAST** em cada push — zero findings medium/high
+- **Verificação de integridade dos CDNs** (SHA-384) a cada run de CI
+- **Anti-fraude** com 8 algoritmos de detecção no frontend e backend
 
-### Pipeline de Deploy
+---
+
+## Pipeline de Deploy
 
 ```
 push → main
-  └─► deploy.yml
-        → python3 scripts/obfuscar_html.py index.html dist/index.html
-        → peaceiris/actions-gh-pages → branch gh-pages
-        → GitHub Pages serve o JS obfuscado em euguilouren.github.io/Planilhas/
+  └─► .github/workflows/deploy.yml
+        → scripts/obfuscar_html.py (obfusca JS)
+        → GitHub Pages → euguilouren.github.io/PlanilhaFinanceiraPRO/
 ```
-
-### Módulos do `toolkit_financeiro.py`
-
-| Classe | Responsabilidade |
-|--------|-----------------|
-| `Leitor` | Leitura de Excel/CSV com diagnóstico completo |
-| `Auditor` | Duplicatas, outliers, campos vazios, inconsistências |
-| `Conciliador` | Reconciliação exata e fuzzy entre planilhas |
-| `AnalistaFinanceiro` | Aging, DRE, indicadores de saúde (LC, LS, ROE...) |
-| `AnalistaComercial` | Pareto, ticket médio, realizado vs meta |
-| `PrestadorContas` | Balanço, comparativo de períodos |
-| `MontadorPlanilha` | Excel profissional com formatação e totais |
-| `Verificador` | Integridade pós-processamento (contagem, soma) |
-| `Util` | Normalização, CNPJ/CPF, conversão moeda BR, similaridade |
-| `PipelineFinanceiro` | Orquestração encadeada de análises |
-| `Estilos` | Constantes de formatação Excel |
-| `Status` | Enumeração de status e severidade |
-
----
-
-## Desenvolvimento e Testes
-
-```bash
-# Instalar dependências de dev
-pip install -r requirements-dev.txt
-
-# Rodar todos os testes
-pytest tests/ -v
-
-# Testes com relatório de cobertura
-pytest tests/ -v --cov=toolkit_financeiro --cov=relatorio_html --cov-report=term-missing
-```
-
-60 testes cobrindo: `Leitor`, `Auditor`, `AnalistaFinanceiro`, `AnalistaComercial`,
-`Util`, `Verificador`, `validar_config` e `GeradorHTML`.
 
 ---
 
 ## Licença
 
-MIT © Luan Guilherme Lourenço
+MIT © [Luan Guilherme Lourenço](https://github.com/euguilouren)

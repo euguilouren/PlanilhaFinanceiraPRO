@@ -92,13 +92,13 @@ def validar_config(cfg: dict) -> List[str]:
         if not pastas.get(campo):
             avisos.append(f"pastas.{campo} não pode ser vazio")
 
-    audit = cfg.get('auditoria', {})
+    audit = cfg.get('auditoria') or {}
     if not isinstance(audit.get('outlier_desvios', 3.0), (int, float)):
         avisos.append("auditoria.outlier_desvios deve ser numérico")
     if not isinstance(audit.get('minimo_registros_analise', 5), int):
         avisos.append("auditoria.minimo_registros_analise deve ser inteiro")
 
-    ind = cfg.get('indicadores', {})
+    ind = cfg.get('indicadores') or {}
     for chave in ('liquidez_corrente_min', 'liquidez_seca_min', 'margem_liquida_min',
                   'endividamento_max', 'roe_min'):
         val = ind.get(chave)
@@ -107,7 +107,7 @@ def validar_config(cfg: dict) -> List[str]:
         elif val is not None and val < 0:
             avisos.append(f"indicadores.{chave} deve ser >= 0, recebeu {val}")
 
-    email = cfg.get('email', {})
+    email = cfg.get('email') or {}
     if email.get('ativo', False):
         for campo in ('smtp_servidor', 'remetente', 'destinatarios'):
             if not email.get(campo):
@@ -116,7 +116,10 @@ def validar_config(cfg: dict) -> List[str]:
         if not isinstance(porta, int) or not (1 <= porta <= 65535):
             avisos.append(f"email.smtp_porta deve ser inteiro 1-65535, recebeu {porta}")
         _email_re = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
-        for dest in email.get('destinatarios', []):
+        destinatarios = email.get('destinatarios', [])
+        if isinstance(destinatarios, str):
+            destinatarios = [destinatarios]
+        for dest in (destinatarios or []):
             if not _email_re.match(str(dest)):
                 avisos.append(f"Email inválido em destinatarios: '{dest}'")
 
@@ -154,12 +157,12 @@ class Leitor:
 
         try:
             if ext in ('.xlsx', '.xls', '.xlsm'):
-                xls = pd.ExcelFile(caminho)
-                for aba in xls.sheet_names:
-                    df = pd.read_excel(xls, sheet_name=aba)
-                    dados[aba] = df
-                    diagnostico['abas'].append(Leitor._info_aba(aba, df))
-                    diagnostico['total_registros'] += len(df)
+                with pd.ExcelFile(caminho) as xls:
+                    for aba in xls.sheet_names:
+                        df = pd.read_excel(xls, sheet_name=aba)
+                        dados[aba] = df
+                        diagnostico['abas'].append(Leitor._info_aba(aba, df))
+                        diagnostico['total_registros'] += len(df)
 
             elif ext in ('.csv', '.tsv'):
                 sep = '\t' if ext == '.tsv' else None
@@ -562,6 +565,7 @@ class Auditor:
         colunas_existentes = [c for c in colunas_chave if c in df.columns]
         if not colunas_existentes:
             return pd.DataFrame()
+        df = df.reset_index(drop=True)
         mask = df.duplicated(subset=colunas_existentes, keep=False)
         duplicatas = df[mask].copy()
         if len(duplicatas) > 0:
@@ -587,6 +591,7 @@ class Auditor:
         """
         if coluna_valor not in df.columns:
             return pd.DataFrame()
+        df = df.reset_index(drop=True)
         valores = pd.to_numeric(df[coluna_valor], errors='coerce')
         media, desvio = valores.mean(), valores.std()
         if pd.isna(desvio) or desvio == 0:
@@ -611,9 +616,10 @@ class Auditor:
         inconsistencias = []
         if col_data not in df.columns:
             return inconsistencias
+        df = df.reset_index(drop=True)
         datas = pd.to_datetime(df[col_data], errors='coerce', dayfirst=True)
         if hasattr(datas.dtype, 'tz') and datas.dtype.tz is not None:
-            datas = datas.dt.tz_convert(None)
+            datas = datas.dt.tz_localize(None)
         hoje = pd.Timestamp.now()
         for idx, row in df[datas > hoje].iterrows():
             inconsistencias.append({
@@ -626,7 +632,7 @@ class Auditor:
         if col_data2 and col_data2 in df.columns:
             datas2 = pd.to_datetime(df[col_data2], errors='coerce', dayfirst=True)
             if hasattr(datas2.dtype, 'tz') and datas2.dtype.tz is not None:
-                datas2 = datas2.dt.tz_convert(None)
+                datas2 = datas2.dt.tz_localize(None)
             mask = (datas2 < datas).fillna(False)
             for idx, row in df[mask.values].iterrows():
                 inconsistencias.append({
@@ -642,6 +648,7 @@ class Auditor:
     @staticmethod
     def detectar_campos_vazios(df: pd.DataFrame, colunas_obrigatorias: list, aba: str = '') -> list:
         inconsistencias = []
+        df = df.reset_index(drop=True)
         for col in colunas_obrigatorias:
             if col not in df.columns:
                 inconsistencias.append({
@@ -669,6 +676,7 @@ class Auditor:
         inconsistencias = []
         if col_valor not in df.columns or col_tipo not in df.columns:
             return inconsistencias
+        df = df.reset_index(drop=True)
         valores = pd.to_numeric(df[col_valor], errors='coerce')
         receitas_neg = df[
             df[col_tipo].str.upper().str.contains('RECEITA|VENDA|FATURAMENTO', na=False) & (valores < 0)
@@ -780,7 +788,8 @@ class Conciliador:
 
         if chaves_dup:
             for idx, row in merged.iterrows():
-                if tuple(row[c] for c in chave) in chaves_dup:
+                if (tuple(row[c] for c in chave) in chaves_dup
+                        and 'NÃO ENCONTRADO' not in str(merged.at[idx, 'Status_Conciliação'])):
                     merged.at[idx, 'Status_Conciliação'] = 'DUPLICADO (verificar)'
 
         return merged
@@ -944,9 +953,9 @@ class AnalistaFinanceiro:
         venc = pd.to_datetime(df[col_vencimento], errors='coerce', dayfirst=True)
         # Garantir tz-naive em ambos os lados para evitar TypeError em planilhas com timezone
         if hasattr(venc.dtype, 'tz') and venc.dtype.tz is not None:
-            venc = venc.dt.tz_convert(None)
+            venc = venc.dt.tz_localize(None)
         ts = pd.Timestamp(data_ref)
-        data_ref_ts = ts.tz_convert(None) if ts.tzinfo is not None else ts
+        data_ref_ts = ts.tz_localize(None) if ts.tzinfo is not None else ts
         dias = (data_ref_ts - venc).dt.days
         faixa_media = (faixa_atencao + faixa_critica) // 2
 
@@ -1038,7 +1047,7 @@ class AnalistaFinanceiro:
         if receita_liq != 0:
             resultado['AV_%'] = (resultado['Valor_RS'] / abs(receita_liq) * 100).round(1)
         else:
-            resultado['AV_%'] = None
+            resultado['AV_%'] = np.nan
         return resultado
 
     @staticmethod
@@ -1069,7 +1078,7 @@ class AnalistaFinanceiro:
                 if i > 0:
                     anterior, atual = row[cols[i - 1]], row[col]
                     r[f'Var_{cols[i-1]}_para_{col}_R$'] = round(atual - anterior, 2)
-                    r[f'Var_{cols[i-1]}_para_{col}_%']  = round((atual - anterior) / anterior * 100, 1) if anterior != 0 else None
+                    r[f'Var_{cols[i-1]}_para_{col}_%']  = round((atual - anterior) / abs(anterior) * 100, 1) if anterior != 0 else None
             result_rows.append(r)
         return pd.DataFrame(result_rows)
 
@@ -1117,7 +1126,7 @@ class AnalistaFinanceiro:
             indicadores.append({
                 'Indicador': nome, 'Fórmula': formula, 'Valor': valor,
                 'Referência': ref,
-                'Status': 'SAUDÁVEL' if ok_cond(valor) else ('ATENÇÃO' if ok_cond(valor * 0.8) else 'CRÍTICO'),
+                'Status': 'SAUDÁVEL' if ok_cond(valor) else ('ATENÇÃO' if (ok_cond(valor * 0.8) or ok_cond(valor / 0.8)) else 'CRÍTICO'),
             })
 
         if passivo_circulante != 0:
@@ -1197,7 +1206,7 @@ class AnalistaFinanceiro:
 
         # Strip timezone so resample works regardless of whether dates are tz-aware
         if hasattr(df_valid['_data'].dtype, 'tz') and df_valid['_data'].dtype.tz is not None:
-            df_valid['_data'] = df_valid['_data'].dt.tz_convert(None)
+            df_valid['_data'] = df_valid['_data'].dt.tz_localize(None)
         df_valid = df_valid.set_index('_data')
         chave_col = col_chave if col_chave in df_valid.columns else df_valid.columns[0]
 
@@ -1212,6 +1221,11 @@ class AnalistaFinanceiro:
 
         rec = _agg(df_valid['_tipo'] == 'RECEITA')
         dep = _agg(df_valid['_tipo'] == 'DESPESA', abs_val=True)
+
+        # Union of both resampled indices so months present in only one side still appear
+        all_idx = rec.index.union(dep.index)
+        rec = rec.reindex(all_idx, fill_value=0)
+        dep = dep.reindex(all_idx, fill_value=0)
 
         combined = rec.join(dep, how='outer', lsuffix='_r', rsuffix='_d').fillna(0)
         combined.index.name = 'Periodo'
@@ -1299,7 +1313,7 @@ class AnalistaComercial:
         merged['Desvio_RS']    = (merged['Realizado_RS'] - merged['Meta_RS']).round(2)
         merged['Atingimento_%'] = np.where(
             merged['Meta_RS'] != 0,
-            (merged['Realizado_RS'] / merged['Meta_RS'] * 100).round(1),
+            (merged['Realizado_RS'] / merged['Meta_RS'].replace(0, np.nan) * 100).round(1),
             0,
         )
         merged['Status'] = np.where(
@@ -1322,14 +1336,35 @@ class Util:
 
     @staticmethod
     def converter_moeda_br(series: pd.Series) -> pd.Series:
-        return (
-            series.astype(str)
-            .str.replace('R$', '', regex=False)
-            .str.replace('.', '', regex=False)
-            .str.replace(',', '.', regex=False)
-            .str.strip()
-            .apply(pd.to_numeric, errors='coerce')
-        )
+        def _parse(raw):
+            s = str(raw).replace('R$', '').replace('\xa0', '').strip()
+            if not s or s.lower() in ('nan', 'none', ''):
+                return float('nan')
+            # Parenthetical notation: (1.234,56) means negative
+            negativo = s.startswith('(') and s.endswith(')')
+            if negativo:
+                s = s[1:-1].strip()
+            # Remove currency symbol artifacts; keep digits, separators, sign
+            s = re.sub(r'[^\d.,-]', '', s)
+            if not s:
+                return float('nan')
+            # Detect format by which separator comes last:
+            # BR: last meaningful separator is ',' → dot=thousands, comma=decimal
+            # US/clean: last meaningful separator is '.' or no comma → dot=decimal
+            last_dot = s.rfind('.')
+            last_comma = s.rfind(',')
+            if last_comma > last_dot:
+                # BR format: "1.234,56" or "1234,56"
+                s = s.replace('.', '').replace(',', '.')
+            else:
+                # US format or already a float: "1,234.56" or "1234.56"
+                s = s.replace(',', '')
+            try:
+                v = float(s)
+                return -v if negativo else v
+            except ValueError:
+                return float('nan')
+        return series.apply(_parse)
 
     @staticmethod
     def normalizar_cnpj_cpf(series: pd.Series) -> pd.Series:
@@ -1341,7 +1376,7 @@ class Util:
     @staticmethod
     def corrigir_encoding(series: pd.Series) -> pd.Series:
         mapa = {
-            'Ã£': 'ã', 'Ã¡': 'á', 'Ã ': 'à', 'Ã¢': 'â', 'Ã¤': 'ä',
+            'Ã£': 'ã', 'Ã¡': 'á', 'Ã\xa0': 'à', 'Ã¢': 'â', 'Ã¤': 'ä',
             'Ã©': 'é', 'Ãª': 'ê', 'Ã¨': 'è', 'Ã­': 'í', 'Ã®': 'î',
             'Ã¯': 'ï', 'Ã³': 'ó', 'Ã´': 'ô', 'Ãµ': 'õ', 'Ã¶': 'ö',
             'Ãº': 'ú', 'Ã¼': 'ü', 'Ã»': 'û', 'Ã§': 'ç', 'Ã±': 'ñ',
@@ -1408,7 +1443,10 @@ class PrestadorContas:
 
         if col_tipo and col_tipo in df.columns:
             tipo_upper = df[col_tipo].astype(str).str.upper()
-            entradas_mask = tipo_upper.str.contains('RECEI|ENTRA|CRÉDI|VENDA|FATURAMENTO', na=False)
+            entradas_mask = (
+                tipo_upper.str.contains('RECEI|ENTRA|CRÉDI|VENDA|FATURAMENTO', na=False)
+                & ~tipo_upper.str.contains('DEVOL', na=False)
+            )
         else:
             entradas_mask = valores >= 0
         saidas_mask = ~entradas_mask
@@ -1416,7 +1454,7 @@ class PrestadorContas:
         def _agrupa(mask, natureza):
             grp = df[mask].groupby(col_categoria).agg(
                 Qtd=(col_valor, 'count'),
-                Total=(col_valor, lambda x: abs(pd.to_numeric(x, errors='coerce').sum())),
+                Total=(col_valor, lambda x: pd.to_numeric(x, errors='coerce').abs().sum()),
             ).reset_index().rename(columns={col_categoria: 'Categoria'})
             grp['Natureza'] = natureza
             return grp
@@ -1994,8 +2032,9 @@ class PipelineFinanceiro:
             'status': Status.OK if resumo['percentual_ok'] >= 95 else Status.PENDENTE,
             'obs': f"{resumo['conciliados_ok']} de {resumo['total_registros']} registros",
         }
-        logger.info("Conciliação: %.1f%% OK | divergências: R$ %,.2f",
-                    resumo['percentual_ok'], resumo['soma_divergencias_rs'])
+        logger.info("Conciliação: %.1f%% OK | divergências: R$ %s",
+                    resumo['percentual_ok'],
+                    f"{resumo['soma_divergencias_rs']:,.2f}")
         return df_concil
 
     # ── Análise Financeira ───────────────────────────────────────
@@ -2441,11 +2480,11 @@ class Normalizador:
         # Dados de exemplo (3 linhas)
         exemplos = [
             ['NF-2024-001', '01/01/2024', '31/01/2024', 5000.00,
-             'RECEITA', 'Empresa Alpha Ltda', 'PAGO', 'Contrato mensal'],
+             'RECEITA', 'RECEITA', 'Empresa Alpha Ltda', 'PAGO', 'Contrato mensal'],
             ['NF-2024-002', '05/01/2024', '05/02/2024', 1200.50,
-             'DESPESA OPERACIONAL', 'Fornecedor Beta S/A', 'PENDENTE', ''],
+             'DESPESA OPERACIONAL', 'DESPESA', 'Fornecedor Beta S/A', 'PENDENTE', ''],
             ['NF-2024-003', '10/01/2024', '10/01/2024', 3750.00,
-             'CMV', 'Distribuidora Gamma', 'PAGO', 'Compra de mercadoria'],
+             'CMV', 'DESPESA', 'Distribuidora Gamma', 'PAGO', 'Compra de mercadoria'],
         ]
         ex_fill  = PatternFill('solid', fgColor='F0F4F8')
         ex_fill2 = PatternFill('solid', fgColor='FFFFFF')

@@ -5,6 +5,7 @@ Produz um arquivo .html autocontido que abre em qualquer navegador.
 
 import html
 import logging
+import re
 from datetime import datetime
 
 import pandas as pd
@@ -66,7 +67,7 @@ class GeradorHTML:
         total_registros = len(df_dados)
         col_valor = self.cfg.get('colunas', {}).get('valor', 'Valor')
         total_valor = pd.to_numeric(df_dados.get(col_valor, pd.Series(dtype=float)), errors='coerce').sum() if col_valor in df_dados.columns else 0
-        total_criticos = len(df_auditoria[df_auditoria['Severidade'] == 'CRÍTICA']) if len(df_auditoria) else 0
+        total_criticos = len(df_auditoria[df_auditoria['Severidade'].astype(str).str.strip().str.upper() == 'CRÍTICA']) if (len(df_auditoria) and 'Severidade' in df_auditoria.columns) else 0
         total_problemas = len(df_auditoria)
 
         html_content = f"""<!DOCTYPE html>
@@ -142,7 +143,7 @@ class GeradorHTML:
     <div class="kpi" role="article" aria-label="Total de registros: {total_registros:,}">
       <div class="label">Total de Registros</div>
       <div class="valor" aria-live="polite">{total_registros:,}</div>
-      <div class="sub">{arquivo_origem}</div>
+      <div class="sub">{self._esc(arquivo_origem)}</div>
     </div>
     <div class="kpi" role="article" aria-label="Total geral em reais: {total_valor:.0f}">
       <div class="label">Total Geral (R$)</div>
@@ -215,9 +216,11 @@ class GeradorHTML:
     def _fmt_brl(val, dec: int = 2) -> str:
         try:
             v = float(val)
+            if v != v:  # NaN check
+                return '—'
             us = f"{abs(v):,.{dec}f}"
             br = us.replace(',', 'X').replace('.', ',').replace('X', '.')
-            return f"R$ {'-' if v < 0 else ''}{br}"
+            return f"{'-' if v < 0 else ''}R$ {br}"
         except (ValueError, TypeError):
             return '—'
 
@@ -305,14 +308,18 @@ class GeradorHTML:
             return '<section class="card"><h2>📅 Aging de Recebíveis</h2><p style="color:#888;font-size:13px">Colunas de aging não encontradas no DataFrame (Total_RS / Faixa_Aging).</p></section>'
         total = df['Total_RS'].sum()
         rows = ''
-        for _, r in df.iterrows():
+        for i, (_, r) in enumerate(df.iterrows()):
             faixa = str(r['Faixa_Aging'])
-            pct   = float(r.get('Percentual', 0))
-            qtd   = int(r.get('Quantidade', 0))
-            tot   = float(r.get('Total_RS', 0))
-            if 'vencer' in faixa.lower():
+            _pct = r.get('Percentual', 0)
+            pct = float(_pct) if pd.notna(_pct) else 0.0
+            _qtd = r.get('Quantidade', 0)
+            qtd = int(float(_qtd)) if pd.notna(_qtd) else 0
+            _tot = r.get('Total_RS', 0)
+            tot = float(_tot) if pd.notna(_tot) else 0.0
+            faixa_l = faixa.lower()
+            if 'vencer' in faixa_l or i == 0:
                 bar_cls = 'bar-ok'
-            elif '1-30' in faixa or '31-60' in faixa:
+            elif i <= 2 or re.search(r'\b[1-9]\d?-\d+\b', faixa):
                 bar_cls = 'bar-atencao'
             else:
                 bar_cls = 'bar-critico'
@@ -342,8 +349,11 @@ class GeradorHTML:
         for _, r in df.iterrows():
             linha = str(r.get('Linha_DRE', ''))
             valor = float(r.get('Valor_RS', 0))
-            av    = f"{float(r['AV_%']):.1f}%" if 'AV_%' in r and pd.notna(r.get('AV_%')) else ''
-            cls   = 'dre-total' if linha in totais else ('dre-sub' if (linha.startswith('(-)') or linha.startswith('(-/+)')) else '')
+            try:
+                av = f"{float(r['AV_%']):.1f}%" if 'AV_%' in r and pd.notna(r.get('AV_%')) else ''
+            except (ValueError, TypeError):
+                av = ''
+            cls   = 'dre-total' if linha in totais else ('dre-sub' if linha.startswith(('(-)', '(+)', '(-/+)')) else '')
             cor   = '#C0392B' if valor < 0 and linha in totais else ''
             rows += (f"<tr class='{cls}'><td>{self._esc(linha)}</td>"
                      f"<td style='text-align:right;color:{cor}'>{self._fmt_brl(valor)}</td>"
@@ -369,9 +379,11 @@ class GeradorHTML:
             max_val = 1
         rows = ''
         for _, r in df.head(15).iterrows():
-            pct_bar = min(float(r.get('Total_RS', 0)) / max_val * 100, 100)
-            classe  = str(r.get('Classe_Pareto', ''))
-            cor_cls = '#C9A227' if 'A' in classe else '#9BA8B5'
+            total_rs = r.get('Total_RS', 0)
+            total_rs_f = float(total_rs) if pd.notna(total_rs) else 0.0
+            pct_bar = min(total_rs_f / max_val * 100, 100)
+            classe  = str(r.get('Classe_Pareto') or '').strip().upper()
+            cor_cls = '#C9A227' if classe == 'A' else '#9BA8B5'
             bar = f'<div class="bar-wrap"><div class="bar" style="width:{pct_bar:.1f}%;background:{cor_cls}"></div></div>'
             rows += (f"<tr><td style='text-align:center'>{int(r.get('Ranking',0))}</td>"
                      f"<td>{self._esc(r[col_ent])}</td>"
@@ -406,9 +418,9 @@ class GeradorHTML:
             tot_res  = df['Resultado_RS'].sum()
             rows = ''
             for _, r in df.iterrows():
-                res = float(r['Resultado_RS'])
+                res = float(r['Resultado_RS']) if pd.notna(r['Resultado_RS']) else 0.0
                 cor = '#D1FAE5' if res >= 0 else '#FEE2E2'
-                pct = float(r['Resultado_Pct'])
+                pct = float(r['Resultado_Pct']) if pd.notna(r['Resultado_Pct']) else 0.0
                 pct_str = f'+{pct:.1f}%' if pct >= 0 else f'{pct:.1f}%'
                 rows += (
                     f"<tr style='background:{cor}'>"

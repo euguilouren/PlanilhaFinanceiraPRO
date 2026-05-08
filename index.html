@@ -3,7 +3,25 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.sheetjs.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'self'; form-action 'self';">
 <title>Planilha Financeira Pro — por Luan Guilherme Lourenço</title>
+<meta name="description" content="Dashboard financeiro 100% no navegador. Analise planilhas Excel e CSV com KPIs, aging, DRE e detecção de fraudes — sem instalar nada. Por Luan Guilherme Lourenço.">
+<meta name="author" content="Luan Guilherme Lourenço">
+<meta name="keywords" content="planilha financeira, dashboard financeiro, análise Excel, ERP, KPI, aging, DRE, detecção fraudes, Luan Guilherme Lourenço">
+<!-- Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="Planilha Financeira Pro — por Luan Guilherme Lourenço">
+<meta property="og:description" content="Dashboard financeiro 100% no navegador. Analise Excel e CSV com KPIs, aging, DRE e detecção de fraudes — sem instalar nada.">
+<meta property="og:url" content="https://euguilouren.github.io/PlanilhaFinanceiraPRO/">
+<meta property="og:image" content="https://github.com/euguilouren.png?size=400">
+<meta property="og:site_name" content="Planilha Financeira Pro">
+<meta property="og:locale" content="pt_BR">
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Planilha Financeira Pro — por Luan Guilherme Lourenço">
+<meta name="twitter:description" content="Dashboard financeiro 100% no navegador — KPIs, aging, DRE e detecção de fraudes em planilhas Excel e CSV.">
+<meta name="twitter:creator" content="@euguilouren">
+<meta name="twitter:image" content="https://github.com/euguilouren.png?size=400">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -14,6 +32,24 @@
 <meta name="apple-mobile-web-app-title" content="Planilha Pro">
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Planilha Financeira Pro",
+  "description": "Dashboard financeiro 100% no navegador. Analise planilhas Excel e CSV com KPIs, aging, DRE e detecção de fraudes — sem instalar nada.",
+  "url": "https://euguilouren.github.io/PlanilhaFinanceiraPRO/",
+  "applicationCategory": "FinanceApplication",
+  "operatingSystem": "Any",
+  "inLanguage": "pt-BR",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "BRL" },
+  "author": {
+    "@type": "Person",
+    "name": "Luan Guilherme Lourenço",
+    "url": "https://github.com/euguilouren"
+  }
+}
+</script>
 <script>
 /**
  * analise.js — Motor de análise financeira no navegador
@@ -186,6 +222,8 @@ function toNum(v) {
     }
   } else if (s.includes(',')) {
     s = s.replace(/,/g, '.'); // só vírgula → decimal BR
+  } else if ((s.match(/\./g)||[]).length > 1) {
+    s = s.replace(/\./g, ''); // múltiplos pontos sem vírgula → separadores de milhar BR
   }
   const result = parseFloat(s);
   return neg ? -result : result;
@@ -246,7 +284,7 @@ function auditoria(dados, cols) {
   if (cols.chave) {
     const contagem = {};
     dados.forEach((row, i) => {
-      const k = String(row[cols.chave] ?? '').trim();
+      const k = String(row[cols.chave] ?? '').trim().toUpperCase().replace(/\s+/g,' ');
       if (!k) return;
       if (!contagem[k]) contagem[k] = [];
       contagem[k].push(i + 2);
@@ -286,19 +324,21 @@ function auditoria(dados, cols) {
     if (nums.length > 4) {
       const media = nums.reduce((a,b)=>a+b,0) / nums.length;
       const desvio = Math.sqrt(nums.map(n=>(n-media)**2).reduce((a,b)=>a+b,0)/(nums.length-1));
-      const limSup = media + 3*desvio;
-      const limInf = media - 3*desvio;
-      dados.forEach((row, i) => {
-        const v = toNum(row[cols.valor]);
-        if (!isNaN(v) && (v > limSup || v < limInf)) {
-          problemas.push({
-            severidade: 'MÉDIA', tipo: 'OUTLIER',
-            coluna: cols.valor, linha: i + 2,
-            valor: fmtBRL(v),
-            descricao: `Valor fora do padrão (média ${fmtBRL(media)}, ±3σ = ${fmtBRL(desvio)})`,
-          });
-        }
-      });
+      if (desvio > 0) {  // pula outliers quando todos os valores são iguais
+        const limSup = media + 3*desvio;
+        const limInf = media - 3*desvio;
+        dados.forEach((row, i) => {
+          const v = toNum(row[cols.valor]);
+          if (!isNaN(v) && (v > limSup || v < limInf)) {
+            problemas.push({
+              severidade: 'MÉDIA', tipo: 'OUTLIER',
+              coluna: cols.valor, linha: i + 2,
+              valor: fmtBRL(v),
+              descricao: `Valor fora do padrão (média ${fmtBRL(media)}, ±3σ = ${fmtBRL(3*desvio)})`,
+            });
+          }
+        });
+      }
     }
   }
 
@@ -397,15 +437,14 @@ function calcularPareto(dados, colEntidade, colValor, top = 15) {
     .sort((a,b) => Math.abs(b.total) - Math.abs(a.total));
   const totalGeral     = lista.reduce((s,i)=>s+i.total, 0);
   const totalEntidades = lista.length;
-  // Base para % = soma dos valores positivos (receitas); se não há positivos usa abs total
-  const totalPos = lista.filter(i=>i.total>0).reduce((s,i)=>s+i.total, 0);
-  const totalBase = totalPos > 0 ? totalPos : lista.reduce((s,i)=>s+Math.abs(i.total), 0);
+  // Base para % = soma dos valores absolutos de todos os registros
+  const totalBase = lista.reduce((s,i)=>s+Math.abs(i.total), 0);
   let acum = 0;
   const items = lista.slice(0, top).map((item, idx) => {
     const pct = totalBase ? Math.abs(item.total) / totalBase * 100 : 0;
     acum += pct;
     return { ranking: idx+1, nome: item.nome, total: item.total,
-             pct, acumulado: acum, classe: acum <= 80 ? 'A' : 'B' };
+             pct, acumulado: Math.min(acum, 100), classe: acum <= 80 ? 'A' : 'B' };
   });
   items.totalEntidades = totalEntidades;
   items.totalGeral     = totalGeral;
@@ -442,17 +481,17 @@ function construirDRE(dados, colCat, colValor) {
       else if (v < 0) valores['(-) Despesas Operacionais'] += v;
     });
   } else {
+    let classificados = 0;
     dados.forEach(row => {
       const cat = String(row[colCat] ?? '').toUpperCase().trim();
       const v   = toNum(row[colValor]);
       if (isNaN(v)) return;
       for (const { linha, termos } of MAPA_DRE) {
-        if (termos.test(cat)) { valores[linha] += v; break; }
+        if (termos.test(cat)) { valores[linha] += v; classificados++; break; }
       }
     });
     // Se nenhuma linha foi classificada, aplica fallback por sinal
-    const totalClassificado = Object.values(valores).reduce((a,b)=>a+Math.abs(b),0);
-    if (totalClassificado === 0) {
+    if (classificados === 0) {
       modo = 'sinal';
       // Zero all accumulators before fallback pass to avoid double-counting
       MAPA_DRE.forEach(({ linha }) => { valores[linha] = 0; });
@@ -490,7 +529,7 @@ function construirDRE(dados, colCat, colValor) {
     { linha:'(-) IR/CSLL',                      valor:-ir,  tipo:'input' },
     { linha:'(=) Lucro Líquido',                valor:ll,   tipo:'total lucro' },
   ];
-  return { linhas: linhas.map(l => ({ ...l, av: rl ? (l.valor/Math.abs(rl)*100) : 0 })), modo };
+  return { linhas: linhas.map(l => ({ ...l, av: rl ? (l.valor/rl*100) : 0 })), modo };
 }
 
 // ══════════════════════════════════════════════════════
@@ -656,6 +695,215 @@ window.switchFluxo = function(id, btn) {
 };
 
 // ══════════════════════════════════════════════════════
+// ANTI-FRAUDE
+// ══════════════════════════════════════════════════════
+const _BENFORD_ESPERADO = {1:.301,2:.176,3:.125,4:.097,5:.079,6:.067,7:.058,8:.051,9:.046};
+const _FERIADOS_BR = new Set(['01-01','04-21','05-01','09-07','10-12','11-02','11-15','11-20','12-25']);
+
+function _primeiroDigito(v) {
+  if (!v || !isFinite(v) || v <= 0) return null;
+  const s = Math.abs(v).toFixed(10).replace('.','').replace(/^0+/,'');
+  return s ? parseInt(s[0]) : null;
+}
+
+function _eFimDeSemana(d) { return d.getDay() === 0 || d.getDay() === 6; }
+function _eFeriado(d) {
+  const k = String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  return _FERIADOS_BR.has(k);
+}
+
+function calcularAntiFraude(dados, cols) {
+  const col = cols.valor, colEnt = cols.entidade, colChave = cols.chave, colData = cols.data || cols.vencimento;
+  const resultado = { benford:null, duplicatas:[], numerosRedondos:[], fracionamento:[],
+                      anomaliasTEmporais:[], outliers:[], concentracao:[], scoreRisco:0, alertas:[] };
+  if (!dados.length || !col) return resultado;
+
+  const vals = dados.map(r => toNum(r[col])).filter(v => isFinite(v));
+
+  // ── Lei de Benford ──
+  if (vals.filter(v => v > 0).length >= 30) {
+    const pos = vals.filter(v => v > 0);
+    const n = pos.length;
+    const contagem = Array(10).fill(0);
+    pos.forEach(v => { const d = _primeiroDigito(v); if (d) contagem[d]++; });
+    let chi2 = 0;
+    for (let d = 1; d <= 9; d++) {
+      const obs = contagem[d] / n, esp = _BENFORD_ESPERADO[d];
+      chi2 += n * Math.pow(obs - esp, 2) / esp;
+    }
+    chi2 = Math.round(chi2 * 100) / 100;
+    const nivel = chi2 > 20.09 ? 'CRÍTICO' : chi2 > 15.51 ? 'ALTO' : chi2 > 13.36 ? 'MÉDIO' : 'OK';
+    resultado.benford = { valido:true, chi2, nivel, totalRegistros:n,
+      observado: Object.fromEntries([1,2,3,4,5,6,7,8,9].map(d=>[d, Math.round(contagem[d]/n*1000)/1000])),
+      esperado: _BENFORD_ESPERADO };
+  } else {
+    resultado.benford = { valido:false, motivo:`Apenas ${vals.filter(v=>v>0).length} registros positivos (mínimo: 30)` };
+  }
+
+  // ── Duplicatas exatas por chave ──
+  if (colChave) {
+    const seen = new Map();
+    dados.forEach((r, i) => {
+      const k = String(r[colChave] ?? '').trim();
+      if (!k) return;
+      if (seen.has(k)) {
+        const orig = seen.get(k);
+        resultado.duplicatas.push({ tipo:'DUPLICATA_EXATA', severidade:'CRÍTICA',
+          linha: i+2, descricao:`Chave '${esc(k)}' duplicada (linha ${orig+2})`,
+          valor: toNum(r[col]), entidade: colEnt ? esc(String(r[colEnt]||'')) : '' });
+      } else { seen.set(k, i); }
+    });
+  }
+
+  // ── Duplicatas fuzzy por valor + entidade + janela ──
+  if (colEnt) {
+    const grupos = new Map();
+    dados.forEach((r, i) => {
+      const ent = String(r[colEnt]||'').trim().toUpperCase();
+      if (!grupos.has(ent)) grupos.set(ent, []);
+      grupos.get(ent).push({ i, v: toNum(r[col]), d: colData ? toDate(r[colData]) : null });
+    });
+    grupos.forEach((itens, ent) => {
+      for (let a = 0; a < itens.length; a++) {
+        for (let b = a+1; b < itens.length; b++) {
+          const {i:ia, v:va, d:da} = itens[a], {i:ib, v:vb, d:db} = itens[b];
+          if (!isFinite(va) || va <= 0) continue;
+          if (Math.abs(va-vb)/va > 0.01) continue;
+          if (da && db && Math.abs(da-db) > 30*864e5) continue;
+          resultado.duplicatas.push({ tipo:'DUPLICATA_FUZZY', severidade:'ALTA',
+            linha:ia+2, descricao:`Valor similar (${fmtBRL(va)} ≈ ${fmtBRL(vb)}) para '${esc(ent)}' — linha ${ib+2}`,
+            valor:va, entidade:esc(ent) });
+        }
+      }
+    });
+  }
+
+  // ── Números redondos ──
+  const valsMin = vals.filter(v => v >= 100);
+  if (valsMin.length >= 5) {
+    const redondos = dados.filter(r => { const v = toNum(r[col]); return isFinite(v) && v >= 100 && v % 100 === 0; });
+    const pct = redondos.length / valsMin.length;
+    if (pct >= 0.15) {
+      redondos.forEach(r => resultado.numerosRedondos.push({
+        tipo:'NÚMERO_REDONDO', severidade:'MÉDIA',
+        descricao:`Valor redondo ${fmtBRL(toNum(r[col]))} (${(pct*100).toFixed(1)}% dos lançamentos são redondos)`,
+        valor: toNum(r[col]) }));
+    }
+  }
+
+  // ── Anomalias temporais ──
+  if (colData) {
+    dados.forEach((r, i) => {
+      const d = toDate(r[colData]);
+      if (!d || isNaN(d)) return;
+      const dt = new Date(d);
+      if (_eFimDeSemana(dt)) {
+        const motivo = dt.getDay()===6 ? 'Sábado' : 'Domingo';
+        resultado.anomaliasTEmporais.push({ tipo:'ANOMALIA_TEMPORAL', severidade:'MÉDIA',
+          linha:i+2, data: fmtData(d), motivo, descricao:`Lançamento em ${motivo} (${fmtData(d)})` });
+      } else if (_eFeriado(dt)) {
+        resultado.anomaliasTEmporais.push({ tipo:'ANOMALIA_TEMPORAL', severidade:'MÉDIA',
+          linha:i+2, data: fmtData(d), motivo:'Feriado Nacional', descricao:`Lançamento em feriado nacional (${fmtData(d)})` });
+      }
+    });
+  }
+
+  // ── Outliers por entidade ──
+  if (colEnt) {
+    const grupos = new Map();
+    dados.forEach((r, i) => {
+      const ent = String(r[colEnt]||'').trim().toUpperCase();
+      const v = toNum(r[col]);
+      if (!isFinite(v)) return;
+      if (!grupos.has(ent)) grupos.set(ent, []);
+      grupos.get(ent).push({ i, v });
+    });
+    grupos.forEach((itens, ent) => {
+      if (itens.length < 3) return;
+      const media = itens.reduce((s,x)=>s+x.v,0) / itens.length;
+      const std = Math.sqrt(itens.reduce((s,x)=>s+Math.pow(x.v-media,2),0) / itens.length);
+      if (std === 0) return;
+      itens.forEach(({i, v}) => {
+        const z = (v - media) / std;
+        if (Math.abs(z) < 3) return;
+        resultado.outliers.push({ tipo:'OUTLIER', severidade: Math.abs(z)>=4.5?'ALTA':'MÉDIA',
+          linha:i+2, entidade:esc(ent), valor:v, zScore:Math.round(z*10)/10,
+          descricao:`'${esc(ent)}': ${fmtBRL(v)} é ${Math.abs(z).toFixed(1)}σ ${z>0?'acima':'abaixo'} da média (${fmtBRL(media)})` });
+      });
+    });
+  }
+
+  // ── Concentração ──
+  if (colEnt) {
+    const total = vals.reduce((s,v)=>s+Math.abs(v),0);
+    if (total > 0) {
+      const grupos = new Map();
+      dados.forEach(r => {
+        const ent = String(r[colEnt]||'').trim().toUpperCase();
+        if (!ent) return;
+        const v = Math.abs(toNum(r[col]) || 0);
+        grupos.set(ent, (grupos.get(ent)||{total:0,n:0}));
+        grupos.get(ent).total += v; grupos.get(ent).n++;
+      });
+      grupos.forEach((g, ent) => {
+        const pct = g.total / total * 100;
+        if (pct < 30) return;
+        resultado.concentracao.push({ tipo:'CONCENTRAÇÃO', severidade: pct>=50?'CRÍTICA':'ALTA',
+          entidade:esc(ent), totalRs:g.total, ocorrencias:g.n, pctTotal:Math.round(pct*100)/100,
+          descricao:`'${esc(ent)}' concentra ${pct.toFixed(1)}% do total (${fmtBRL(g.total)} em ${g.n} lançamentos)` });
+      });
+    }
+  }
+
+  // ── Fracionamento ──
+  if (colEnt && colData) {
+    const grupos = new Map();
+    dados.forEach(r => {
+      const ent = String(r[colEnt]||'').trim().toUpperCase();
+      const v = toNum(r[col]); const d = toDate(r[colData]);
+      if (!isFinite(v) || v <= 0 || !d || isNaN(d)) return;
+      if (!grupos.has(ent)) grupos.set(ent, []);
+      grupos.get(ent).push({ v, d });
+    });
+    grupos.forEach((itens, ent) => {
+      if (itens.length < 3) return;
+      itens.sort((a,b) => a.d - b.d);
+      for (let i = 0; i < itens.length; i++) {
+        const janela = itens.slice(i).filter(x => x.d - itens[i].d <= 30*864e5);
+        if (janela.length < 3) continue;
+        const vs = janela.map(x => x.v);
+        const media = vs.reduce((s,v)=>s+v,0)/vs.length;
+        const std = Math.sqrt(vs.reduce((s,v)=>s+Math.pow(v-media,2),0)/vs.length);
+        const cv = media > 0 ? std/media : 1;
+        if (cv < 0.30) {
+          const dur = Math.round((janela[janela.length-1].d - janela[0].d) / 864e5);
+          resultado.fracionamento.push({ tipo:'FRACIONAMENTO', severidade:'ALTA',
+            entidade:esc(ent), ocorrencias:janela.length, totalRs:vs.reduce((s,v)=>s+v,0),
+            mediaRs:media, janelaDias:dur,
+            descricao:`'${esc(ent)}': ${janela.length} transações similares (média ${fmtBRL(media)}, CV=${(cv*100).toFixed(0)}%) em ${dur} dias` });
+          break;
+        }
+      }
+    });
+  }
+
+  // ── Score e alertas ──
+  let score = 0; const alertas = [];
+  const b = resultado.benford;
+  if (b?.nivel === 'CRÍTICO')  { score += 30; alertas.push(`Lei de Benford CRÍTICA (χ²=${b.chi2}) — possível adulteração em massa`); }
+  else if (b?.nivel === 'ALTO')  { score += 15; alertas.push(`Lei de Benford ALTA (χ²=${b.chi2}) — distribuição suspeita de valores`); }
+  else if (b?.nivel === 'MÉDIO') { score += 5;  alertas.push('Lei de Benford: desvio moderado da distribuição esperada'); }
+  const _add = (arr, key, msg, pts) => { if (arr.length) { score += Math.min(pts, arr.length*(pts/3)); alertas.push(msg(arr.length)); } };
+  _add(resultado.duplicatas,       'd', n=>`${n} duplicata(s) detectada(s)`, 25);
+  _add(resultado.fracionamento,    'f', n=>`${n} caso(s) de fracionamento suspeito`, 20);
+  _add(resultado.outliers,         'o', n=>`${n} outlier(s) estatístico(s) por entidade`, 15);
+  _add(resultado.concentracao,     'c', n=>`${n} entidade(s) com concentração anormal`, 10);
+  _add(resultado.anomaliasTEmporais,'t', n=>`${n} lançamento(s) em fim de semana ou feriado`, 5);
+  resultado.scoreRisco = Math.min(Math.round(score), 100);
+  resultado.alertas = alertas;
+  return resultado;
+}
+
 // SCORE FINANCEIRO (0–100)
 // ══════════════════════════════════════════════════════
 function calcularScoreFinanceiro(kpis, aging, pareto, auditProblemas) {
@@ -1548,6 +1796,12 @@ tr:hover td{background:#EEF4FF;transition:background .15s}
     <div class="card" role="region" aria-label="Análise Pareto"><h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex-shrink:0"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>Pareto — Top Entidades</h2><div id="pareto-content"></div></div>
   </div>
 
+  <!-- Anti-Fraude -->
+  <div class="card" id="card-antifraude" role="region" aria-label="Anti-Fraude" style="display:none;border-left:4px solid #DC2626">
+    <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex-shrink:0"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Anti-Fraude &amp; Segurança</h2>
+    <div id="antifraude-content"></div>
+  </div>
+
   <!-- Dados brutos -->
   <div class="card" id="card-dados" role="region" aria-label="Tabela de Dados">
     <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex-shrink:0"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>Dados <span id="dados-info" style="font-size:11px;font-weight:normal;color:#888;text-transform:none"></span></h2>
@@ -1665,6 +1919,7 @@ let _ultimaAuditoria = null;
 let _ultimoAging     = null;
 let _ultimoDre       = null;
 let _ultimoPareto    = null;
+let _ultimoAntiFraude = null;
 let _ultimaAnaliseClaude = '';
 let _auditConfirmados    = new Set();
 let _dashboardVisivel    = false;
@@ -1852,7 +2107,8 @@ function carregarArquivo(file) {
         ({ headers, dados } = parseOFX(text));
         if (!dados.length) throw new Error('Nenhuma transação encontrada no arquivo OFX.');
       } else if (file.name.toLowerCase().match(/\.(csv|tsv)$/)) {
-        const txt   = e.target.result;
+        let txt = e.target.result;
+        if (txt.charCodeAt(0) === 0xFEFF) txt = txt.slice(1); // remove UTF-8 BOM
         const sep   = file.name.toLowerCase().endsWith('.tsv') ? '\t' : undefined;
         const wb    = XLSX.read(txt, { type:'string', raw:false, FS: sep });
         const ws    = wb.Sheets[wb.SheetNames[0]];
@@ -1937,7 +2193,8 @@ function carregarArquivo(file) {
       _erpDetectado    = detectarERP(headers);
       _salvarHistorico(_nomeArquivo, dados.length);
       _auditConfirmados.clear();
-      _ultimosKpis = _ultimaAuditoria = _ultimoAging = _ultimoDre = _ultimoPareto = null;
+      _ultimosKpis = _ultimaAuditoria = _ultimoAging = _ultimoDre = _ultimoPareto = _ultimoAntiFraude = null;
+      _scoreAnterior = null;
       _ultimaAnaliseClaude = '';
       _colsComparativos = null;
       _kpisComparativos = null;
@@ -2146,6 +2403,15 @@ async function executarAnalise() {
       _auditConfirmados.clear();
       const dados = _dadosOriginais;
 
+      if (!dados.length) {
+        _toast('Nenhum dado carregado. Importe um arquivo primeiro.', 3000, 'aviso');
+        return;
+      }
+      if (!_cols.valor) {
+        _toast('Selecione a coluna de Valor antes de analisar.', 3000, 'aviso');
+        return;
+      }
+
       // KPIs
       _setLoaderStep(`Calculando KPIs — ${dados.length.toLocaleString('pt-BR')} registros...`);
       await _yield();
@@ -2180,6 +2446,13 @@ async function executarAnalise() {
       const par = calcularPareto(dados, _cols.entidade, _cols.valor);
       renderPareto(par);
       _ultimoPareto = par;
+
+      // Anti-Fraude
+      _setLoaderStep('Analisando padrões de fraude...');
+      await _yield();
+      const af = calcularAntiFraude(dados, _cols);
+      renderAntiFraude(af);
+      _ultimoAntiFraude = af;
 
       // Score Financeiro
       const _scoreData = calcularScoreFinanceiro(kpis, ag, par, audit);
@@ -2239,7 +2512,7 @@ function renderKPIs(k) {
   const periodo = (k.periodoInicio && k.periodoFim)
     ? `${fmtData(k.periodoInicio)} → ${fmtData(k.periodoFim)}` : '—';
   const corRes = k.resultado >= 0 ? 'var(--success)' : 'var(--danger)';
-  const margem = k.margem.toFixed(1);
+  const margem = isFinite(k.margem) ? k.margem.toFixed(1) : '—';
   document.getElementById('kpis').innerHTML = `
     <div class="kpi ok">
       <svg class="kpi-icon" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
@@ -2619,7 +2892,7 @@ function renderPareto(lista) {
       <td>${esc(i.nome)}</td>
       <td style="text-align:right">${fmtBRL(i.total)}</td>
       <td style="text-align:right">${fmtNum(i.pct,1)}%</td>
-      <td style="text-align:right">${fmtNum(i.acumulado,1)}%</td>
+      <td style="text-align:right">${fmtNum(Math.min(i.acumulado,100),1)}%</td>
       <td><span class="badge" style="background:${i.classe==='A'?'var(--gold-bg)':'var(--surface-2)'};color:${i.classe==='A'?'var(--gold)':'var(--text-3)'};border:1px solid ${i.classe==='A'?'rgba(201,162,39,.3)':'var(--border)'}">${i.classe}</span></td>
     </tr>`).join('');
   document.getElementById('pareto-content').innerHTML = `
@@ -2749,15 +3022,16 @@ function renderComparativo() {
     ? `${fmtData(kB.periodoInicio)} – ${fmtData(kB.periodoFim)}` : _nomeArquivoComp;
   document.getElementById('comparativo-labels').textContent = `${labelA}  ×  ${labelB}`;
 
-  const fmtDelta = (d, isBRL=true, isPP=false) => {
+  // inv=true inverts color semantics (used for expenses: increase = bad)
+  const fmtDelta = (d, isBRL=true, isPP=false, inv=false) => {
     if (d.pct === null) {
       if (!d.abs) return '<span class="delta-neu">—</span>';
       const sinal = d.abs > 0 ? '↑' : '↓';
-      const cls   = d.abs > 0 ? 'delta-pos' : 'delta-neg';
-      return `<span class="${cls}">${sinal} ${isBRL ? fmtBRL(Math.abs(d.abs)) : fmtNum(Math.abs(Math.round(d.abs)))}</span>`;
+      const pos   = inv ? (d.abs > 0 ? 'delta-neg' : 'delta-pos') : (d.abs > 0 ? 'delta-pos' : 'delta-neg');
+      return `<span class="${pos}">${sinal} ${isBRL ? fmtBRL(Math.abs(d.abs)) : fmtNum(Math.abs(Math.round(d.abs)))}</span>`;
     }
     const sinal = d.abs >= 0 ? '↑' : '↓';
-    const cls   = d.abs >= 0 ? 'delta-pos' : 'delta-neg';
+    const cls   = inv ? (d.abs >= 0 ? 'delta-neg' : 'delta-pos') : (d.abs >= 0 ? 'delta-pos' : 'delta-neg');
     const abs   = isPP ? `${d.abs >= 0 ? '+' : ''}${d.abs.toFixed(1)}pp`
                 : isBRL ? fmtBRL(d.abs) : fmtNum(Math.round(d.abs));
     const pct   = !isPP && d.pct !== null ? ` (${d.pct >= 0 ? '+' : ''}${d.pct.toFixed(1)}%)` : '';
@@ -2766,7 +3040,7 @@ function renderComparativo() {
 
   const linhas = [
     { label:'Receitas',        a:fmtBRL(comp.receita.a),        b:fmtBRL(comp.receita.b),        d:fmtDelta(comp.receita) },
-    { label:'Despesas',        a:fmtBRL(comp.despesa.a),        b:fmtBRL(comp.despesa.b),        d:fmtDelta(comp.despesa) },
+    { label:'Despesas',        a:fmtBRL(comp.despesa.a),        b:fmtBRL(comp.despesa.b),        d:fmtDelta(comp.despesa, true, false, true) },
     { label:'Resultado',       a:fmtBRL(comp.resultado.a),      b:fmtBRL(comp.resultado.b),      d:fmtDelta(comp.resultado) },
     { label:'Margem %',        a:`${isFinite(comp.margem.a)?comp.margem.a.toFixed(1):'—'}%`,b:`${isFinite(comp.margem.b)?comp.margem.b.toFixed(1):'—'}%`,d:fmtDelta(comp.margem, false, true) },
     { label:'Ticket Médio',    a:fmtBRL(comp.ticket.a),         b:fmtBRL(comp.ticket.b),         d:fmtDelta(comp.ticket) },
@@ -2817,6 +3091,88 @@ function renderComparativo() {
 // ══════════════════════════════════════════════════════
 const _PAGINA_SIZE = 100;
 
+function renderAntiFraude(r) {
+  const card = document.getElementById('card-antifraude');
+  const el = document.getElementById('antifraude-content');
+  if (!r || (!r.alertas.length && !r.benford?.valido)) { card.style.display='none'; return; }
+  card.style.display='';
+
+  const score = r.scoreRisco;
+  const corScore = score >= 60 ? '#DC2626' : score >= 30 ? '#D97706' : score >= 10 ? '#CA8A04' : '#16A34A';
+  const labelScore = score >= 60 ? 'RISCO ALTO' : score >= 30 ? 'RISCO MÉDIO' : score >= 10 ? 'RISCO BAIXO' : 'NORMAL';
+
+  const _badge = (sev) => {
+    const m = {CRÍTICA:'#DC2626',ALTA:'#EA580C',MÉDIA:'#D97706',BAIXA:'#16A34A'}[sev] || '#6B7280';
+    return `<span style="background:${m};color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:999px;text-transform:uppercase;letter-spacing:.5px">${esc(sev)}</span>`;
+  };
+
+  const _section = (titulo, icone, itens, fn) => {
+    if (!itens.length) return '';
+    const id = 'af_' + titulo.replace(/\W/g,'_');
+    const rows = itens.slice(0,10).map(fn).join('');
+    const mais = itens.length > 10 ? `<div style="font-size:11px;color:#64748B;padding:6px 12px">… e mais ${itens.length-10} ocorrência(s)</div>` : '';
+    return `<details style="margin-top:10px;border:1px solid #E2E8F0;border-radius:8px;overflow:hidden">
+      <summary style="padding:10px 14px;cursor:pointer;background:#F8FAFC;font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px;list-style:none">
+        ${icone} ${esc(titulo)} <span style="margin-left:auto;background:#EF4444;color:#fff;font-size:10px;padding:1px 7px;border-radius:999px">${itens.length}</span>
+      </summary>
+      <div style="font-size:12px">${rows}${mais}</div>
+    </details>`;
+  };
+
+  const _row = (sev, desc) =>
+    `<div style="padding:8px 14px;border-bottom:1px solid #F1F5F9;display:flex;align-items:flex-start;gap:8px">${_badge(sev)}<span style="color:#374151;line-height:1.5">${esc(String(desc))}</span></div>`;
+
+  // Benford chart
+  let benfordHtml = '';
+  if (r.benford?.valido) {
+    const corB = {OK:'#16A34A',MÉDIO:'#CA8A04',ALTO:'#D97706',CRÍTICO:'#DC2626'}[r.benford.nivel] || '#6B7280';
+    const bars = [1,2,3,4,5,6,7,8,9].map(d => {
+      const obs = r.benford.observado[d] || 0, esp = r.benford.esperado[d] || 0;
+      const pctObs = Math.round(obs*100*10)/10, pctEsp = Math.round(esp*100*10)/10;
+      return `<div style="display:flex;flex-direction:column;align-items:center;gap:2px;flex:1">
+        <div style="font-size:9px;color:#64748B">${pctObs}%</div>
+        <div style="width:100%;display:flex;flex-direction:column;gap:2px;height:60px;justify-content:flex-end">
+          <div style="height:${Math.round(obs/0.301*60)}px;background:${corB};border-radius:3px 3px 0 0;min-height:2px" title="Observado"></div>
+          <div style="height:${Math.round(esp/0.301*60)}px;background:#CBD5E1;border-radius:3px 3px 0 0;min-height:2px;opacity:.6" title="Esperado"></div>
+        </div>
+        <div style="font-size:10px;font-weight:600">${d}</div>
+      </div>`;
+    }).join('');
+    benfordHtml = `<details style="margin-top:10px;border:1px solid #E2E8F0;border-radius:8px;overflow:hidden">
+      <summary style="padding:10px 14px;cursor:pointer;background:#F8FAFC;font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px;list-style:none">
+        📊 Lei de Benford <span style="color:${corB};font-size:11px;margin-left:4px">${esc(r.benford.nivel)} (χ²=${r.benford.chi2})</span>
+      </summary>
+      <div style="padding:14px">
+        <div style="display:flex;gap:4px;align-items:flex-end;margin-bottom:8px">${bars}</div>
+        <div style="font-size:11px;color:#64748B;display:flex;gap:12px">
+          <span><span style="display:inline-block;width:10px;height:10px;background:${corB};border-radius:2px;margin-right:4px"></span>Observado</span>
+          <span><span style="display:inline-block;width:10px;height:10px;background:#CBD5E1;border-radius:2px;margin-right:4px"></span>Esperado</span>
+        </div>
+      </div>
+    </details>`;
+  }
+
+  el.innerHTML = `
+    <div style="display:flex;align-items:center;gap:16px;margin-bottom:14px;flex-wrap:wrap">
+      <div style="text-align:center;min-width:80px">
+        <div style="font-size:36px;font-weight:800;color:${corScore};line-height:1">${score}</div>
+        <div style="font-size:10px;font-weight:700;color:${corScore};letter-spacing:.5px">${labelScore}</div>
+        <div style="font-size:10px;color:#94A3B8">score de risco</div>
+      </div>
+      <div style="flex:1;min-width:180px">
+        ${r.alertas.length ? r.alertas.map(a => `<div style="font-size:12px;color:#374151;padding:3px 0;display:flex;gap:6px">⚠ ${esc(a)}</div>`).join('') : '<div style="font-size:12px;color:#16A34A">✓ Nenhum alerta de fraude detectado</div>'}
+      </div>
+    </div>
+    ${benfordHtml}
+    ${_section('Duplicatas', '🔁', r.duplicatas, x => _row(x.severidade, x.descricao))}
+    ${_section('Fracionamento', '✂️', r.fracionamento, x => _row(x.severidade, x.descricao))}
+    ${_section('Outliers Estatísticos', '📈', r.outliers, x => _row(x.severidade, x.descricao))}
+    ${_section('Concentração Anormal', '⚠️', r.concentracao, x => _row(x.severidade, x.descricao))}
+    ${_section('Números Redondos', '🔢', r.numerosRedondos, x => _row(x.severidade, x.descricao))}
+    ${_section('Anomalias Temporais', '🗓️', r.anomaliasTEmporais, x => _row(x.severidade, x.descricao))}
+  `;
+}
+
 function renderTabela(dados, headers) {
   _dadosVisivelArr = dados;
   const total = dados.length;
@@ -2829,7 +3185,7 @@ function renderTabela(dados, headers) {
   thead.innerHTML = '<tr>' + headers.map(h => {
     const sorted = _sortCol === h;
     const arrow  = sorted ? (_sortDir === 1 ? ' ▲' : ' ▼') : '';
-    return `<th style="cursor:pointer;user-select:none;white-space:nowrap" onclick="_ordenarTabela('${esc(h)}')" title="Clique para ordenar">${esc(h)}<span style="opacity:.5;font-size:10px">${arrow}</span></th>`;
+    return `<th style="cursor:pointer;user-select:none;white-space:nowrap" data-col="${esc(h)}" onclick="_ordenarTabela(this.dataset.col)" title="Clique para ordenar">${esc(h)}<span style="opacity:.5;font-size:10px">${arrow}</span></th>`;
   }).join('') + '</tr>';
 
   if (!slice.length) {
@@ -2867,15 +3223,22 @@ function _irPagina(n) {
   document.getElementById('card-dados')?.scrollIntoView({behavior:'smooth', block:'start'});
 }
 
+function _toSortKey(v) {
+  const s = String(v ?? '').trim();
+  const n = parseFloat(s.replace(/[^\d.,\-]/g,'').replace(/\./g,'').replace(',','.'));
+  return isFinite(n) ? n : null;
+}
+
 function _ordenarTabela(col) {
   if (_sortCol === col) _sortDir *= -1;
   else { _sortCol = col; _sortDir = 1; }
   _paginaAtual = 1;
   const sorted = [..._dadosVisivelArr].sort((a, b) => {
     const va = a[col] ?? '', vb = b[col] ?? '';
-    const na = parseFloat(String(va).replace(/[^\d.,\-]/g,'').replace(/\./g,'').replace(',','.'));
-    const nb = parseFloat(String(vb).replace(/[^\d.,\-]/g,'').replace(/\./g,'').replace(',','.'));
-    if (!isNaN(na) && !isNaN(nb)) return (na - nb) * _sortDir;
+    const na = _toSortKey(va), nb = _toSortKey(vb);
+    if (na !== null && nb !== null) return (na - nb) * _sortDir;
+    if (na !== null) return -_sortDir;
+    if (nb !== null) return _sortDir;
     return String(va).localeCompare(String(vb), 'pt-BR') * _sortDir;
   });
   renderTabela(sorted, _headers);
@@ -2904,14 +3267,18 @@ function _filtrarTabelaImediato() {
 
   if (q) {
     filtrado = filtrado.filter(row =>
-      _headers.some(h => String(row[h]??'').toLowerCase().includes(q))
+      _headers.some(h => {
+        const v = row[h];
+        const s = v instanceof Date ? fmtData(v) : String(v ?? '');
+        return s.toLowerCase().includes(q);
+      })
     );
   }
   if ((de || ate) && colD) {
     filtrado = filtrado.filter(row => {
       const raw = row[colD];
       if (!raw) return false;
-      const d = _parseDataBR(String(raw));
+      const d = _parseDataBR(raw);
       if (!d) return false;
       if (de  && d < de)  return false;
       if (ate && d > ate) return false;
@@ -2927,11 +3294,16 @@ function _filtrarTabelaImediato() {
 }
 
 function _parseDataBR(s) {
-  // Converts DD/MM/YYYY or YYYY-MM-DD or Date object to YYYY-MM-DD string
+  // Converts DD/MM/YYYY, YYYY-MM-DD, Date object, or Excel serial to YYYY-MM-DD string
   if (!s) return null;
-  const m1 = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (s instanceof Date) return isNaN(s) ? null : s.toISOString().slice(0, 10);
+  if (typeof s === 'number') {
+    const d = new Date(Math.round((s - 25569) * 86400 * 1000));
+    return isNaN(d) ? null : d.toISOString().slice(0, 10);
+  }
+  const m1 = String(s).match(/^(\d{2})\/(\d{2})\/(\d{4})/);
   if (m1) return `${m1[3]}-${m1[2]}-${m1[1]}`;
-  const m2 = s.match(/^(\d{4}-\d{2}-\d{2})/);
+  const m2 = String(s).match(/^(\d{4}-\d{2}-\d{2})/);
   if (m2) return m2[1];
   return null;
 }
@@ -3115,7 +3487,7 @@ async function analisarComClaude(btn) {
 
     const data = await res.json().catch(() => null);
     if (!data) throw new Error('Resposta inválida da API Claude.');
-    _ultimaAnaliseClaude = data.content?.[0]?.text || '(sem resposta)';
+    _ultimaAnaliseClaude = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n') || '(sem resposta)';
     texto.innerHTML      = _markdownParaHTML(_ultimaAnaliseClaude);
     resultado.style.display = 'block';
     resultado.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -3280,6 +3652,10 @@ function _trocarAba(nomAba) {
   _headers = aba.headers;
   const info = document.getElementById('sel-aba-info');
   if (info) info.textContent = `${aba.dados.length.toLocaleString('pt-BR')} registros`;
+  // Invalidar caches da análise anterior para evitar dados da aba antiga
+  _ultimosKpis = null; _ultimaAuditoria = null; _ultimoAging = null;
+  _ultimoDre = null; _ultimoPareto = null; _ultimoAntiFraude = null;
+  _scoreAnterior = null;
   const det = detectarColunas(_headers);
   // Re-detectar ERP por aba — abas diferentes podem ter schemas diferentes
   _erpDetectado = detectarERP(_headers);
@@ -3445,18 +3821,31 @@ if ('serviceWorker' in navigator) {
 </script>
 
 <div class="page-footer">
-  <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:6px">
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+  <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:10px">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <rect x="2" y="14" width="4" height="8" rx="1" fill="#C9A84C"/>
       <rect x="8" y="9" width="4" height="13" rx="1" fill="#1F4E79"/>
       <rect x="14" y="4" width="4" height="18" rx="1" fill="#1F4E79" opacity=".7"/>
       <rect x="20" y="1" width="2" height="21" rx="1" fill="#1F4E79" opacity=".4"/>
     </svg>
-    <span style="font-size:13px;font-weight:700;color:#1A1A2E;letter-spacing:.2px;">Planilha Financeira Pro</span>
+    <span style="font-size:14px;font-weight:800;color:#1A1A2E;letter-spacing:.2px;">Planilha Financeira Pro</span>
   </div>
-  <span style="display:inline-block;background:var(--navy);color:#fff;padding:4px 16px;border-radius:20px;font-size:11px;font-weight:600;letter-spacing:.4px;">&copy; 2025 Luan Guilherme Lourenço &mdash; Todos os direitos reservados</span>
-  <br>
-  <span style="font-size:10px;color:#94A3B8;margin-top:6px;display:inline-block;">Planilha Financeira Pro &mdash; Análise autônoma de planilhas financeiras</span>
+  <div style="margin-bottom:12px;">
+    <span style="display:inline-block;background:var(--navy);color:#fff;padding:6px 22px;border-radius:20px;font-size:12px;font-weight:600;letter-spacing:.3px;">
+      Desenvolvido por&nbsp;<a href="https://github.com/euguilouren" target="_blank" rel="noopener noreferrer" style="color:#C9A84C;text-decoration:none;font-weight:800;">Luan Guilherme Lourenço</a>
+    </span>
+  </div>
+  <div style="display:flex;align-items:center;justify-content:center;gap:20px;margin-bottom:10px;">
+    <a href="https://github.com/euguilouren" target="_blank" rel="noopener noreferrer" style="display:flex;align-items:center;gap:5px;color:#475569;text-decoration:none;font-size:11px;font-weight:600;transition:color .2s;" onmouseover="this.style.color='#1F4E79'" onmouseout="this.style.color='#475569'">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61-.546-1.385-1.335-1.755-1.335-1.755-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.605-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 21.795 24 17.295 24 12c0-6.63-5.37-12-12-12"/></svg>
+      euguilouren
+    </a>
+    <a href="https://linkedin.com/in/euguilouren" target="_blank" rel="noopener noreferrer" style="display:flex;align-items:center;gap:5px;color:#475569;text-decoration:none;font-size:11px;font-weight:600;transition:color .2s;" onmouseover="this.style.color='#0A66C2'" onmouseout="this.style.color='#475569'">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
+      LinkedIn
+    </a>
+  </div>
+  <span style="font-size:10px;color:#94A3B8;display:inline-block;">&copy; 2025 Luan Guilherme Lourenço &mdash; Todos os direitos reservados</span>
 </div>
 
 <!-- Onboarding tour (first-time) -->
