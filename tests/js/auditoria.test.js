@@ -66,11 +66,13 @@ describe('auditoria', () => {
   });
 
   it('detects outliers (values > 3 std deviations from mean)', () => {
-    // Create a dataset where one value is far outside normal range
-    const dados = [
-      makeRow('NF001', 100), makeRow('NF002', 110), makeRow('NF003', 90),
-      makeRow('NF004', 105), makeRow('NF005', 95),  makeRow('NF006', 1000000),
-    ];
+    // Create a large dataset with tight cluster + one extreme outlier.
+    // Need enough points for sample-std to be meaningful (function requires > 4).
+    // Using 20 tightly clustered values + 1 extreme outlier ensures z > 3.
+    const dados = Array.from({ length: 20 }, (_, i) =>
+      makeRow(`NF${String(i).padStart(3, '0')}`, 100 + (i % 3))   // values 100–102
+    );
+    dados.push(makeRow('NF999', 10000));  // very extreme outlier
     const result = auditoria(dados, COLS);
     const outliers = result.filter(p => p.tipo === 'OUTLIER');
     expect(outliers.length).toBeGreaterThan(0);
