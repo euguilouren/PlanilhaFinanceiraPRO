@@ -3868,6 +3868,10 @@ function _restaurarSessao() {
   _headers        = sess.headers || Object.keys(sess.dados[0] || {});
   _cols           = sess.cols   || {};
   _nomeArquivo    = sess.nome   || 'sessão restaurada';
+  // Oculta upload-area imediatamente para o loader aparecer corretamente
+  document.getElementById('upload-area').style.display = 'none';
+  // Popula os <select> de colunas para que lerColsSelecionadas() leia os valores corretos
+  mostrarConfigColunas(_headers, _cols);
   executarAnalise();
 }
 
