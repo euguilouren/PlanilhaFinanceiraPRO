@@ -203,12 +203,13 @@ def _calcular_kpis(df: pd.DataFrame, df_mensal: pd.DataFrame | None) -> dict:
         'total_registros': len(df) if df is not None else 0,
         'ticket_medio': 0.0,
     }
-    if df_mensal is not None and len(df_mensal):
+    _req_m = {'Receita_RS', 'Despesa_RS', 'Resultado_RS', 'NFs_Receita', 'NFs_Despesa'}
+    if df_mensal is not None and len(df_mensal) and _req_m.issubset(df_mensal.columns):
         kpis['receita_total'] = float(df_mensal['Receita_RS'].sum())
         kpis['despesa_total'] = float(df_mensal['Despesa_RS'].sum())
         kpis['resultado']     = float(df_mensal['Resultado_RS'].sum())
-        kpis['nf_receita']    = int(df_mensal['NFs_Receita'].sum())
-        kpis['nf_despesa']    = int(df_mensal['NFs_Despesa'].sum())
+        kpis['nf_receita']    = int(df_mensal['NFs_Receita'].fillna(0).sum())
+        kpis['nf_despesa']    = int(df_mensal['NFs_Despesa'].fillna(0).sum())
     elif df is not None and len(df) and 'Valor' in df.columns:
         valores = pd.to_numeric(df['Valor'], errors='coerce').fillna(0)
         if 'Tipo' in df.columns:
@@ -230,14 +231,16 @@ def _calcular_kpis(df: pd.DataFrame, df_mensal: pd.DataFrame | None) -> dict:
 
 
 def _montar_chart_data(df_mensal: pd.DataFrame | None) -> dict:
-    if df_mensal is None or len(df_mensal) == 0:
-        return {'labels': [], 'receitas': [], 'despesas': [], 'resultados': []}
+    _empty = {'labels': [], 'receitas': [], 'despesas': [], 'resultados': []}
+    _req = {'Periodo', 'Receita_RS', 'Despesa_RS', 'Resultado_RS'}
+    if df_mensal is None or len(df_mensal) == 0 or not _req.issubset(df_mensal.columns):
+        return _empty
     df = df_mensal.tail(24)  # últimos 24 períodos
     return {
         'labels':     [str(p) for p in df['Periodo']],
-        'receitas':   [round(float(v), 2) for v in df['Receita_RS']],
-        'despesas':   [round(float(v), 2) for v in df['Despesa_RS']],
-        'resultados': [round(float(v), 2) for v in df['Resultado_RS']],
+        'receitas':   [round(float(v), 2) for v in pd.to_numeric(df['Receita_RS'],  errors='coerce').fillna(0)],
+        'despesas':   [round(float(v), 2) for v in pd.to_numeric(df['Despesa_RS'],  errors='coerce').fillna(0)],
+        'resultados': [round(float(v), 2) for v in pd.to_numeric(df['Resultado_RS'], errors='coerce').fillna(0)],
     }
 
 
@@ -282,8 +285,12 @@ def _js_grafico(chart_data: dict) -> str:
 }})();"""
 
 
+_COLS_FLUXO = {'Receita_RS', 'Despesa_RS', 'Resultado_RS', 'Resultado_Pct',
+               'Periodo', 'NFs_Receita', 'NFs_Despesa'}
+
+
 def _tabela_fluxo(df: pd.DataFrame | None) -> str:
-    if df is None or len(df) == 0:
+    if df is None or len(df) == 0 or not _COLS_FLUXO.issubset(df.columns):
         return '<p style="color:#6B7280;font-size:13px;padding:8px 0">Nenhum dado disponível.</p>'
     tot_rec  = float(df['Receita_RS'].sum())
     tot_desp = float(df['Despesa_RS'].sum())
@@ -294,13 +301,15 @@ def _tabela_fluxo(df: pd.DataFrame | None) -> str:
         cor = '#D1FAE5' if res >= 0 else '#FEE2E2'
         pct = float(r['Resultado_Pct'])
         pct_str = (f'+{pct:.1f}%' if pct >= 0 else f'{pct:.1f}%')
+        nf_rec  = int(r['NFs_Receita'])  if pd.notna(r['NFs_Receita'])  else 0
+        nf_desp = int(r['NFs_Despesa']) if pd.notna(r['NFs_Despesa']) else 0
         rows += (
             f"<tr style='background:{cor}'>"
             f"<td style='font-weight:600'>{_esc(str(r['Periodo']))}</td>"
             f"<td style='text-align:right;color:#065F46'>{_fmt_brl(r['Receita_RS'])}</td>"
-            f"<td style='text-align:center'>{int(r['NFs_Receita'])}</td>"
+            f"<td style='text-align:center'>{nf_rec}</td>"
             f"<td style='text-align:right;color:#991B1B'>{_fmt_brl(r['Despesa_RS'])}</td>"
-            f"<td style='text-align:center'>{int(r['NFs_Despesa'])}</td>"
+            f"<td style='text-align:center'>{nf_desp}</td>"
             f"<td style='text-align:right;font-weight:bold;color:{'#065F46' if res>=0 else '#991B1B'}'>"
             f"{_fmt_brl(res)}</td>"
             f"<td style='text-align:center'>{pct_str}</td></tr>"
@@ -388,7 +397,7 @@ def _secao_pareto(df: pd.DataFrame | None) -> str:
     if df is None or len(df) == 0:
         return ''
     col_ent = df.columns[0]
-    max_val = float(df['Total_RS'].max()) if len(df) else 1
+    max_val = float(df['Total_RS'].abs().max()) if len(df) else 1
     if not max_val or pd.isna(max_val):
         max_val = 1
     rows = ''
@@ -398,8 +407,8 @@ def _secao_pareto(df: pd.DataFrame | None) -> str:
         pct     = float(r.get('Percentual', 0))
         acum    = float(r.get('Acumulado_%', 0))
         classe  = _esc(str(r.get('Classe_Pareto', '')))
-        rank    = int(r.get('Ranking', 0))
-        pct_bar = min(val / max_val * 100, 100)
+        rank    = int(pd.to_numeric(r.get('Ranking', 0), errors='coerce') or 0)
+        pct_bar = min(abs(val) / max_val * 100, 100)
         cor_cls = '#C9A227' if 'A' in classe else '#9BA8B5'
         rows += (
             f"<tr><td style='text-align:center'>{rank}</td>"
