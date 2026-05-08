@@ -3,10 +3,14 @@
   "version": "1.0.0",
   "description": "Build pipeline para obfuscação do dashboard financeiro",
   "private": true,
+  "type": "module",
   "scripts": {
-    "build": "python3 scripts/obfuscar_html.py index.html dist/index.html"
+    "build": "python3 scripts/obfuscar_html.py index.html dist/index.html",
+    "test:js": "vitest run",
+    "test:js:watch": "vitest"
   },
   "devDependencies": {
-    "javascript-obfuscator": "^4.1.1"
+    "javascript-obfuscator": "^4.1.1",
+    "vitest": "^1.6.1"
   }
 }
