@@ -177,6 +177,12 @@ class Leitor:
                 diagnostico['abas'].append(Leitor._info_aba('Extrato', df))
                 diagnostico['total_registros'] = len(df)
 
+            elif ext == '.xml':
+                df = Leitor._ler_nfe_xml(caminho)
+                dados['NF-e'] = df
+                diagnostico['abas'].append(Leitor._info_aba('NF-e', df))
+                diagnostico['total_registros'] = len(df)
+
             else:
                 raise ValueError(f"Formato não suportado: {ext}")
 
@@ -284,6 +290,136 @@ class Leitor:
                          'Descrição': descr, 'ID': fitid, 'Tipo': tipo})
 
         return pd.DataFrame(rows, columns=['Data', 'Vencimento', 'Valor', 'Descrição', 'ID', 'Tipo'])
+
+    @staticmethod
+    def _ler_nfe_xml(caminho: str) -> pd.DataFrame:
+        """Lê arquivo NF-e XML (padrão SEFAZ) e retorna DataFrame normalizado.
+
+        Suporta namespace ``http://www.portalfiscal.inf.br/nfe``.
+        Aceita tanto um único documento quanto lotes (múltiplas NF-e no mesmo
+        arquivo).  Usa ``errors='ignore'`` na decodificação para tolerar
+        arquivos com encoding misto.
+
+        Colunas retornadas: NF, Data, Valor, Cliente, Categoria, Status
+
+        Se o XML não for uma NF-e válida, registra um aviso e retorna
+        DataFrame vazio com as mesmas colunas.
+        """
+        try:
+            import defusedxml.ElementTree as ET
+        except ImportError:
+            import xml.etree.ElementTree as ET  # nosec B314
+
+        _NS = 'http://www.portalfiscal.inf.br/nfe'
+        _EMPTY_COLS = ['NF', 'Data', 'Valor', 'Cliente', 'Categoria', 'Status']
+
+        def _tag(local: str) -> str:
+            return f'{{{_NS}}}{local}'
+
+        def _find_text(elem, *path) -> str:
+            """Percorre path de tags e retorna .text ou ''."""
+            cur = elem
+            for part in path:
+                if cur is None:
+                    return ''
+                cur = cur.find(_tag(part))
+            return (cur.text or '').strip() if cur is not None else ''
+
+        try:
+            # Lê bytes brutos para tolerar BOM e encodings variados
+            with open(caminho, 'rb') as fh:
+                raw = fh.read()
+
+            # ElementTree aceita bytes diretamente; errors='ignore' via decode prévia
+            try:
+                root = ET.fromstring(raw)  # nosec B314 — ET é defusedxml (ver import acima)
+            except ET.ParseError:
+                # Tenta remover BOM/caracteres inválidos e reparsar
+                text = raw.decode('utf-8', errors='ignore')
+                root = ET.fromstring(text.encode('utf-8'))  # nosec B314
+
+        except ET.ParseError as exc:
+            logger.warning("NF-e XML: falha ao parsear '%s': %s", caminho, exc)
+            return pd.DataFrame(columns=_EMPTY_COLS)
+        except OSError as exc:
+            logger.warning("NF-e XML: erro de I/O em '%s': %s", caminho, exc)
+            return pd.DataFrame(columns=_EMPTY_COLS)
+
+        # Coleta todos os elementos <NFe> — suporta arquivo único e lote
+        nfes = root.findall(f'.//{_tag("NFe")}')
+        if not nfes:
+            # O próprio root pode ser <NFe>
+            if root.tag in (_tag('NFe'), _tag('nfeProc')):
+                nfes = [root]
+            else:
+                logger.warning(
+                    "NF-e XML: nenhuma NF-e encontrada em '%s' — o arquivo "
+                    "pode não ser uma NF-e SEFAZ válida.", caminho
+                )
+                return pd.DataFrame(columns=_EMPTY_COLS)
+
+        rows = []
+        for nfe_elem in nfes:
+            inf = nfe_elem.find(f'.//{_tag("infNFe")}')
+            if inf is None:
+                continue
+
+            ide  = inf.find(_tag('ide'))
+            emit = inf.find(_tag('emit'))
+            dest = inf.find(_tag('dest'))
+            total = inf.find(_tag('total'))
+
+            # Número da NF
+            n_nf = _find_text(ide, 'nNF') if ide is not None else ''
+
+            # Data de emissão (dhEmi ou dEmi)
+            data_raw = ''
+            if ide is not None:
+                data_raw = _find_text(ide, 'dhEmi') or _find_text(ide, 'dEmi')
+            # Normaliza para YYYY-MM-DD (ignora parte do horário se presente)
+            data = data_raw[:10] if data_raw else ''
+
+            # Valor total da NF
+            v_nf = ''
+            if total is not None:
+                icms_tot = total.find(_tag('ICMSTot'))
+                if icms_tot is not None:
+                    v_nf = _find_text(icms_tot, 'vNF')
+
+            # Preferência: destinatário como "Cliente"; emitente como fallback
+            x_nome_dest = _find_text(dest, 'xNome') if dest is not None else ''
+            x_nome_emit = _find_text(emit, 'xNome') if emit is not None else ''
+            cliente = x_nome_dest or x_nome_emit
+
+            # Descrição do primeiro produto (<det seq="1">)
+            categoria = ''
+            primeiro_det = inf.find(_tag('det'))
+            if primeiro_det is not None:
+                prod = primeiro_det.find(_tag('prod'))
+                if prod is not None:
+                    categoria = _find_text(prod, 'xProd')
+
+            try:
+                valor = float(v_nf) if v_nf else None
+            except ValueError:
+                valor = None
+
+            rows.append({
+                'NF':        n_nf,
+                'Data':      data,
+                'Valor':     valor,
+                'Cliente':   cliente,
+                'Categoria': categoria,
+                'Status':    'Emitida',
+            })
+
+        if not rows:
+            logger.warning("NF-e XML: nenhum item extraído de '%s'.", caminho)
+            return pd.DataFrame(columns=_EMPTY_COLS)
+
+        df = pd.DataFrame(rows, columns=_EMPTY_COLS)
+        logger.info("NF-e XML: %d nota(s) lida(s) de '%s'.", len(df), caminho)
+        return df
 
     @staticmethod
     def _detectar_problemas_formato(df: pd.DataFrame, aba: str) -> list:
