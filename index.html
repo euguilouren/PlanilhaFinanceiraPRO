@@ -2452,14 +2452,14 @@ function lerColsSelecionadas() {
 // ══════════════════════════════════════════════════════
 // EXECUTAR ANÁLISE
 // ══════════════════════════════════════════════════════
-async function executarAnalise() {
+async function executarAnalise(colsOverride = null) {
   if (_analisandoAgora) return;
   _analisandoAgora = true;
   mostrarLoader(true);
   _setLoaderStep('Preparando análise...');
   await _yield();
   try {
-      _cols = lerColsSelecionadas();
+      _cols = colsOverride || lerColsSelecionadas();
       _auditConfirmados.clear();
       const dados = _dadosOriginais;
 
@@ -3870,9 +3870,8 @@ function _restaurarSessao() {
   _nomeArquivo    = sess.nome   || 'sessão restaurada';
   // Oculta upload-area imediatamente para o loader aparecer corretamente
   document.getElementById('upload-area').style.display = 'none';
-  // Popula os <select> de colunas para que lerColsSelecionadas() leia os valores corretos
-  mostrarConfigColunas(_headers, _cols);
-  executarAnalise();
+  // Passa _cols diretamente para evitar que lerColsSelecionadas() sobrescreva com DOM vazio
+  executarAnalise(_cols);
 }
 
 // ══════════════════════════════════════════════════════
