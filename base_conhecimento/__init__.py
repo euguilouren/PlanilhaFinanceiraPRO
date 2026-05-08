@@ -355,13 +355,13 @@ def detectar_erp(df: pd.DataFrame) -> Optional[str]:
 
     Retorna o nome do ERP (chave de MAPAS_ERP) ou None se não reconhecido.
     Critério: pelo menos 2 colunas-sinal do ERP presentes no DataFrame.
-    Em caso de empate, loga aviso e retorna o candidato com mais sinais únicos.
+    Comparação case-insensitive. Em empate, prefere o ERP com mais hits.
     """
-    colunas = set(df.columns)
+    colunas_lower = {c.lower() for c in df.columns}
     scores: Dict[str, int] = {}
 
     for erp, sinais in ASSINATURAS_ERP.items():
-        hits = sum(1 for s in sinais if s in colunas)
+        hits = sum(1 for s in sinais if s.lower() in colunas_lower)
         if hits >= 2:
             scores[erp] = hits
 
@@ -372,9 +372,11 @@ def detectar_erp(df: pd.DataFrame) -> Optional[str]:
     candidatos: List[str] = [erp for erp, s in scores.items() if s == melhor_score]
 
     if len(candidatos) > 1:
+        # Tiebreak: prefer ERP whose signals are most unique (fewer total signals = more specific)
+        candidatos.sort(key=lambda e: len(ASSINATURAS_ERP[e]))
         logger.warning(
-            "detectar_erp: empate (%d hits) entre %s — selecionando primeiro por ordem de registro.",
-            melhor_score, candidatos,
+            "detectar_erp: empate (%d hits) entre %s — selecionando '%s' (mais específico).",
+            melhor_score, candidatos, candidatos[0],
         )
 
     return candidatos[0]

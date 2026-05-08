@@ -157,12 +157,12 @@ class Leitor:
 
         try:
             if ext in ('.xlsx', '.xls', '.xlsm'):
-                xls = pd.ExcelFile(caminho)
-                for aba in xls.sheet_names:
-                    df = pd.read_excel(xls, sheet_name=aba)
-                    dados[aba] = df
-                    diagnostico['abas'].append(Leitor._info_aba(aba, df))
-                    diagnostico['total_registros'] += len(df)
+                with pd.ExcelFile(caminho) as xls:
+                    for aba in xls.sheet_names:
+                        df = pd.read_excel(xls, sheet_name=aba)
+                        dados[aba] = df
+                        diagnostico['abas'].append(Leitor._info_aba(aba, df))
+                        diagnostico['total_registros'] += len(df)
 
             elif ext in ('.csv', '.tsv'):
                 sep = '\t' if ext == '.tsv' else None
@@ -432,6 +432,7 @@ class Auditor:
         colunas_existentes = [c for c in colunas_chave if c in df.columns]
         if not colunas_existentes:
             return pd.DataFrame()
+        df = df.reset_index(drop=True)
         mask = df.duplicated(subset=colunas_existentes, keep=False)
         duplicatas = df[mask].copy()
         if len(duplicatas) > 0:
@@ -457,6 +458,7 @@ class Auditor:
         """
         if coluna_valor not in df.columns:
             return pd.DataFrame()
+        df = df.reset_index(drop=True)
         valores = pd.to_numeric(df[coluna_valor], errors='coerce')
         media, desvio = valores.mean(), valores.std()
         if pd.isna(desvio) or desvio == 0:
@@ -481,9 +483,10 @@ class Auditor:
         inconsistencias = []
         if col_data not in df.columns:
             return inconsistencias
+        df = df.reset_index(drop=True)
         datas = pd.to_datetime(df[col_data], errors='coerce', dayfirst=True)
         if hasattr(datas.dtype, 'tz') and datas.dtype.tz is not None:
-            datas = datas.dt.tz_convert(None)
+            datas = datas.dt.tz_localize(None)
         hoje = pd.Timestamp.now()
         for idx, row in df[datas > hoje].iterrows():
             inconsistencias.append({
@@ -496,7 +499,7 @@ class Auditor:
         if col_data2 and col_data2 in df.columns:
             datas2 = pd.to_datetime(df[col_data2], errors='coerce', dayfirst=True)
             if hasattr(datas2.dtype, 'tz') and datas2.dtype.tz is not None:
-                datas2 = datas2.dt.tz_convert(None)
+                datas2 = datas2.dt.tz_localize(None)
             mask = (datas2 < datas).fillna(False)
             for idx, row in df[mask.values].iterrows():
                 inconsistencias.append({
@@ -512,6 +515,7 @@ class Auditor:
     @staticmethod
     def detectar_campos_vazios(df: pd.DataFrame, colunas_obrigatorias: list, aba: str = '') -> list:
         inconsistencias = []
+        df = df.reset_index(drop=True)
         for col in colunas_obrigatorias:
             if col not in df.columns:
                 inconsistencias.append({
@@ -539,6 +543,7 @@ class Auditor:
         inconsistencias = []
         if col_valor not in df.columns or col_tipo not in df.columns:
             return inconsistencias
+        df = df.reset_index(drop=True)
         valores = pd.to_numeric(df[col_valor], errors='coerce')
         receitas_neg = df[
             df[col_tipo].str.upper().str.contains('RECEITA|VENDA|FATURAMENTO', na=False) & (valores < 0)
@@ -815,9 +820,9 @@ class AnalistaFinanceiro:
         venc = pd.to_datetime(df[col_vencimento], errors='coerce', dayfirst=True)
         # Garantir tz-naive em ambos os lados para evitar TypeError em planilhas com timezone
         if hasattr(venc.dtype, 'tz') and venc.dtype.tz is not None:
-            venc = venc.dt.tz_convert(None)
+            venc = venc.dt.tz_localize(None)
         ts = pd.Timestamp(data_ref)
-        data_ref_ts = ts.tz_convert(None) if ts.tzinfo is not None else ts
+        data_ref_ts = ts.tz_localize(None) if ts.tzinfo is not None else ts
         dias = (data_ref_ts - venc).dt.days
         faixa_media = (faixa_atencao + faixa_critica) // 2
 
@@ -940,7 +945,7 @@ class AnalistaFinanceiro:
                 if i > 0:
                     anterior, atual = row[cols[i - 1]], row[col]
                     r[f'Var_{cols[i-1]}_para_{col}_R$'] = round(atual - anterior, 2)
-                    r[f'Var_{cols[i-1]}_para_{col}_%']  = round((atual - anterior) / anterior * 100, 1) if anterior != 0 else None
+                    r[f'Var_{cols[i-1]}_para_{col}_%']  = round((atual - anterior) / abs(anterior) * 100, 1) if anterior != 0 else None
             result_rows.append(r)
         return pd.DataFrame(result_rows)
 
@@ -988,7 +993,7 @@ class AnalistaFinanceiro:
             indicadores.append({
                 'Indicador': nome, 'Fórmula': formula, 'Valor': valor,
                 'Referência': ref,
-                'Status': 'SAUDÁVEL' if ok_cond(valor) else ('ATENÇÃO' if ok_cond(valor * 0.8) else 'CRÍTICO'),
+                'Status': 'SAUDÁVEL' if ok_cond(valor) else ('ATENÇÃO' if (ok_cond(valor * 0.8) or ok_cond(valor / 0.8)) else 'CRÍTICO'),
             })
 
         if passivo_circulante != 0:
@@ -1068,7 +1073,7 @@ class AnalistaFinanceiro:
 
         # Strip timezone so resample works regardless of whether dates are tz-aware
         if hasattr(df_valid['_data'].dtype, 'tz') and df_valid['_data'].dtype.tz is not None:
-            df_valid['_data'] = df_valid['_data'].dt.tz_convert(None)
+            df_valid['_data'] = df_valid['_data'].dt.tz_localize(None)
         df_valid = df_valid.set_index('_data')
         chave_col = col_chave if col_chave in df_valid.columns else df_valid.columns[0]
 
@@ -1202,6 +1207,10 @@ class Util:
             s = str(raw).replace('R$', '').replace('\xa0', '').strip()
             if not s or s.lower() in ('nan', 'none', ''):
                 return float('nan')
+            # Parenthetical notation: (1.234,56) means negative
+            negativo = s.startswith('(') and s.endswith(')')
+            if negativo:
+                s = s[1:-1].strip()
             # Remove currency symbol artifacts; keep digits, separators, sign
             s = re.sub(r'[^\d.,-]', '', s)
             if not s:
@@ -1218,7 +1227,8 @@ class Util:
                 # US format or already a float: "1,234.56" or "1234.56"
                 s = s.replace(',', '')
             try:
-                return float(s)
+                v = float(s)
+                return -v if negativo else v
             except ValueError:
                 return float('nan')
         return series.apply(_parse)
@@ -1311,7 +1321,7 @@ class PrestadorContas:
         def _agrupa(mask, natureza):
             grp = df[mask].groupby(col_categoria).agg(
                 Qtd=(col_valor, 'count'),
-                Total=(col_valor, lambda x: abs(pd.to_numeric(x, errors='coerce').sum())),
+                Total=(col_valor, lambda x: pd.to_numeric(x, errors='coerce').abs().sum()),
             ).reset_index().rename(columns={col_categoria: 'Categoria'})
             grp['Natureza'] = natureza
             return grp
@@ -2337,11 +2347,11 @@ class Normalizador:
         # Dados de exemplo (3 linhas)
         exemplos = [
             ['NF-2024-001', '01/01/2024', '31/01/2024', 5000.00,
-             'RECEITA', 'Empresa Alpha Ltda', 'PAGO', 'Contrato mensal'],
+             'RECEITA', 'RECEITA', 'Empresa Alpha Ltda', 'PAGO', 'Contrato mensal'],
             ['NF-2024-002', '05/01/2024', '05/02/2024', 1200.50,
-             'DESPESA OPERACIONAL', 'Fornecedor Beta S/A', 'PENDENTE', ''],
+             'DESPESA OPERACIONAL', 'DESPESA', 'Fornecedor Beta S/A', 'PENDENTE', ''],
             ['NF-2024-003', '10/01/2024', '10/01/2024', 3750.00,
-             'CMV', 'Distribuidora Gamma', 'PAGO', 'Compra de mercadoria'],
+             'CMV', 'DESPESA', 'Distribuidora Gamma', 'PAGO', 'Compra de mercadoria'],
         ]
         ex_fill  = PatternFill('solid', fgColor='F0F4F8')
         ex_fill2 = PatternFill('solid', fgColor='FFFFFF')

@@ -218,6 +218,8 @@ function toNum(v) {
     }
   } else if (s.includes(',')) {
     s = s.replace(/,/g, '.'); // só vírgula → decimal BR
+  } else if ((s.match(/\./g)||[]).length > 1) {
+    s = s.replace(/\./g, ''); // múltiplos pontos sem vírgula → separadores de milhar BR
   }
   const result = parseFloat(s);
   return neg ? -result : result;
@@ -272,13 +274,13 @@ function fmtData(d) {
 
 function auditoria(dados, cols) {
   const problemas = [];
-  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  const hoje = new Date();
 
   // Duplicatas por chave
   if (cols.chave) {
     const contagem = {};
     dados.forEach((row, i) => {
-      const k = String(row[cols.chave] ?? '').trim();
+      const k = String(row[cols.chave] ?? '').trim().toUpperCase().replace(/\s+/g,' ');
       if (!k) return;
       if (!contagem[k]) contagem[k] = [];
       contagem[k].push(i + 2);
@@ -318,20 +320,21 @@ function auditoria(dados, cols) {
     if (nums.length > 4) {
       const media = nums.reduce((a,b)=>a+b,0) / nums.length;
       const desvio = Math.sqrt(nums.map(n=>(n-media)**2).reduce((a,b)=>a+b,0)/(nums.length-1));
-      if (desvio === 0) return;  // todos os valores iguais — nenhum outlier possível
-      const limSup = media + 3*desvio;
-      const limInf = media - 3*desvio;
-      dados.forEach((row, i) => {
-        const v = toNum(row[cols.valor]);
-        if (!isNaN(v) && (v > limSup || v < limInf)) {
-          problemas.push({
-            severidade: 'MÉDIA', tipo: 'OUTLIER',
-            coluna: cols.valor, linha: i + 2,
-            valor: fmtBRL(v),
-            descricao: `Valor fora do padrão (média ${fmtBRL(media)}, ±3σ = ${fmtBRL(3*desvio)})`,
-          });
-        }
-      });
+      if (desvio > 0) {  // pula outliers quando todos os valores são iguais
+        const limSup = media + 3*desvio;
+        const limInf = media - 3*desvio;
+        dados.forEach((row, i) => {
+          const v = toNum(row[cols.valor]);
+          if (!isNaN(v) && (v > limSup || v < limInf)) {
+            problemas.push({
+              severidade: 'MÉDIA', tipo: 'OUTLIER',
+              coluna: cols.valor, linha: i + 2,
+              valor: fmtBRL(v),
+              descricao: `Valor fora do padrão (média ${fmtBRL(media)}, ±3σ = ${fmtBRL(3*desvio)})`,
+            });
+          }
+        });
+      }
     }
   }
 
@@ -430,15 +433,14 @@ function calcularPareto(dados, colEntidade, colValor, top = 15) {
     .sort((a,b) => Math.abs(b.total) - Math.abs(a.total));
   const totalGeral     = lista.reduce((s,i)=>s+i.total, 0);
   const totalEntidades = lista.length;
-  // Base para % = soma dos valores positivos (receitas); se não há positivos usa abs total
-  const totalPos = lista.filter(i=>i.total>0).reduce((s,i)=>s+i.total, 0);
-  const totalBase = totalPos > 0 ? totalPos : lista.reduce((s,i)=>s+Math.abs(i.total), 0);
+  // Base para % = soma dos valores absolutos de todos os registros
+  const totalBase = lista.reduce((s,i)=>s+Math.abs(i.total), 0);
   let acum = 0;
   const items = lista.slice(0, top).map((item, idx) => {
     const pct = totalBase ? Math.abs(item.total) / totalBase * 100 : 0;
     acum += pct;
     return { ranking: idx+1, nome: item.nome, total: item.total,
-             pct, acumulado: acum, classe: acum <= 80 ? 'A' : 'B' };
+             pct, acumulado: Math.min(acum, 100), classe: acum <= 80 ? 'A' : 'B' };
   });
   items.totalEntidades = totalEntidades;
   items.totalGeral     = totalGeral;
@@ -475,17 +477,17 @@ function construirDRE(dados, colCat, colValor) {
       else if (v < 0) valores['(-) Despesas Operacionais'] += v;
     });
   } else {
+    let classificados = 0;
     dados.forEach(row => {
       const cat = String(row[colCat] ?? '').toUpperCase().trim();
       const v   = toNum(row[colValor]);
       if (isNaN(v)) return;
       for (const { linha, termos } of MAPA_DRE) {
-        if (termos.test(cat)) { valores[linha] += v; break; }
+        if (termos.test(cat)) { valores[linha] += v; classificados++; break; }
       }
     });
     // Se nenhuma linha foi classificada, aplica fallback por sinal
-    const totalClassificado = Object.values(valores).reduce((a,b)=>a+Math.abs(b),0);
-    if (totalClassificado === 0) {
+    if (classificados === 0) {
       modo = 'sinal';
       // Zero all accumulators before fallback pass to avoid double-counting
       MAPA_DRE.forEach(({ linha }) => { valores[linha] = 0; });
@@ -523,7 +525,7 @@ function construirDRE(dados, colCat, colValor) {
     { linha:'(-) IR/CSLL',                      valor:-ir,  tipo:'input' },
     { linha:'(=) Lucro Líquido',                valor:ll,   tipo:'total lucro' },
   ];
-  return { linhas: linhas.map(l => ({ ...l, av: rl ? (l.valor/Math.abs(rl)*100) : 0 })), modo };
+  return { linhas: linhas.map(l => ({ ...l, av: rl ? (l.valor/rl*100) : 0 })), modo };
 }
 
 // ══════════════════════════════════════════════════════
@@ -544,8 +546,8 @@ function calcularKPIs(dados, cols) {
     const v    = toNum(r[colVal]);
     if (isNaN(v)) return;
     const tipo = String(r[colTipo] || '').trim().toUpperCase();
-    if (/^(RECEITA|CR[EÉ]DITO|ENTRADA)$/.test(tipo) || /RECEI|ENTRA|CRÉDI|VENDA|FATURAMENTO/.test(tipo)) { if (v !== 0) { receita += Math.abs(v); nfRec++; } }
-    else if (/^(DESPESA|D[EÉ]BITO|SA[IÍ]DA)$/.test(tipo) || /DESPE|SAÍDA|SAIDA|DÉBITO|DEBITO/.test(tipo)) { if (v !== 0) { despesa += Math.abs(v); nfDesp++; } }
+    if (/^(RECEITA|CR[EÉ]DITO|ENTRADA)$/.test(tipo) || /RECEI|ENTRA|CRÉDI|VENDA|FATURAMENTO/.test(tipo)) { receita += Math.abs(v); nfRec++; }
+    else if (/^(DESPESA|D[EÉ]BITO|SA[IÍ]DA)$/.test(tipo) || /DESPE|SAÍDA|SAIDA|DÉBITO|DEBITO/.test(tipo)) { despesa += Math.abs(v); nfDesp++; }
     else if (v > 0) { receita += v; nfRec++; }
     else if (v < 0) { despesa += Math.abs(v); nfDesp++; }
   });
@@ -726,7 +728,7 @@ function calcularAntiFraude(dados, cols) {
       chi2 += n * Math.pow(obs - esp, 2) / esp;
     }
     chi2 = Math.round(chi2 * 100) / 100;
-    const nivel = chi2 > 20.09 ? 'CRÍTICO' : chi2 > 15.51 ? 'ALTO' : chi2 > 9.49 ? 'MÉDIO' : 'OK';
+    const nivel = chi2 > 20.09 ? 'CRÍTICO' : chi2 > 15.51 ? 'ALTO' : chi2 > 13.36 ? 'MÉDIO' : 'OK';
     resultado.benford = { valido:true, chi2, nivel, totalRegistros:n,
       observado: Object.fromEntries([1,2,3,4,5,6,7,8,9].map(d=>[d, Math.round(contagem[d]/n*1000)/1000])),
       esperado: _BENFORD_ESPERADO };
@@ -2274,6 +2276,15 @@ async function executarAnalise() {
       _auditConfirmados.clear();
       const dados = _dadosOriginais;
 
+      if (!dados.length) {
+        _toast('Nenhum dado carregado. Importe um arquivo primeiro.', 3000, 'aviso');
+        return;
+      }
+      if (!_cols.valor) {
+        _toast('Selecione a coluna de Valor antes de analisar.', 3000, 'aviso');
+        return;
+      }
+
       // KPIs
       _setLoaderStep(`Calculando KPIs — ${dados.length.toLocaleString('pt-BR')} registros...`);
       await _yield();
@@ -2369,7 +2380,7 @@ function renderKPIs(k) {
   const periodo = (k.periodoInicio && k.periodoFim)
     ? `${fmtData(k.periodoInicio)} → ${fmtData(k.periodoFim)}` : '—';
   const corRes = k.resultado >= 0 ? 'var(--success)' : 'var(--danger)';
-  const margem = k.margem.toFixed(1);
+  const margem = isFinite(k.margem) ? k.margem.toFixed(1) : '—';
   document.getElementById('kpis').innerHTML = `
     <div class="kpi ok">
       <svg class="kpi-icon" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
@@ -2724,7 +2735,7 @@ function renderPareto(lista) {
       <td>${esc(i.nome)}</td>
       <td style="text-align:right">${fmtBRL(i.total)}</td>
       <td style="text-align:right">${fmtNum(i.pct,1)}%</td>
-      <td style="text-align:right">${fmtNum(i.acumulado,1)}%</td>
+      <td style="text-align:right">${fmtNum(Math.min(i.acumulado,100),1)}%</td>
       <td><span class="badge" style="background:${i.classe==='A'?'var(--gold-bg)':'var(--surface-2)'};color:${i.classe==='A'?'var(--gold)':'var(--text-3)'};border:1px solid ${i.classe==='A'?'rgba(201,162,39,.3)':'var(--border)'}">${i.classe}</span></td>
     </tr>`).join('');
   document.getElementById('pareto-content').innerHTML = `
@@ -2849,7 +2860,7 @@ function renderAntiFraude(r) {
   };
 
   const _row = (sev, desc) =>
-    `<div style="padding:8px 14px;border-bottom:1px solid #F1F5F9;display:flex;align-items:flex-start;gap:8px">${_badge(sev)}<span style="color:#374151;line-height:1.5">${desc}</span></div>`;
+    `<div style="padding:8px 14px;border-bottom:1px solid #F1F5F9;display:flex;align-items:flex-start;gap:8px">${_badge(sev)}<span style="color:#374151;line-height:1.5">${esc(String(desc))}</span></div>`;
 
   // Benford chart
   let benfordHtml = '';
@@ -2914,7 +2925,7 @@ function renderTabela(dados, headers) {
   thead.innerHTML = '<tr>' + headers.map(h => {
     const sorted = _sortCol === h;
     const arrow  = sorted ? (_sortDir === 1 ? ' ▲' : ' ▼') : '';
-    return `<th style="cursor:pointer;user-select:none;white-space:nowrap" onclick="_ordenarTabela('${esc(h)}')" title="Clique para ordenar">${esc(h)}<span style="opacity:.5;font-size:10px">${arrow}</span></th>`;
+    return `<th style="cursor:pointer;user-select:none;white-space:nowrap" data-col="${esc(h)}" onclick="_ordenarTabela(this.dataset.col)" title="Clique para ordenar">${esc(h)}<span style="opacity:.5;font-size:10px">${arrow}</span></th>`;
   }).join('') + '</tr>';
 
   if (!slice.length) {
@@ -2952,22 +2963,22 @@ function _irPagina(n) {
   document.getElementById('card-dados')?.scrollIntoView({behavior:'smooth', block:'start'});
 }
 
+function _toSortKey(v) {
+  const s = String(v ?? '').trim();
+  const n = parseFloat(s.replace(/[^\d.,\-]/g,'').replace(/\./g,'').replace(',','.'));
+  return isFinite(n) ? n : null;
+}
+
 function _ordenarTabela(col) {
   if (_sortCol === col) _sortDir *= -1;
   else { _sortCol = col; _sortDir = 1; }
   _paginaAtual = 1;
-  const _reDateBR = /^\d{2}\/\d{2}\/\d{4}/;
-  const _toSortKey = v => {
-    const s = String(v ?? '');
-    // BR date "DD/MM/YYYY" → numeric key YYYYMMDD for correct chronological sort
-    if (_reDateBR.test(s)) return parseInt(s.slice(6,10)+s.slice(3,5)+s.slice(0,2), 10);
-    const n = parseFloat(s.replace(/[^\d.,\-]/g,'').replace(/\./g,'').replace(',','.'));
-    return isNaN(n) ? null : n;
-  };
   const sorted = [..._dadosVisivelArr].sort((a, b) => {
     const va = a[col] ?? '', vb = b[col] ?? '';
     const na = _toSortKey(va), nb = _toSortKey(vb);
     if (na !== null && nb !== null) return (na - nb) * _sortDir;
+    if (na !== null) return -_sortDir;
+    if (nb !== null) return _sortDir;
     return String(va).localeCompare(String(vb), 'pt-BR') * _sortDir;
   });
   renderTabela(sorted, _headers);
@@ -3199,7 +3210,7 @@ async function analisarComClaude(btn) {
         'anthropic-dangerous-allow-browser': 'true',
       },
       body: JSON.stringify({
-        model: 'claude-opus-4-5-20250929',
+        model: 'claude-opus-4-7',
         max_tokens: 2048,
         system: _CLAUDE_SYSTEM,
         messages: [{ role: 'user', content: _gerarBriefing() }],
@@ -3216,7 +3227,7 @@ async function analisarComClaude(btn) {
 
     const data = await res.json().catch(() => null);
     if (!data) throw new Error('Resposta inválida da API Claude.');
-    _ultimaAnaliseClaude = data.content?.[0]?.text || '(sem resposta)';
+    _ultimaAnaliseClaude = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n') || '(sem resposta)';
     texto.innerHTML      = _markdownParaHTML(_ultimaAnaliseClaude);
     resultado.style.display = 'block';
     resultado.scrollIntoView({ behavior: 'smooth', block: 'nearest' });

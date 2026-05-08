@@ -672,7 +672,7 @@ class TestObservadorPasta:
         obs = ObservadorPasta(proc, str(pasta))
         obs.varrer_uma_vez()
         obs.varrer_uma_vez()
-        assert arq.name in obs._vistos
+        assert any(name == arq.name for name, _ in obs._vistos)
 
     def test_varrer_nao_reprocessa_arquivo_visto(self, cfg, tmp_path):
         from motor_automatico import ObservadorPasta

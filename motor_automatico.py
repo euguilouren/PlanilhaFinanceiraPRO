@@ -20,6 +20,7 @@ import argparse
 import traceback
 from email.mime.text        import MIMEText
 from email.mime.multipart   import MIMEMultipart
+from email.utils            import parseaddr
 from datetime               import datetime, timezone
 from pathlib                import Path
 
@@ -134,10 +135,8 @@ class AnalisadorClaudeAPI:
             )
             if not resposta.content:
                 return ''
-            for bloco in resposta.content:
-                if getattr(bloco, 'type', None) == 'text':
-                    return bloco.text
-            return ''
+            textos = [b.text for b in resposta.content if getattr(b, 'type', None) == 'text']
+            return '\n'.join(textos) if textos else ''
         except _anthropic.AuthenticationError as e:
             logger.error("Claude API: chave inválida — %s", e)
         except _anthropic.RateLimitError as e:
@@ -221,8 +220,8 @@ class ProcessadorArquivo:
             if tamanho > limite:
                 mb = tamanho // (1024 * 1024)
                 raise ValueError(f"Arquivo muito grande ({mb} MB). Máximo permitido: {limite // (1024*1024)} MB.")
-        except OSError:
-            pass  # arquivo ainda não existe ou sem permissão de stat — será tratado em processar()
+        except OSError as exc:
+            logger.debug("stat('%s') falhou: %s — tamanho não verificado.", p, exc)
         return p
 
     def processar(self, caminho_arquivo: str) -> dict:
@@ -705,7 +704,7 @@ class ProcessadorArquivo:
         """Gera texto compacto com os achados principais para envio ao Claude API."""
         linhas = [
             f"# BRIEFING FINANCEIRO — {datetime.now().strftime('%d/%m/%Y %H:%M')}",
-            f"Arquivo: {diagnostico['arquivo']}",
+            f"Arquivo: {diagnostico.get('arquivo', 'desconhecido')}",
             f"Total de registros: {diagnostico['total_registros']:,}",
             "",
         ]
@@ -780,7 +779,7 @@ class ProcessadorArquivo:
             nums = pd.to_numeric(df[col_val_df], errors='coerce').dropna()
             receita = nums[nums > 0].sum()
             despesa = nums[nums < 0].abs().sum()
-            margem  = (receita - despesa) / receita * 100 if receita else 0
+            margem  = (receita - despesa) / receita * 100 if receita and receita == receita else 0
             pts_m   = 30 if margem >= 30 else (20 if margem >= 15 else (10 if margem >= 5 else 0))
 
             # Inadimplência aging (25 pts)
@@ -800,7 +799,7 @@ class ProcessadorArquivo:
                 pts_p = 20 if top3_pct < 40 else (12 if top3_pct < 60 else (6 if top3_pct < 80 else 0))
 
             # Auditoria críticos (25 pts)
-            criticos = len(df_auditoria[df_auditoria['Severidade'] == 'CRÍTICA']) if len(df_auditoria) else 0
+            criticos = len(df_auditoria[df_auditoria['Severidade'].astype(str).str.strip().str.upper() == 'CRÍTICA']) if len(df_auditoria) else 0
             pts_aud  = 25 if criticos == 0 else (18 if criticos <= 2 else (10 if criticos <= 5 else 0))
 
             score = pts_m + pts_a + pts_p + pts_aud
@@ -879,15 +878,16 @@ class ProcessadorArquivo:
             max_tentativas = 3
             for tentativa in range(1, max_tentativas + 1):
                 try:
+                    smtp_user = parseaddr(rem)[1] or rem  # strip display name for SMTP auth
                     if use_ssl:
                         with smtplib.SMTP_SSL(smtp, porta, context=ctx, timeout=10) as server:
-                            server.login(rem, senha)
-                            server.sendmail(rem, dests, msg.as_string())
+                            server.login(smtp_user, senha)
+                            server.sendmail(smtp_user, dests, msg.as_string())
                     else:
                         with smtplib.SMTP(smtp, porta, timeout=10) as server:
                             server.starttls(context=ctx)
-                            server.login(rem, senha)
-                            server.sendmail(rem, dests, msg.as_string())
+                            server.login(smtp_user, senha)
+                            server.sendmail(smtp_user, dests, msg.as_string())
                     logger.info("E-mail de alerta enviado para %s", dests)
                     return
                 except smtplib.SMTPAuthenticationError as e:
@@ -944,29 +944,30 @@ class ObservadorPasta:
                 logger.warning("Symlink fora da pasta de entrada ignorado: %s", arquivo)
                 continue
             if arquivo.suffix.lower() in ProcessadorArquivo.EXTENSOES_SUPORTADAS:
-                if arquivo.name not in self._vistos:
-                    # Verifica estabilidade: aguarda o arquivo parar de ser copiado
-                    try:
-                        estado_atual = (arquivo.stat().st_size, arquivo.stat().st_mtime)
-                    except OSError:
-                        continue
-                    if self._estados_pendentes.get(arquivo.name) != estado_atual:
-                        self._estados_pendentes[arquivo.name] = estado_atual
-                        continue  # ainda sendo copiado — tenta na próxima varredura
-                    self._estados_pendentes.pop(arquivo.name, None)
-                    # Marca como visto antes de processar para evitar loop infinito.
-                    # Para reprocessar, renomeie ou reimporte o arquivo.
-                    self._vistos.add(arquivo.name)
-                    resultado = self.processador.processar(str(arquivo))
-                    if resultado.get('status') == 'ERRO':
-                        err = resultado.get('erro', '')
-                        # Erro de I/O: verifica pelo tipo da exceção (str(exc) contém
-                        # apenas a mensagem, não o nome da classe).
-                        _io_keywords = ('permission denied', 'errno', 'no such file',
-                                        'acesso negado', 'access is denied')
-                        if any(kw in err.lower() for kw in _io_keywords):
-                            self._vistos.discard(arquivo.name)
-                            logger.warning("Arquivo %s será reprocessado na próxima varredura.", arquivo.name)
+                # Verifica estabilidade: aguarda o arquivo parar de ser copiado
+                try:
+                    estado_atual = (arquivo.stat().st_size, arquivo.stat().st_mtime)
+                except OSError:
+                    continue
+                # Chave única por (nome, mtime) — permite reprocessar arquivos recriados
+                _chave = (arquivo.name, estado_atual[1])
+                if _chave in self._vistos:
+                    continue
+                if self._estados_pendentes.get(arquivo.name) != estado_atual:
+                    self._estados_pendentes[arquivo.name] = estado_atual
+                    continue  # ainda sendo copiado — tenta na próxima varredura
+                self._estados_pendentes.pop(arquivo.name, None)
+                self._vistos.add(_chave)
+                resultado = self.processador.processar(str(arquivo))
+                if resultado.get('status') == 'ERRO':
+                    err = resultado.get('erro', '')
+                    # Erro de I/O: verifica pelo tipo da exceção (str(exc) contém
+                    # apenas a mensagem, não o nome da classe).
+                    _io_keywords = ('permission denied', 'errno', 'no such file',
+                                    'acesso negado', 'access is denied')
+                    if any(kw in err.lower() for kw in _io_keywords):
+                        self._vistos.discard(_chave)
+                        logger.warning("Arquivo %s será reprocessado na próxima varredura.", arquivo.name)
 
     def monitorar(self, intervalo: int = 5):
         """Loop contínuo: verifica a pasta a cada N segundos."""
@@ -1011,6 +1012,8 @@ def main():
         if resultado.get('analise'):
             logger.info("Análise: %s", resultado['analise'])
         logger.info("Críticos: %d | Total alertas: %d", resultado['criticos'], resultado['total_problemas'])
+        if resultado.get('status') == 'ERRO':
+            raise SystemExit(1)
 
     elif args.once:
         # Modo: varrer pasta uma vez

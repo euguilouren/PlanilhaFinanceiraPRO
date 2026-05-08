@@ -42,11 +42,10 @@ _FERIADOS_FIXOS: frozenset[str] = frozenset({
 
 def _primeiro_digito(v: float) -> Optional[int]:
     """Primeiro dígito significativo de um número positivo; None se inválido."""
-    if not math.isfinite(v) or v <= 0:
+    if not v or not math.isfinite(v) or v <= 0:
         return None
-    expoente = math.floor(math.log10(v))
-    digito = int(v / (10 ** expoente))
-    return digito if 1 <= digito <= 9 else None
+    s = f"{abs(v):.10f}".replace(".", "").lstrip("0")
+    return int(s[0]) if s else None
 
 
 def _e_fim_de_semana(d) -> bool:
@@ -160,6 +159,8 @@ class FraudeDetector:
 
         digitos = valores.map(_primeiro_digito).dropna().astype(int)
         total = len(digitos)
+        if total < 30:
+            return {"valido": False, "motivo": f"Apenas {total} dígitos válidos após filtragem (mínimo: 30)"}
         contagem = digitos.value_counts().reindex(range(1, 10), fill_value=0)
 
         esperado_s = pd.Series(_BENFORD)
@@ -172,7 +173,7 @@ class FraudeDetector:
             nivel = "CRÍTICO"
         elif chi2 > 15.51:
             nivel = "ALTO"
-        elif chi2 > 9.49:
+        elif chi2 > 13.36:
             nivel = "MÉDIO"
         else:
             nivel = "OK"
@@ -216,7 +217,13 @@ class FraudeDetector:
             mask = df_w[col_chave].notna() & (
                 df_w[col_chave].astype(str).str.strip() != ""
             )
-            chaves = df_w.loc[mask, col_chave].astype(str)
+            def _norm_chave(v):
+                try:
+                    f = float(v)
+                    return str(int(f)) if f == int(f) else str(f)
+                except (ValueError, TypeError):
+                    return str(v)
+            chaves = df_w.loc[mask, col_chave].map(_norm_chave)
             dup_mask = chaves.duplicated(keep=False)
             dup_chaves = chaves[dup_mask]
             for chave_val, grupo_idx in dup_chaves.groupby(dup_chaves):
@@ -226,10 +233,7 @@ class FraudeDetector:
                     "tipo": "DUPLICATA_EXATA",
                     "severidade": "CRÍTICA",
                     "linha": linhas,
-                    "descricao": (
-                        f"Chave '{chave_val}' duplicada "
-                        f"({len(linhas)}× nas linhas {linhas[:5]})"
-                    ),
+                    "descricao": f"Chave '{chave_val}' duplicada",
                     "valor": primeira_row["_val"],
                     "entidade": str(primeira_row[col_entidade]) if col_entidade and col_entidade in df_w.columns else "",
                 })
@@ -237,6 +241,7 @@ class FraudeDetector:
         # Duplicatas fuzzy por valor + entidade + janela de data
         if col_entidade and col_entidade in df_w.columns:
             df_w["_ent"] = df_w[col_entidade].astype(str).str.strip().str.upper()
+            df_w = df_w[~df_w["_ent"].isin(["NAN", "NONE", "NAT", ""])]
             if col_data and col_data in df_w.columns:
                 df_w["_dt"] = pd.to_datetime(df_w[col_data], errors="coerce", dayfirst=True)
             else:
@@ -261,7 +266,7 @@ class FraudeDetector:
                         alertas.append({
                             "tipo": "DUPLICATA_FUZZY",
                             "severidade": "ALTA",
-                            "linha": int(idxs[i]) + 2,
+                            "linha": [int(idxs[i]) + 2, int(idxs[j]) + 2],
                             "descricao": (
                                 f"Valor similar (R$ {va:,.2f} ≈ R$ {vb:,.2f}) "
                                 f"para '{ent}' — linha {idxs[j] + 2}"
@@ -333,12 +338,7 @@ class FraudeDetector:
 
         df_w = df.copy()
         df_w["_val"] = pd.to_numeric(df_w[col_valor], errors="coerce")
-        df_w["_dt"] = pd.to_datetime(df_w[col_data], errors="coerce", format="%d/%m/%Y")
-        nat_mask = df_w["_dt"].isna() & df_w[col_data].notna()
-        if nat_mask.any():
-            df_w.loc[nat_mask, "_dt"] = pd.to_datetime(
-                df_w.loc[nat_mask, col_data], errors="coerce", dayfirst=True
-            )
+        df_w["_dt"] = pd.to_datetime(df_w[col_data], errors="coerce", dayfirst=True)
         df_w["_ent"] = df_w[col_entidade].astype(str).str.strip().str.upper()
         df_w = df_w.dropna(subset=["_val", "_dt"])
         df_w = df_w[df_w["_val"] > 0]
@@ -351,7 +351,6 @@ class FraudeDetector:
             datas = grupo["_dt"].tolist()
             valores = grupo["_val"].tolist()
 
-            melhor: dict | None = None
             for i in range(len(datas)):
                 janela = [
                     (datas[j], valores[j]) for j in range(i, len(datas))
@@ -361,34 +360,25 @@ class FraudeDetector:
                     continue
                 vs = [v for _, v in janela]
                 media = sum(vs) / len(vs)
-                # desvio amostral (n-1) para consistência com outliers_por_entidade
-                n = len(vs)
-                std = (sum((v - media) ** 2 for v in vs) / max(n - 1, 1)) ** 0.5
+                std = (sum((v - media) ** 2 for v in vs) / len(vs)) ** 0.5
                 cv = std / media if media > 0 else 1.0
                 if cv < 0.30:
-                    if melhor is None or len(janela) > melhor["ocorrencias"]:
-                        melhor = {
-                            "ocorrencias": len(janela),
-                            "total_rs": round(sum(vs), 2),
-                            "media_rs": round(media, 2),
-                            "cv": cv,
-                            "duracao": (janela[-1][0] - janela[0][0]).days,
-                        }
-            if melhor:
-                alertas.append({
-                    "tipo": "FRACIONAMENTO",
-                    "severidade": "ALTA",
-                    "entidade": str(ent),
-                    "ocorrencias": melhor["ocorrencias"],
-                    "total_rs": melhor["total_rs"],
-                    "media_rs": melhor["media_rs"],
-                    "janela_dias": melhor["duracao"],
-                    "descricao": (
-                        f"'{ent}': {melhor['ocorrencias']} transações similares "
-                        f"(média R$ {melhor['media_rs']:,.2f}, CV={melhor['cv']:.1%}) "
-                        f"em {melhor['duracao']} dias"
-                    ),
-                })
+                    duracao = (janela[-1][0] - janela[0][0]).days
+                    alertas.append({
+                        "tipo": "FRACIONAMENTO",
+                        "severidade": "ALTA",
+                        "entidade": str(ent),
+                        "ocorrencias": len(janela),
+                        "total_rs": round(sum(vs), 2),
+                        "media_rs": round(media, 2),
+                        "janela_dias": duracao,
+                        "descricao": (
+                            f"'{ent}': {len(janela)} transações similares "
+                            f"(média R$ {media:,.2f}, CV={cv:.1%}) "
+                            f"em {duracao} dias"
+                        ),
+                    })
+                    break  # Uma detecção por entidade é suficiente
 
         return pd.DataFrame(alertas) if alertas else _empty
 
@@ -456,7 +446,7 @@ class FraudeDetector:
                 continue
             media = float(serie.mean())
             std = float(serie.std())
-            if std == 0 or not math.isfinite(std):
+            if std == 0:
                 continue
             for idx, v in serie.items():
                 z = (v - media) / std
@@ -502,16 +492,15 @@ class FraudeDetector:
         df_w["_ent"] = df_w[col_entidade].astype(str).str.strip().str.upper()
 
         total_geral = df_w["_val"].sum()
-        if total_geral == 0:
+        if total_geral <= 0:
             return _empty
 
         resumo = (
             df_w.groupby("_ent")["_val"]
             .agg(total_rs="sum", ocorrencias="count")
         )
-        resumo["pct_total"] = resumo["total_rs"] / total_geral * 100
-        suspeitos = resumo[resumo["pct_total"] >= limiar * 100].copy()
-        suspeitos["pct_total"] = suspeitos["pct_total"].round(2)
+        resumo["pct_total"] = (resumo["total_rs"] / total_geral * 100).round(2)
+        suspeitos = resumo[resumo["pct_total"] / 100 >= limiar].copy()
 
         if suspeitos.empty:
             return _empty
@@ -541,7 +530,7 @@ class FraudeDetector:
         alertas: list[str] = []
 
         b = resultado.get("benford") or {}
-        nivel_b = b.get("nivel", "OK")
+        nivel_b = b.get("nivel", "OK") if b.get("valido", False) else "OK"
         if nivel_b == "CRÍTICO":
             score += 30
             alertas.append(f"Lei de Benford CRÍTICA (χ²={b.get('chi2','?')}) — possível adulteração em massa")
