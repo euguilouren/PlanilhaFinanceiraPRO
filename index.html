@@ -1406,6 +1406,20 @@ tbody tr:hover td{background:linear-gradient(90deg,#EEF6FF,#F5F9FF)!important;tr
 .bar-w{background:#e8e8e8;border-radius:4px;height:10px;min-width:80px}
 .bar-f{height:10px;border-radius:4px;transition:.5s}
 /* Toast */
+#banner-sessao{
+  position:sticky;top:0;z-index:98;
+  background:linear-gradient(135deg,#1F4E79,#1a3f63);
+  color:#fff;padding:10px 20px;
+  display:flex;align-items:center;gap:10px;
+  box-shadow:0 2px 12px rgba(0,0,0,.25);
+  font-size:13px;font-weight:600;
+  animation:slideDown .3s ease-out;
+}
+@keyframes slideDown{from{transform:translateY(-100%);opacity:0}to{transform:translateY(0);opacity:1}}
+@media(max-width:600px){
+  #banner-sessao{padding:8px 12px;font-size:12px;gap:8px;flex-wrap:nowrap}
+  #banner-sessao span{font-size:11.5px}
+}
 #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);
   background:var(--azul);color:#fff;padding:10px 22px;border-radius:20px;
   font-size:12.5px;font-weight:600;z-index:1000;transition:.3s;pointer-events:none;opacity:0}
@@ -3851,11 +3865,13 @@ window.addEventListener('DOMContentLoaded', () => {
     if (!sess || !sess.dados || !sess.dados.length) return;
     const banner = document.createElement('div');
     banner.id = 'banner-sessao';
-    banner.style.cssText = 'position:fixed;bottom:68px;left:50%;transform:translateX(-50%);background:#1F4E79;color:#fff;padding:10px 18px;border-radius:10px;font-size:13px;font-weight:600;z-index:9999;display:flex;align-items:center;gap:12px;box-shadow:0 4px 16px #0004;max-width:calc(100vw - 32px)';
-    banner.innerHTML = `<span>📂 Sessão anterior: <strong>${esc(sess.nome || 'arquivo')}</strong> (${sess.dados.length.toLocaleString('pt-BR')} registros)</span>
-      <button onclick="_restaurarSessao()" style="background:#C9A84C;color:#1A1A2E;border:none;padding:5px 14px;border-radius:7px;cursor:pointer;font-weight:700;font-size:12px">Restaurar</button>
-      <button onclick="document.getElementById('banner-sessao')?.remove()" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4);padding:5px 10px;border-radius:7px;cursor:pointer;font-size:12px">✕</button>`;
-    document.body.appendChild(banner);
+    banner.innerHTML = `
+      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📂 Sessão anterior: <strong>${esc(sess.nome || 'arquivo')}</strong> <span style="opacity:.75">(${sess.dados.length.toLocaleString('pt-BR')} registros)</span></span>
+      <button onclick="_restaurarSessao()" style="flex-shrink:0;background:#C9A84C;color:#1A1A2E;border:none;padding:6px 16px;border-radius:7px;cursor:pointer;font-weight:700;font-size:12px;white-space:nowrap">Restaurar</button>
+      <button onclick="document.getElementById('banner-sessao')?.remove()" style="flex-shrink:0;background:transparent;color:rgba(255,255,255,.8);border:1px solid rgba(255,255,255,.3);padding:6px 10px;border-radius:7px;cursor:pointer;font-size:13px;line-height:1" aria-label="Fechar">✕</button>`;
+    const uploadArea = document.getElementById('upload-area');
+    if (uploadArea) uploadArea.insertAdjacentElement('beforebegin', banner);
+    else document.body.appendChild(banner);
     window._sessaoRestaurada = sess;
   });
 });
