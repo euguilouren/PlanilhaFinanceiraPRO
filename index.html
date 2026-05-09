@@ -240,8 +240,8 @@ function toDate(v) {
     return new Date(u.getUTCFullYear(), u.getUTCMonth(), u.getUTCDate());
   }
   const s = String(v).trim();
-  // DD/MM/YYYY
-  const br = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  // DD/MM/YYYY (aceita horário opcional após a data)
+  const br = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
   if (br) {
     const d = new Date(+br[3], +br[2]-1, +br[1]);
     if (d.getFullYear() !== +br[3] || d.getMonth() !== +br[2]-1 || d.getDate() !== +br[1]) return null;
@@ -3202,7 +3202,7 @@ function renderAntiFraude(r) {
   };
 
   const _row = (sev, desc) =>
-    `<div style="padding:8px 14px;border-bottom:1px solid #F1F5F9;display:flex;align-items:flex-start;gap:8px">${_badge(sev)}<span style="color:#374151;line-height:1.5">${esc(String(desc))}</span></div>`;
+    `<div style="padding:8px 14px;border-bottom:1px solid #F1F5F9;display:flex;align-items:flex-start;gap:8px">${_badge(sev)}<span style="color:#374151;line-height:1.5">${String(desc)}</span></div>`;
 
   // Benford chart
   let benfordHtml = '';
@@ -3274,7 +3274,10 @@ function renderTabela(dados, headers) {
     tbody.innerHTML = `<tr><td colspan="${headers.length}" style="text-align:center;color:var(--text-3);padding:24px;font-style:italic">Nenhum resultado encontrado.</td></tr>`;
   } else {
     tbody.innerHTML = slice.map(row =>
-      '<tr>' + headers.map(h => `<td>${esc(row[h])}</td>`).join('') + '</tr>'
+      '<tr>' + headers.map(h => {
+        const v = row[h];
+        return `<td>${v instanceof Date ? fmtData(v) : esc(v ?? '')}</td>`;
+      }).join('') + '</tr>'
     ).join('');
   }
 
@@ -3306,6 +3309,7 @@ function _irPagina(n) {
 }
 
 function _toSortKey(v) {
+  if (v instanceof Date) return isNaN(v) ? null : v.getTime();
   const s = String(v ?? '').trim();
   const n = parseFloat(s.replace(/[^\d.,\-]/g,'').replace(/\./g,'').replace(',','.'));
   return isFinite(n) ? n : null;
@@ -3485,7 +3489,7 @@ function _gerarBriefing() {
     af.alertas.forEach(a => linhas.push(`- ${a}`));
     if (af.duplicatas.length)        linhas.push(`- ${af.duplicatas.length} duplicata(s) detectada(s)`);
     if (af.fracionamento.length)     linhas.push(`- ${af.fracionamento.length} caso(s) de fracionamento`);
-    if (af.concentracao.length)      linhas.push(`- Concentração: ${af.concentracao.map(c => `${c.entidade} (${c.pctTotal}%)`).slice(0,3).join(', ')}`);
+    if (af.concentracao.length)      linhas.push(`- Concentração: ${af.concentracao.length} entidade(s) com concentração anormal`);
     if (af.benford?.valido && af.benford.nivel !== 'OK')
       linhas.push(`- Lei de Benford: ${af.benford.nivel} (χ²=${af.benford.chi2})`);
   }
@@ -3554,21 +3558,29 @@ async function analisarComClaude(btn) {
   btn.textContent = 'Analisando...';
 
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-allow-browser': 'true',
-      },
-      body: JSON.stringify({
-        model: 'claude-opus-4-7',
-        max_tokens: 2048,
-        system: _CLAUDE_SYSTEM,
-        messages: [{ role: 'user', content: _gerarBriefing() }],
-      }),
-    });
+    const _abortCtrl = new AbortController();
+    const _abortTimer = setTimeout(() => _abortCtrl.abort(), 45000);
+    let res;
+    try {
+      res = await fetch('https://api.anthropic.com/v1/messages', {
+        signal: _abortCtrl.signal,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-allow-browser': 'true',
+        },
+        body: JSON.stringify({
+          model: 'claude-opus-4-7',
+          max_tokens: 2048,
+          system: _CLAUDE_SYSTEM,
+          messages: [{ role: 'user', content: _gerarBriefing() }],
+        }),
+      });
+    } finally {
+      clearTimeout(_abortTimer);
+    }
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
@@ -3728,7 +3740,10 @@ function exportarCSV() {
   const dados = _dadosVisivelArr.length ? _dadosVisivelArr : _dadosOriginais;
   if (!dados.length) { _toast('Sem dados para exportar', 2500, 'aviso'); return; }
   if (typeof XLSX === 'undefined') { _toast('SheetJS não carregado', 2500, 'erro'); return; }
-  const rows = [_headers, ...dados.map(r => _headers.map(h => r[h] ?? ''))];
+  const rows = [_headers, ...dados.map(r => _headers.map(h => {
+    const v = r[h];
+    return v instanceof Date ? fmtData(v) : (v ?? '');
+  }))];
   const ws = XLSX.utils.aoa_to_sheet(rows);
   const wb2 = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb2, ws, 'Dados');
@@ -3745,6 +3760,8 @@ function _trocarAba(nomAba) {
   _headers = aba.headers;
   const info = document.getElementById('sel-aba-info');
   if (info) info.textContent = `${aba.dados.length.toLocaleString('pt-BR')} registros`;
+  const headerInfo = document.getElementById('header-info');
+  if (headerInfo) headerInfo.textContent = `${nomAba} — ${aba.dados.length.toLocaleString('pt-BR')} registros`;
   // Invalidar caches da análise anterior para evitar dados da aba antiga
   _ultimosKpis = null; _ultimaAuditoria = null; _ultimoAging = null;
   _ultimoDre = null; _ultimoPareto = null; _ultimoAntiFraude = null;
