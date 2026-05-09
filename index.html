@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.sheetjs.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'self'; form-action 'self';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.sheetjs.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src https://api.anthropic.com; object-src 'none'; frame-src 'none'; base-uri 'self'; form-action 'self';">
 <title>Planilha Financeira Pro — por Luan Guilherme Lourenço</title>
 <meta name="description" content="Dashboard financeiro 100% no navegador. Analise planilhas Excel e CSV com KPIs, aging, DRE e detecção de fraudes — sem instalar nada. Por Luan Guilherme Lourenço.">
 <meta name="author" content="Luan Guilherme Lourenço">
@@ -2273,9 +2273,11 @@ function carregarArquivo(file) {
       _colsComparativos = null;
       _kpisComparativos = null;
       _nomeArquivoComp  = '';
-      if (_chartAging)       { _chartAging.destroy();       _chartAging = null; }
-      if (_chartComparativo) { _chartComparativo.destroy(); _chartComparativo = null; }
-      if (_chartFluxoM)      { _chartFluxoM.destroy();      _chartFluxoM = null; }
+      if (_chartAging)        { _chartAging.destroy();        _chartAging = null; }
+      if (_chartComparativo)  { _chartComparativo.destroy();  _chartComparativo = null; }
+      if (_chartFluxoM)       { _chartFluxoM.destroy();       _chartFluxoM = null; }
+      if (_chartProjecao)     { _chartProjecao.destroy();     _chartProjecao = null; }
+      if (_chartSazonalidade) { _chartSazonalidade.destroy(); _chartSazonalidade = null; }
       const _ccReset = document.getElementById('card-comparativo');
       if (_ccReset) _ccReset.style.display = 'none';
       document.getElementById('btn-comparar').style.display = 'none';
@@ -2558,6 +2560,15 @@ async function executarAnalise(colsOverride = null) {
       _toast(`${_dadosOriginais.length.toLocaleString('pt-BR')} registros analisados com sucesso`, 3500, 'sucesso');
       // Salvar sessão no IndexedDB
       _DB.salvar({ dados: _dadosOriginais, headers: _headers, cols: _cols, nome: _nomeArquivo });
+      // Stagger de entrada dos cards e KPIs
+      const _sc = [...document.querySelectorAll('#dashboard .card')];
+      _sc.forEach(el => el.classList.remove('card-animate'));
+      void document.body.offsetWidth;
+      _sc.forEach((el,i) => { el.style.animationDelay=(i*70)+'ms'; el.classList.add('card-animate'); });
+      const _sk = [...document.querySelectorAll('#kpis .kpi')];
+      _sk.forEach(el => el.classList.remove('card-animate'));
+      void document.body.offsetWidth;
+      _sk.forEach((el,i) => { el.style.animationDelay=(i*55)+'ms'; el.classList.add('card-animate'); });
     } catch(err) {
       _mostrarErro('Erro na análise: ' + err.message);
       document.getElementById('upload-area').style.display = 'block';
@@ -2568,15 +2579,6 @@ async function executarAnalise(colsOverride = null) {
       mostrarLoader(false);
       _setLoaderStep('');
     }
-    // Stagger de entrada dos cards e KPIs
-    const _sc = [...document.querySelectorAll('#dashboard .card')];
-    _sc.forEach(el => el.classList.remove('card-animate'));
-    void document.body.offsetWidth;
-    _sc.forEach((el,i) => { el.style.animationDelay=(i*70)+'ms'; el.classList.add('card-animate'); });
-    const _sk = [...document.querySelectorAll('#kpis .kpi')];
-    _sk.forEach(el => el.classList.remove('card-animate'));
-    void document.body.offsetWidth;
-    _sk.forEach((el,i) => { el.style.animationDelay=(i*55)+'ms'; el.classList.add('card-animate'); });
 }
 
 // ══════════════════════════════════════════════════════
@@ -2984,7 +2986,10 @@ function renderProjecao(linhasHistorico) {
   const card = document.getElementById('card-projecao');
   if (!card) return;
   const proj = calcularProjecao(linhasHistorico, 3);
-  if (!proj || !proj.length) { card.style.display = 'none'; return; }
+  if (!proj || !proj.length) {
+    if (_chartProjecao) { _chartProjecao.destroy(); _chartProjecao = null; }
+    card.style.display = 'none'; return;
+  }
   card.style.display = 'block';
   const rows = proj.map(p => {
     const cor = p.res >= 0 ? 'var(--success)' : 'var(--danger)';
@@ -3037,7 +3042,10 @@ function renderSazonalidade(dados, cols) {
   const card = document.getElementById('card-sazonalidade');
   if (!card) return;
   const saz = calcularSazonalidade(dados, cols.data, cols.valor, cols.tipo);
-  if (!saz) { card.style.display = 'none'; return; }
+  if (!saz) {
+    if (_chartSazonalidade) { _chartSazonalidade.destroy(); _chartSazonalidade = null; }
+    card.style.display = 'none'; return;
+  }
   card.style.display = 'block';
   const nAnos = Math.max(...saz.map(m => m.nAnos));
   const elAnos = document.getElementById('sazon-anos');
@@ -3469,6 +3477,17 @@ function _gerarBriefing() {
     linhas.push(`\n## Top Entidades (Pareto)`);
     _ultimoPareto.slice(0, 5).forEach((r, i) =>
       linhas.push(`${i + 1}. ${r.nome}: ${fmtV(r.total)} (${(r.pct || 0).toFixed(1)}%)`));
+  }
+
+  if (_ultimoAntiFraude && _ultimoAntiFraude.scoreRisco > 0) {
+    const af = _ultimoAntiFraude;
+    linhas.push(`\n## Anti-Fraude (Score de Risco: ${af.scoreRisco}/100)`);
+    af.alertas.forEach(a => linhas.push(`- ${a}`));
+    if (af.duplicatas.length)        linhas.push(`- ${af.duplicatas.length} duplicata(s) detectada(s)`);
+    if (af.fracionamento.length)     linhas.push(`- ${af.fracionamento.length} caso(s) de fracionamento`);
+    if (af.concentracao.length)      linhas.push(`- Concentração: ${af.concentracao.map(c => `${c.entidade} (${c.pctTotal}%)`).slice(0,3).join(', ')}`);
+    if (af.benford?.valido && af.benford.nivel !== 'OK')
+      linhas.push(`- Lei de Benford: ${af.benford.nivel} (χ²=${af.benford.chi2})`);
   }
 
   return linhas.join('\n');
