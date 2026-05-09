@@ -715,7 +715,7 @@ function _eFeriado(d) {
 function calcularAntiFraude(dados, cols) {
   const col = cols.valor, colEnt = cols.entidade, colChave = cols.chave, colData = cols.data || cols.vencimento;
   const resultado = { benford:null, duplicatas:[], numerosRedondos:[], fracionamento:[],
-                      anomaliasTEmporais:[], outliers:[], concentracao:[], scoreRisco:0, alertas:[] };
+                      anomaliasTemporais:[], outliers:[], concentracao:[], scoreRisco:0, alertas:[] };
   if (!dados.length || !col) return resultado;
 
   const vals = dados.map(r => toNum(r[col])).filter(v => isFinite(v));
@@ -749,8 +749,8 @@ function calcularAntiFraude(dados, cols) {
       if (seen.has(k)) {
         const orig = seen.get(k);
         resultado.duplicatas.push({ tipo:'DUPLICATA_EXATA', severidade:'CRÍTICA',
-          linha: i+2, descricao:`Chave '${esc(k)}' duplicada (linha ${orig+2})`,
-          valor: toNum(r[col]), entidade: colEnt ? esc(String(r[colEnt]||'')) : '' });
+          linha: i+2, descricao:`Chave '${k}' duplicada (linha ${orig+2})`,
+          valor: toNum(r[col]), entidade: colEnt ? String(r[colEnt]||'') : '' });
       } else { seen.set(k, i); }
     });
   }
@@ -771,8 +771,8 @@ function calcularAntiFraude(dados, cols) {
           if (Math.abs(va-vb)/va > 0.01) continue;
           if (da && db && Math.abs(da-db) > 30*864e5) continue;
           resultado.duplicatas.push({ tipo:'DUPLICATA_FUZZY', severidade:'ALTA',
-            linha:ia+2, descricao:`Valor similar (${fmtBRL(va)} ≈ ${fmtBRL(vb)}) para '${esc(ent)}' — linha ${ib+2}`,
-            valor:va, entidade:esc(ent) });
+            linha:ia+2, descricao:`Valor similar (${fmtBRL(va)} ≈ ${fmtBRL(vb)}) para '${ent}' — linha ${ib+2}`,
+            valor:va, entidade:ent });
         }
       }
     });
@@ -799,10 +799,10 @@ function calcularAntiFraude(dados, cols) {
       const dt = new Date(d);
       if (_eFimDeSemana(dt)) {
         const motivo = dt.getDay()===6 ? 'Sábado' : 'Domingo';
-        resultado.anomaliasTEmporais.push({ tipo:'ANOMALIA_TEMPORAL', severidade:'MÉDIA',
+        resultado.anomaliasTemporais.push({ tipo:'ANOMALIA_TEMPORAL', severidade:'MÉDIA',
           linha:i+2, data: fmtData(d), motivo, descricao:`Lançamento em ${motivo} (${fmtData(d)})` });
       } else if (_eFeriado(dt)) {
-        resultado.anomaliasTEmporais.push({ tipo:'ANOMALIA_TEMPORAL', severidade:'MÉDIA',
+        resultado.anomaliasTemporais.push({ tipo:'ANOMALIA_TEMPORAL', severidade:'MÉDIA',
           linha:i+2, data: fmtData(d), motivo:'Feriado Nacional', descricao:`Lançamento em feriado nacional (${fmtData(d)})` });
       }
     });
@@ -820,37 +820,38 @@ function calcularAntiFraude(dados, cols) {
     });
     grupos.forEach((itens, ent) => {
       if (itens.length < 3) return;
-      const media = itens.reduce((s,x)=>s+x.v,0) / itens.length;
-      const std = Math.sqrt(itens.reduce((s,x)=>s+Math.pow(x.v-media,2),0) / itens.length);
+      const absItens = itens.map(x => ({ ...x, v: Math.abs(x.v) }));
+      const media = absItens.reduce((s,x)=>s+x.v,0) / absItens.length;
+      const std = Math.sqrt(absItens.reduce((s,x)=>s+Math.pow(x.v-media,2),0) / absItens.length);
       if (std === 0) return;
-      itens.forEach(({i, v}) => {
+      absItens.forEach(({i, v}) => {
         const z = (v - media) / std;
         if (Math.abs(z) < 3) return;
         resultado.outliers.push({ tipo:'OUTLIER', severidade: Math.abs(z)>=4.5?'ALTA':'MÉDIA',
-          linha:i+2, entidade:esc(ent), valor:v, zScore:Math.round(z*10)/10,
-          descricao:`'${esc(ent)}': ${fmtBRL(v)} é ${Math.abs(z).toFixed(1)}σ ${z>0?'acima':'abaixo'} da média (${fmtBRL(media)})` });
+          linha:i+2, entidade:ent, valor:v, zScore:Math.round(z*10)/10,
+          descricao:`'${ent}': ${fmtBRL(v)} é ${Math.abs(z).toFixed(1)}σ ${z>0?'acima':'abaixo'} da média (${fmtBRL(media)})` });
       });
     });
   }
 
   // ── Concentração ──
   if (colEnt) {
-    const total = vals.reduce((s,v)=>s+Math.abs(v),0);
+    const grupos = new Map();
+    dados.forEach(r => {
+      const ent = String(r[colEnt]||'').trim().toUpperCase();
+      if (!ent) return;
+      const v = Math.abs(toNum(r[col]) || 0);
+      grupos.set(ent, (grupos.get(ent)||{total:0,n:0}));
+      grupos.get(ent).total += v; grupos.get(ent).n++;
+    });
+    const total = Array.from(grupos.values()).reduce((s,g)=>s+g.total, 0);
     if (total > 0) {
-      const grupos = new Map();
-      dados.forEach(r => {
-        const ent = String(r[colEnt]||'').trim().toUpperCase();
-        if (!ent) return;
-        const v = Math.abs(toNum(r[col]) || 0);
-        grupos.set(ent, (grupos.get(ent)||{total:0,n:0}));
-        grupos.get(ent).total += v; grupos.get(ent).n++;
-      });
       grupos.forEach((g, ent) => {
         const pct = g.total / total * 100;
         if (pct < 30) return;
         resultado.concentracao.push({ tipo:'CONCENTRAÇÃO', severidade: pct>=50?'CRÍTICA':'ALTA',
-          entidade:esc(ent), totalRs:g.total, ocorrencias:g.n, pctTotal:Math.round(pct*100)/100,
-          descricao:`'${esc(ent)}' concentra ${pct.toFixed(1)}% do total (${fmtBRL(g.total)} em ${g.n} lançamentos)` });
+          entidade:ent, totalRs:g.total, ocorrencias:g.n, pctTotal:Math.round(pct*100)/100,
+          descricao:`'${ent}' concentra ${pct.toFixed(1)}% do total (${fmtBRL(g.total)} em ${g.n} lançamentos)` });
       });
     }
   }
@@ -869,7 +870,8 @@ function calcularAntiFraude(dados, cols) {
       if (itens.length < 3) return;
       itens.sort((a,b) => a.d - b.d);
       for (let i = 0; i < itens.length; i++) {
-        const janela = itens.slice(i).filter(x => x.d - itens[i].d <= 30*864e5);
+        const janela = [];
+        for (let j = i; j < itens.length && itens[j].d - itens[i].d <= 30*864e5; j++) janela.push(itens[j]);
         if (janela.length < 3) continue;
         const vs = janela.map(x => x.v);
         const media = vs.reduce((s,v)=>s+v,0)/vs.length;
@@ -878,9 +880,9 @@ function calcularAntiFraude(dados, cols) {
         if (cv < 0.30) {
           const dur = Math.round((janela[janela.length-1].d - janela[0].d) / 864e5);
           resultado.fracionamento.push({ tipo:'FRACIONAMENTO', severidade:'ALTA',
-            entidade:esc(ent), ocorrencias:janela.length, totalRs:vs.reduce((s,v)=>s+v,0),
+            entidade:ent, ocorrencias:janela.length, totalRs:vs.reduce((s,v)=>s+v,0),
             mediaRs:media, janelaDias:dur,
-            descricao:`'${esc(ent)}': ${janela.length} transações similares (média ${fmtBRL(media)}, CV=${(cv*100).toFixed(0)}%) em ${dur} dias` });
+            descricao:`'${ent}': ${janela.length} transações similares (média ${fmtBRL(media)}, CV=${(cv*100).toFixed(0)}%) em ${dur} dias` });
           break;
         }
       }
@@ -898,7 +900,7 @@ function calcularAntiFraude(dados, cols) {
   _add(resultado.fracionamento,    'f', n=>`${n} caso(s) de fracionamento suspeito`, 20);
   _add(resultado.outliers,         'o', n=>`${n} outlier(s) estatístico(s) por entidade`, 15);
   _add(resultado.concentracao,     'c', n=>`${n} entidade(s) com concentração anormal`, 10);
-  _add(resultado.anomaliasTEmporais,'t', n=>`${n} lançamento(s) em fim de semana ou feriado`, 5);
+  _add(resultado.anomaliasTemporais,'t', n=>`${n} lançamento(s) em fim de semana ou feriado`, 5);
   resultado.scoreRisco = Math.min(Math.round(score), 100);
   resultado.alertas = alertas;
   return resultado;
@@ -1073,7 +1075,7 @@ function parseOFX(text) {
     const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(dt);
     if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`;
     // OFX SGML: 20240115 or 20240115120000[-3:BRT]
-    const s = dt.replace(/[^\d].*/, '').slice(0, 8);
+    const s = dt.trim().replace(/[^\d].*/, '').slice(0, 8);
     return s.length === 8 ? `${s.slice(6)}/${s.slice(4,6)}/${s.slice(0,4)}` : '';
   }
 
@@ -2212,6 +2214,7 @@ function carregarArquivo(file) {
           const uteis = arr[i].filter(c => c && !String(c).startsWith('__EMPTY'));
           if (uteis.length >= 2) { headerRow = i; break; }
         }
+        if (!arr[headerRow]) throw new Error('Não foi possível detectar cabeçalho na planilha.');
         const rawHeaders = arr[headerRow].map(String);
         headers = rawHeaders.filter(h => h && !h.startsWith('__EMPTY'));
 
@@ -2353,6 +2356,7 @@ function carregarArquivoComparativo(file) {
         for (let i = 0; i < Math.min(5, arr.length); i++) {
           if (arr[i].filter(c => c && !String(c).startsWith('__EMPTY')).length >= 2) { headerRow = i; break; }
         }
+        if (!arr[headerRow]) throw new Error('Não foi possível detectar cabeçalho na planilha comparativa.');
         const rawH = arr[headerRow].map(String);
         headers = rawH.filter(h => h && !h.startsWith('__EMPTY'));
         dados   = arr.slice(headerRow + 1).filter(row => row.some(c => c !== '')).map(row => {
@@ -2422,7 +2426,7 @@ function mostrarConfigColunas(headers, cols, erpDetectado) {
       `<option value="${esc(h)}" ${cols[tipo]===h?'selected':''}>${esc(h)}</option>`
     ).join('');
     div.innerHTML = `<label>${label}</label>
-      <select id="sel-${tipo}" onchange="_atualizarPreview('${tipo}')"><option value="">(nenhuma)</option>${sel}</select>
+      <select id="sel-${tipo}" onchange="_atualizarPreview('${tipo}')"><option value="" ${!cols[tipo]?'selected':''}>(nenhuma)</option>${sel}</select>
       <div id="prev-${tipo}" class="col-preview"></div>`;
     grid.appendChild(div);
     if (cols[tipo]) setTimeout(() => _atualizarPreview(tipo), 0);
@@ -2588,7 +2592,7 @@ function renderKPIs(k) {
   const periodo = (k.periodoInicio && k.periodoFim)
     ? `${fmtData(k.periodoInicio)} → ${fmtData(k.periodoFim)}` : '—';
   const corRes = k.resultado >= 0 ? 'var(--success)' : 'var(--danger)';
-  const margem = isFinite(k.margem) ? k.margem.toFixed(1) : '—';
+  const margem = (k.margem != null && isFinite(k.margem)) ? k.margem.toFixed(1) : '—';
   document.getElementById('kpis').innerHTML = `
     <div class="kpi ok">
       <svg class="kpi-icon" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
@@ -2797,9 +2801,9 @@ function renderAuditoria(lista) {
       : 'background:#d1fae5;color:#065f46;border:1px solid #6ee7b7';
     return `<tr class="${rowClass}" style="${rowStyle}">
       <td>${sevCell}</td>
-      <td>${esc(p.tipo)}</td><td>${esc(p.linha)}</td>
-      <td>${esc(p.coluna)}</td><td>${esc(p.valor)}</td>
-      <td>${esc(p.descricao)}</td>
+      <td>${esc(String(p.tipo??''))}</td><td>${esc(String(p.linha??''))}</td>
+      <td>${esc(String(p.coluna??''))}</td><td>${esc(String(p.valor??''))}</td>
+      <td>${esc(String(p.descricao??''))}</td>
       <td><button data-audit-key="${esc(key)}" onclick="confirmarAuditoria(this.dataset.auditKey)"
         style="font-size:11px;padding:3px 10px;border-radius:6px;cursor:pointer;font-weight:600;white-space:nowrap;${btnStyle}">${btnLabel}</button></td>
     </tr>`;
@@ -3202,7 +3206,7 @@ function renderAntiFraude(r) {
   };
 
   const _row = (sev, desc) =>
-    `<div style="padding:8px 14px;border-bottom:1px solid #F1F5F9;display:flex;align-items:flex-start;gap:8px">${_badge(sev)}<span style="color:#374151;line-height:1.5">${String(desc)}</span></div>`;
+    `<div style="padding:8px 14px;border-bottom:1px solid #F1F5F9;display:flex;align-items:flex-start;gap:8px">${_badge(sev)}<span style="color:#374151;line-height:1.5">${esc(String(desc))}</span></div>`;
 
   // Benford chart
   let benfordHtml = '';
@@ -3251,7 +3255,7 @@ function renderAntiFraude(r) {
     ${_section('Outliers Estatísticos', '📈', r.outliers, x => _row(x.severidade, x.descricao))}
     ${_section('Concentração Anormal', '⚠️', r.concentracao, x => _row(x.severidade, x.descricao))}
     ${_section('Números Redondos', '🔢', r.numerosRedondos, x => _row(x.severidade, x.descricao))}
-    ${_section('Anomalias Temporais', '🗓️', r.anomaliasTEmporais, x => _row(x.severidade, x.descricao))}
+    ${_section('Anomalias Temporais', '🗓️', r.anomaliasTemporais, x => _row(x.severidade, x.descricao))}
   `;
 }
 
@@ -3480,7 +3484,7 @@ function _gerarBriefing() {
   if (_ultimoPareto && _ultimoPareto.length) {
     linhas.push(`\n## Top Entidades (Pareto)`);
     _ultimoPareto.slice(0, 5).forEach((r, i) =>
-      linhas.push(`${i + 1}. ${r.nome}: ${fmtV(r.total)} (${(r.pct || 0).toFixed(1)}%)`));
+      linhas.push(`${i + 1}. ${String(r.nome||'').replace(/[*_\\]/g,'\\$&')}: ${fmtV(r.total)} (${(r.pct || 0).toFixed(1)}%)`));
   }
 
   if (_ultimoAntiFraude && _ultimoAntiFraude.scoreRisco > 0) {
@@ -3737,7 +3741,8 @@ function exportarJSON() {
 }
 
 function exportarCSV() {
-  const dados = _dadosVisivelArr.length ? _dadosVisivelArr : _dadosOriginais;
+  const buscaAtiva = (document.getElementById('busca')?.value || '').trim().length > 0;
+  const dados = buscaAtiva ? _dadosVisivelArr : (_dadosVisivelArr.length ? _dadosVisivelArr : _dadosOriginais);
   if (!dados.length) { _toast('Sem dados para exportar', 2500, 'aviso'); return; }
   if (typeof XLSX === 'undefined') { _toast('SheetJS não carregado', 2500, 'erro'); return; }
   const rows = [_headers, ...dados.map(r => _headers.map(h => {
