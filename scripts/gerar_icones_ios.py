@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Gera ícones PNG para iOS a partir do SVG do manifest."""
-import base64, os, sys
+import os
 
 SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <rect width="512" height="512" fill="#1F4E79" rx="0"/>
