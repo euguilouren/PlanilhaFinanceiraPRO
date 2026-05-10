@@ -19,3 +19,10 @@ pasta_entrada/
 pasta_saida/
 node_modules/
 package-lock.json
+
+# Capacitor iOS (gerado — não comitar)
+ios/
+ios-icons/
+
+# www é gerado pelo build:www
+# Commitado apenas para referência inicial

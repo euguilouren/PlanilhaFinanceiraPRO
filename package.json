@@ -6,11 +6,20 @@
   "type": "module",
   "scripts": {
     "build": "python3 scripts/obfuscar_html.py index.html dist/index.html",
+    "build:www": "cp index.html www/index.html && cp manifest.json www/manifest.json && cp sw.js www/sw.js",
+    "build:ios": "npm run build:www && npx cap sync ios",
+    "open:ios": "npx cap open ios",
+    "cap:sync": "npx cap sync",
     "test:js": "vitest run",
     "test:js:watch": "vitest"
   },
   "devDependencies": {
     "javascript-obfuscator": "^4.1.1",
     "vitest": "^1.6.1"
+  },
+  "dependencies": {
+    "@capacitor/cli": "^8.3.3",
+    "@capacitor/core": "^8.3.3",
+    "@capacitor/ios": "^8.3.3"
   }
 }

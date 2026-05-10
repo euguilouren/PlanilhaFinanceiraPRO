@@ -1,0 +1,23 @@
+{
+  "appId": "io.github.euguilouren.planilhafinanceirapro",
+  "appName": "Planilha Financeira Pro",
+  "webDir": "www",
+  "bundledWebRuntime": false,
+  "server": {
+    "allowNavigation": []
+  },
+  "ios": {
+    "scheme": "PlanilhaFinanceiraPro",
+    "backgroundColor": "#1F4E79",
+    "contentInset": "automatic",
+    "preferredContentMode": "mobile",
+    "limitsNavigationsToAppBoundDomains": true
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 2000,
+      "backgroundColor": "#1F4E79",
+      "showSpinner": false
+    }
+  }
+}
