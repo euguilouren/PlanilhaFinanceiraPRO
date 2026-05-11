@@ -255,9 +255,9 @@ class FraudeDetector:
                     for j in range(i + 1, len(idxs)):
                         a, b = df_w.loc[idxs[i]], df_w.loc[idxs[j]]
                         va, vb = a["_val"], b["_val"]
-                        if pd.isna(va) or pd.isna(vb) or va <= 0:
+                        if pd.isna(va) or pd.isna(vb) or va <= 0 or vb <= 0:
                             continue
-                        if abs(va - vb) / va > tolerancia_pct:
+                        if abs(va - vb) / max(va, vb) > tolerancia_pct:
                             continue
                         da, db = a["_dt"], b["_dt"]
                         if pd.notna(da) and pd.notna(db):
@@ -360,7 +360,8 @@ class FraudeDetector:
                     continue
                 vs = [v for _, v in janela]
                 media = sum(vs) / len(vs)
-                std = (sum((v - media) ** 2 for v in vs) / len(vs)) ** 0.5
+                n = len(vs)
+                std = (sum((v - media) ** 2 for v in vs) / (n - 1)) ** 0.5 if n > 1 else 0.0
                 cv = std / media if media > 0 else 1.0
                 if cv < 0.30:
                     duracao = (janela[-1][0] - janela[0][0]).days
@@ -446,7 +447,7 @@ class FraudeDetector:
                 continue
             media = float(serie.mean())
             std = float(serie.std())
-            if std == 0:
+            if not math.isfinite(std) or std == 0:
                 continue
             for idx, v in serie.items():
                 z = (v - media) / std
@@ -492,7 +493,7 @@ class FraudeDetector:
         df_w["_ent"] = df_w[col_entidade].astype(str).str.strip().str.upper()
 
         total_geral = df_w["_val"].sum()
-        if total_geral <= 0:
+        if not math.isfinite(total_geral) or total_geral <= 0:
             return _empty
 
         resumo = (

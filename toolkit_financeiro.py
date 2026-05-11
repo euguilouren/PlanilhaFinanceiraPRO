@@ -552,9 +552,9 @@ class Auditor:
             inconsistencias.append({
                 'aba': aba, 'linha': idx + 2, 'coluna': col_valor,
                 'tipo': 'CLASSIFICAÇÃO_ERRADA', 'severidade': Status.ALTA,
-                'valor': f"R$ {row[col_valor]:,.2f}",
+                'valor': f"R$ {float(valores.loc[idx]):,.2f}",
                 'descricao': "Receita com valor negativo (possível estorno ou erro de classificação)",
-                'impacto_rs': abs(float(row[col_valor])),
+                'impacto_rs': abs(float(valores.loc[idx])),
             })
         return inconsistencias
 
@@ -945,7 +945,7 @@ class AnalistaFinanceiro:
                 if i > 0:
                     anterior, atual = row[cols[i - 1]], row[col]
                     r[f'Var_{cols[i-1]}_para_{col}_R$'] = round(atual - anterior, 2)
-                    r[f'Var_{cols[i-1]}_para_{col}_%']  = round((atual - anterior) / abs(anterior) * 100, 1) if anterior != 0 else None
+                    r[f'Var_{cols[i-1]}_para_{col}_%']  = round((atual - anterior) / abs(anterior) * 100, 1) if anterior != 0 else np.nan
             result_rows.append(r)
         return pd.DataFrame(result_rows)
 
@@ -1075,7 +1075,8 @@ class AnalistaFinanceiro:
         if hasattr(df_valid['_data'].dtype, 'tz') and df_valid['_data'].dtype.tz is not None:
             df_valid['_data'] = df_valid['_data'].dt.tz_localize(None)
         df_valid = df_valid.set_index('_data')
-        chave_col = col_chave if col_chave in df_valid.columns else df_valid.columns[0]
+        chave_col = (col_chave if col_chave in df_valid.columns
+                     else (df_valid.columns[0] if len(df_valid.columns) > 0 else '_valor'))
 
         def _agg(mask, abs_val=False):
             sub = df_valid[mask].copy()
@@ -1719,36 +1720,39 @@ class Verificador:
     @staticmethod
     def verificar_formulas_planilha(caminho_xlsx: str) -> dict:
         wb = load_workbook(caminho_xlsx)
-        resultado = {
-            'arquivo': os.path.basename(caminho_xlsx),
-            'abas_verificadas': [], 'alertas': [],
-        }
-        for ws_name in wb.sheetnames:
-            ws = wb[ws_name]
-            aba_info = {'nome': ws_name, 'total_celulas': 0,
-                        'celulas_com_formula': 0, 'celulas_com_valor_numerico': 0}
-            for row in ws.iter_rows():
-                for cell in row:
-                    if cell.value is None:
-                        continue
-                    aba_info['total_celulas'] += 1
-                    if isinstance(cell.value, str) and cell.value.startswith('='):
-                        aba_info['celulas_com_formula'] += 1
-                    elif isinstance(cell.value, (int, float)):
-                        aba_info['celulas_com_valor_numerico'] += 1
-                    # Detectar linha de totais com valor fixo em vez de fórmula
-                    if isinstance(cell.value, str) and cell.value.upper().strip() in ('TOTAIS', 'TOTAL', 'TOTAL GERAL', 'SOMA'):
-                        for next_cell in row:
-                            if next_cell.column > cell.column and isinstance(next_cell.value, (int, float)):
-                                resultado['alertas'].append({
-                                    'aba': ws_name,
-                                    'celula': f'{next_cell.column_letter}{next_cell.row}',
-                                    'tipo': 'TOTAL_SEM_FORMULA', 'severidade': Status.CRITICA,
-                                    'mensagem': f'Célula de total com valor fixo ({next_cell.value}) — use =SUM()',
-                                })
-            resultado['abas_verificadas'].append(aba_info)
-        resultado['status'] = Status.OK if not resultado['alertas'] else 'FALHA'
-        return resultado
+        try:
+            resultado = {
+                'arquivo': os.path.basename(caminho_xlsx),
+                'abas_verificadas': [], 'alertas': [],
+            }
+            for ws_name in wb.sheetnames:
+                ws = wb[ws_name]
+                aba_info = {'nome': ws_name, 'total_celulas': 0,
+                            'celulas_com_formula': 0, 'celulas_com_valor_numerico': 0}
+                for row in ws.iter_rows():
+                    for cell in row:
+                        if cell.value is None:
+                            continue
+                        aba_info['total_celulas'] += 1
+                        if isinstance(cell.value, str) and cell.value.startswith('='):
+                            aba_info['celulas_com_formula'] += 1
+                        elif isinstance(cell.value, (int, float)):
+                            aba_info['celulas_com_valor_numerico'] += 1
+                        # Detectar linha de totais com valor fixo em vez de fórmula
+                        if isinstance(cell.value, str) and cell.value.upper().strip() in ('TOTAIS', 'TOTAL', 'TOTAL GERAL', 'SOMA'):
+                            for next_cell in row:
+                                if next_cell.column > cell.column and isinstance(next_cell.value, (int, float)):
+                                    resultado['alertas'].append({
+                                        'aba': ws_name,
+                                        'celula': f'{next_cell.column_letter}{next_cell.row}',
+                                        'tipo': 'TOTAL_SEM_FORMULA', 'severidade': Status.CRITICA,
+                                        'mensagem': f'Célula de total com valor fixo ({next_cell.value}) — use =SUM()',
+                                    })
+                resultado['abas_verificadas'].append(aba_info)
+            resultado['status'] = Status.OK if not resultado['alertas'] else 'FALHA'
+            return resultado
+        finally:
+            wb.close()
 
     @staticmethod
     def verificar_atualizacao(
@@ -2133,6 +2137,7 @@ class Normalizador:
             Lista vazia significa dados válidos.
         """
         problemas = []
+        df = df.reset_index(drop=True)
 
         # Verifica colunas obrigatórias presentes
         for col in Normalizador.COLUNAS_OBRIGATORIAS:

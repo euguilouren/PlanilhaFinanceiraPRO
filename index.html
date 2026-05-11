@@ -68,7 +68,7 @@ const PADROES_COLUNAS = {
   categoria:  /categoria|category|natureza|hist[oó]rico|descri[cç][aã]o|conta\b/i,
   entidade:   /cliente|fornecedor|customer|supplier|nome|name|empresa|parceiro|favorecido/i,
   chave:      /^(nf|nfe|numero|n[uú]mero|id\b|doc|documento|chave|key|c[oó]digo|pedido)/i,
-  tipo:       /^(tipo|type|natureza|dire[cç][aã]o|entrada[\s_-]sa[ií]da|nf[\s_-]tipo)/i,
+  tipo:       /^(tipo|type|dire[cç][aã]o|entrada[\s_-]sa[ií]da|nf[\s_-]tipo)/i,
 };
 
 function detectarColunas(headers) {
@@ -143,8 +143,8 @@ function calcularIntegridade(dados, cols, kpis, dre, pareto) {
     detalhe:`${comValor} de ${dados.length} (${pctVal.toFixed(0)}%)`,
     como: okVal ? null : `Verifique as linhas com célula em branco ou texto não-numérico na coluna "${cols.valor||'Valor'}". No Excel: use Ctrl+End para ver o intervalo de dados e filtre pela coluna buscando células vazias.` });
 
-  // Check 2: checksum (informativo)
-  total++;  passed++;
+  // Check 2: checksum (informativo) — não conta no score de confiança
+  // total++;  passed++;
   const checksum = dados.reduce((s,r)=>{ const v=toNum(r[cols.valor]); return s+(isNaN(v)?0:Math.abs(v)); }, 0);
   checks.push({ nome:'Checksum (soma |valores|)', status:'INFO',
     detalhe:`${fmtBRL(checksum)} — confirme com =SOMA() no Excel`,
@@ -187,7 +187,7 @@ function calcularIntegridade(dados, cols, kpis, dre, pareto) {
   if (!cols.categoria) {
     const negativos = dados.filter(r => { const v = toNum(r[cols.valor]); return !isNaN(v) && v < 0; }).length;
     if (negativos > 0) {
-      total++; passed++;
+      // INFO — não conta no score de confiança
       checks.push({ nome:'Classificação automática', status:'INFO',
         detalhe:`${negativos} lançamento(s) negativo(s) → Despesa; demais → Receita`,
         como: null });
@@ -204,7 +204,7 @@ function calcularIntegridade(dados, cols, kpis, dre, pareto) {
 
 function toNum(v) {
   if (v === null || v === undefined || v === '') return NaN;
-  if (typeof v === 'number') return v;
+  if (typeof v === 'number') return isFinite(v) ? v : NaN;
   let s = String(v).replace(/R\$\s?/g,'').trim();
   // Parênteses contábeis: (1.500,00) → -1500
   const neg = s.startsWith('(') && s.endsWith(')');
@@ -247,7 +247,15 @@ function toDate(v) {
   const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (iso) {
     const d = new Date(+iso[1], +iso[2]-1, +iso[3]);
-    return isNaN(d) ? null : d;
+    if (d.getFullYear() !== +iso[1] || d.getMonth() !== +iso[2]-1 || d.getDate() !== +iso[3]) return null;
+    return d;
+  }
+  // Loose BR fallback: D/M/YYYY or DD/M/YYYY etc.
+  const brLoose = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (brLoose) {
+    const d = new Date(+brLoose[3], +brLoose[2]-1, +brLoose[1]);
+    if (d.getFullYear() !== +brLoose[3] || d.getMonth() !== +brLoose[2]-1 || d.getDate() !== +brLoose[1]) return null;
+    return d;
   }
   const d = new Date(s);
   return isNaN(d) ? null : d;
@@ -302,7 +310,7 @@ function auditoria(dados, cols) {
   for (const col of obrigatorias) {
     const vazios = dados.map((r, i) => [r, i]).filter(([r]) => {
       const v = r[col];
-      return v === null || v === undefined || v === '';
+      return v === null || v === undefined || String(v).trim() === '';
     }).map(([,i]) => i + 2);
     if (vazios.length > 0) {
       problemas.push({
@@ -452,8 +460,8 @@ function calcularPareto(dados, colEntidade, colValor, top = 15) {
 // ══════════════════════════════════════════════════════
 
 const MAPA_DRE = [
-  { linha:'Receita Bruta',              termos:/RECEITA|VENDA|FATURAMENTO/ },
   { linha:'(-) Deduções',               termos:/DEDU[CÇ]|IMPOSTO.*VENDA|DEVOLU|ABATIMENTO|PIS|COFINS|ISS|ICMS/ },
+  { linha:'Receita Bruta',              termos:/RECEITA|VENDA|FATURAMENTO/ },
   { linha:'(-) CMV/CPV',                termos:/CMV|CPV|CUSTO.*MERCADORIA|CUSTO.*PRODUTO|CUSTO.*VARI/ },
   { linha:'(-) Despesas Operacionais',  termos:/DESPESA|GASTO|CUSTO[\s_]FIX|FOLHA|PAGAMENTO|SALARIO|ALUGUEL|MARKETING|ENERGIA|TELEFONE|INTERNET|MATERIAL|MANUTENC/ },
   { linha:'(-/+) Resultado Financeiro', termos:/FINANCEI|JUROS|CAMBIAL/ },
@@ -477,27 +485,20 @@ function construirDRE(dados, colCat, colValor) {
       else if (v < 0) valores['(-) Despesas Operacionais'] += v;
     });
   } else {
-    let classificados = 0;
     dados.forEach(row => {
       const cat = String(row[colCat] ?? '').toUpperCase().trim();
       const v   = toNum(row[colValor]);
       if (isNaN(v)) return;
+      let matched = false;
       for (const { linha, termos } of MAPA_DRE) {
-        if (termos.test(cat)) { valores[linha] += v; classificados++; break; }
+        if (termos.test(cat)) { valores[linha] += v; matched = true; break; }
       }
-    });
-    // Se nenhuma linha foi classificada, aplica fallback por sinal
-    if (classificados === 0) {
-      modo = 'sinal';
-      // Zero all accumulators before fallback pass to avoid double-counting
-      MAPA_DRE.forEach(({ linha }) => { valores[linha] = 0; });
-      dados.forEach(row => {
-        const v = toNum(row[colValor]);
-        if (isNaN(v)) return;
+      // Per-row fallback by sign for unclassified rows
+      if (!matched) {
         if (v > 0) valores['Receita Bruta'] += v;
         else if (v < 0) valores['(-) Despesas Operacionais'] += v;
-      });
-    }
+      }
+    });
   }
 
   const rb  = valores['Receita Bruta'];
@@ -587,7 +588,7 @@ function calcularFluxoPeriodo(dados, colData, colValor, colTipo, freq) {
     const tipo = colTipo ? String(r[colTipo] ?? '').trim().toUpperCase() : '';
     const isRec = /^(RECEITA|CR[EÉ]DITO|ENTRADA)$/.test(tipo) || /RECEI|ENTRA|CRÉDI|VENDA|FATURAMENTO/.test(tipo)
       || (!(/^(DESPESA|D[EÉ]BITO|SA[IÍ]DA)$/.test(tipo) || /DESPE|SAÍDA|SAIDA|DÉBITO|DEBITO/.test(tipo)) && v > 0);
-    if (isRec) { grupos[key].rec += v;  grupos[key].nfRec++; }
+    if (isRec) { grupos[key].rec += Math.abs(v);  grupos[key].nfRec++; }
     else       { grupos[key].desp += Math.abs(v); grupos[key].nfDesp++; }
   });
 
@@ -666,6 +667,7 @@ function renderFluxoPeriodo(dados, cols) {
   const tabD = _tabela('D');
   const tabM = _tabela('M');
   const tabA = _tabela('A');
+  if (_chartFluxoM) { _chartFluxoM.destroy(); _chartFluxoM = null; }
   el.innerHTML = `
     <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
       <button class="btn-sm btn-outline fluxo-tab active" onclick="switchFluxo('M',this)"
@@ -767,7 +769,7 @@ function calcularAntiFraude(dados, cols) {
           if (Math.abs(va-vb)/va > 0.01) continue;
           if (da && db && Math.abs(da-db) > 30*864e5) continue;
           resultado.duplicatas.push({ tipo:'DUPLICATA_FUZZY', severidade:'ALTA',
-            linha:ia+2, descricao:`Valor similar (${fmtBRL(va)} ≈ ${fmtBRL(vb)}) para '${esc(ent)}' — linha ${ib+2}`,
+            linha:ia+2, descricao:`Valor similar (${fmtBRL(va)} ≈ ${fmtBRL(vb)}) para '${ent}' — linha ${ib+2}`,
             valor:va, entidade:esc(ent) });
         }
       }
@@ -824,7 +826,7 @@ function calcularAntiFraude(dados, cols) {
         if (Math.abs(z) < 3) return;
         resultado.outliers.push({ tipo:'OUTLIER', severidade: Math.abs(z)>=4.5?'ALTA':'MÉDIA',
           linha:i+2, entidade:esc(ent), valor:v, zScore:Math.round(z*10)/10,
-          descricao:`'${esc(ent)}': ${fmtBRL(v)} é ${Math.abs(z).toFixed(1)}σ ${z>0?'acima':'abaixo'} da média (${fmtBRL(media)})` });
+          descricao:`'${ent}': ${fmtBRL(v)} é ${Math.abs(z).toFixed(1)}σ ${z>0?'acima':'abaixo'} da média (${fmtBRL(media)})` });
       });
     });
   }
@@ -846,7 +848,7 @@ function calcularAntiFraude(dados, cols) {
         if (pct < 30) return;
         resultado.concentracao.push({ tipo:'CONCENTRAÇÃO', severidade: pct>=50?'CRÍTICA':'ALTA',
           entidade:esc(ent), totalRs:g.total, ocorrencias:g.n, pctTotal:Math.round(pct*100)/100,
-          descricao:`'${esc(ent)}' concentra ${pct.toFixed(1)}% do total (${fmtBRL(g.total)} em ${g.n} lançamentos)` });
+          descricao:`'${ent}' concentra ${pct.toFixed(1)}% do total (${fmtBRL(g.total)} em ${g.n} lançamentos)` });
       });
     }
   }
@@ -876,7 +878,7 @@ function calcularAntiFraude(dados, cols) {
           resultado.fracionamento.push({ tipo:'FRACIONAMENTO', severidade:'ALTA',
             entidade:esc(ent), ocorrencias:janela.length, totalRs:vs.reduce((s,v)=>s+v,0),
             mediaRs:media, janelaDias:dur,
-            descricao:`'${esc(ent)}': ${janela.length} transações similares (média ${fmtBRL(media)}, CV=${(cv*100).toFixed(0)}%) em ${dur} dias` });
+            descricao:`'${ent}': ${janela.length} transações similares (média ${fmtBRL(media)}, CV=${(cv*100).toFixed(0)}%) em ${dur} dias` });
           break;
         }
       }
@@ -2131,8 +2133,10 @@ function carregarArquivoComparativo(file) {
         ({ headers, dados } = parseOFX(text));
         if (!dados.length) throw new Error('Nenhuma transação encontrada no arquivo OFX comparativo.');
       } else if (file.name.toLowerCase().match(/\.(csv|tsv)$/)) {
+        let _csvTxt = e.target.result;
+        if (_csvTxt.charCodeAt(0) === 0xFEFF) _csvTxt = _csvTxt.slice(1);
         const sep = file.name.toLowerCase().endsWith('.tsv') ? '\t' : undefined;
-        const wb  = XLSX.read(e.target.result, { type:'string', raw:false, FS: sep });
+        const wb  = XLSX.read(_csvTxt, { type:'string', raw:false, FS: sep });
         const ws  = wb.Sheets[wb.SheetNames[0]];
         const arr = XLSX.utils.sheet_to_json(ws, { header:1, defval:'' });
         if (!arr.length || !arr[0]) throw new Error('Arquivo comparativo vazio ou sem cabeçalho.');
@@ -2359,9 +2363,9 @@ async function executarAnalise() {
       _atualizarStep(2);
     } finally {
       _analisandoAgora = false;
+      mostrarLoader(false);
+      _setLoaderStep('');
     }
-    mostrarLoader(false);
-    _setLoaderStep('');
     // Stagger de entrada dos cards e KPIs
     const _sc = [...document.querySelectorAll('#dashboard .card')];
     _sc.forEach(el => el.classList.remove('card-animate'));
@@ -2964,8 +2968,10 @@ function _irPagina(n) {
 }
 
 function _toSortKey(v) {
-  const s = String(v ?? '').trim();
-  const n = parseFloat(s.replace(/[^\d.,\-]/g,'').replace(/\./g,'').replace(',','.'));
+  const s = String(v ?? '').trim().replace(/[^\d.,\-]/g,'');
+  const n = s.includes(',')
+    ? parseFloat(s.replace(/\./g,'').replace(',','.'))
+    : parseFloat(s.replace(/,/g,''));
   return isFinite(n) ? n : null;
 }
 
@@ -3036,10 +3042,14 @@ function _filtrarTabelaImediato() {
 function _parseDataBR(s) {
   // Converts DD/MM/YYYY, YYYY-MM-DD, Date object, or Excel serial to YYYY-MM-DD string
   if (!s) return null;
-  if (s instanceof Date) return isNaN(s) ? null : s.toISOString().slice(0, 10);
+  if (s instanceof Date) {
+    if (isNaN(s)) return null;
+    return `${s.getFullYear()}-${String(s.getMonth()+1).padStart(2,'0')}-${String(s.getDate()).padStart(2,'0')}`;
+  }
   if (typeof s === 'number') {
     const d = new Date(Math.round((s - 25569) * 86400 * 1000));
-    return isNaN(d) ? null : d.toISOString().slice(0, 10);
+    if (isNaN(d)) return null;
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   }
   const m1 = String(s).match(/^(\d{2})\/(\d{2})\/(\d{4})/);
   if (m1) return `${m1[3]}-${m1[2]}-${m1[1]}`;
@@ -3210,7 +3220,7 @@ async function analisarComClaude(btn) {
         'anthropic-dangerous-allow-browser': 'true',
       },
       body: JSON.stringify({
-        model: 'claude-opus-4-7',
+        model: 'claude-opus-4-5',
         max_tokens: 2048,
         system: _CLAUDE_SYSTEM,
         messages: [{ role: 'user', content: _gerarBriefing() }],

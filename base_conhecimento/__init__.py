@@ -345,7 +345,7 @@ MAPAS_ERP: Dict[str, dict] = {
 
 # Assinaturas para auto-detecção: mínimo 2 de N colunas devem estar presentes
 ASSINATURAS_ERP: Dict[str, list] = {
-    erp: data['sinais'] for erp, data in MAPAS_ERP.items()
+    erp: list(data['sinais']) for erp, data in MAPAS_ERP.items()
 }
 
 
@@ -357,7 +357,7 @@ def detectar_erp(df: pd.DataFrame) -> Optional[str]:
     Critério: pelo menos 2 colunas-sinal do ERP presentes no DataFrame.
     Comparação case-insensitive. Em empate, prefere o ERP com mais hits.
     """
-    colunas_lower = {c.lower() for c in df.columns}
+    colunas_lower = {str(c).lower() for c in df.columns if c is not None}
     scores: Dict[str, int] = {}
 
     for erp, sinais in ASSINATURAS_ERP.items():
@@ -393,7 +393,11 @@ def normalizar_colunas(df: pd.DataFrame, erp: Optional[str] = None) -> pd.DataFr
         erp = detectar_erp(df)
     if erp is None or erp not in MAPAS_ERP:
         return df.copy()
-    return df.rename(columns=MAPAS_ERP[erp]['colunas'])
+    mapa = MAPAS_ERP[erp]['colunas']
+    mapa_lower = {k.lower(): v for k, v in mapa.items()}
+    rename = {c: mapa_lower[str(c).lower()] for c in df.columns
+              if c is not None and str(c).lower() in mapa_lower}
+    return df.rename(columns=rename)
 
 
 __all__ = ['MAPAS_ERP', 'ASSINATURAS_ERP', 'detectar_erp', 'normalizar_colunas']

@@ -242,7 +242,10 @@ def _montar_chart_data(df_mensal: pd.DataFrame | None) -> dict:
     df = df_mensal.tail(24)  # últimos 24 períodos
 
     def _safe(v):
-        f = float(v)
+        try:
+            f = float(v)
+        except (ValueError, TypeError):
+            return 0.0
         return 0.0 if f != f else round(f, 2)  # replace NaN with 0
 
     labels = [str(p) for p in df.get('Periodo', [])]
@@ -304,17 +307,19 @@ def _tabela_fluxo(df: pd.DataFrame | None) -> str:
     tot_res  = float(df['Resultado_RS'].sum())
     rows = ''
     for _, r in df.iterrows():
-        res = float(r['Resultado_RS'])
+        res = float(r['Resultado_RS']) if pd.notna(r['Resultado_RS']) else 0.0
         cor = '#D1FAE5' if res >= 0 else '#FEE2E2'
-        pct = float(r['Resultado_Pct'])
+        pct = float(r['Resultado_Pct']) if pd.notna(r['Resultado_Pct']) else 0.0
         pct_str = (f'+{pct:.1f}%' if pct >= 0 else f'{pct:.1f}%')
+        _nfr = r['NFs_Receita']; nfr = int(float(_nfr)) if pd.notna(_nfr) else 0
+        _nfd = r['NFs_Despesa']; nfd = int(float(_nfd)) if pd.notna(_nfd) else 0
         rows += (
             f"<tr style='background:{cor}'>"
             f"<td style='font-weight:600'>{_esc(str(r['Periodo']))}</td>"
             f"<td style='text-align:right;color:#065F46'>{_fmt_brl(r['Receita_RS'])}</td>"
-            f"<td style='text-align:center'>{int(r['NFs_Receita'])}</td>"
+            f"<td style='text-align:center'>{nfr}</td>"
             f"<td style='text-align:right;color:#991B1B'>{_fmt_brl(r['Despesa_RS'])}</td>"
-            f"<td style='text-align:center'>{int(r['NFs_Despesa'])}</td>"
+            f"<td style='text-align:center'>{nfd}</td>"
             f"<td style='text-align:right;font-weight:bold;color:{'#065F46' if res>=0 else '#991B1B'}'>"
             f"{_fmt_brl(res)}</td>"
             f"<td style='text-align:center'>{pct_str}</td></tr>"
@@ -383,11 +388,12 @@ def _secao_dre(df: pd.DataFrame | None) -> str:
         return ''
     rows = ''
     for _, r in df.iterrows():
-        linha = _esc(str(r.get('Linha_DRE', r.iloc[0])))
+        linha_raw = str(r.get('Linha_DRE', r.iloc[0]))
+        linha = _esc(linha_raw)
         val   = float(r.get('Valor_RS', 0))
         av    = r.get('AV_%', '')
         nivel = str(r.get('Nivel', '')).strip()
-        is_total = linha in _TOTAIS_DRE
+        is_total = linha_raw in _TOTAIS_DRE
         peso = 'font-weight:bold' if is_total else ''
         cor_v = 'color:#065F46' if val >= 0 else 'color:#991B1B'
         indent = 'padding-left:24px' if nivel == '2' else ''
@@ -412,7 +418,7 @@ def _secao_pareto(df: pd.DataFrame | None) -> str:
     if df is None or len(df) == 0:
         return ''
     col_ent = df.columns[0]
-    max_val = float(df['Total_RS'].max()) if len(df) else 1
+    max_val = float(df['Total_RS'].max()) if 'Total_RS' in df.columns and len(df) else 1
     if not max_val or pd.isna(max_val):
         max_val = 1
     rows = ''

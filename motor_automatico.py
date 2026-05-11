@@ -11,6 +11,7 @@ Execução:
 """
 
 import os
+import math
 import ssl
 import html as _html_mod
 import time
@@ -705,7 +706,7 @@ class ProcessadorArquivo:
         linhas = [
             f"# BRIEFING FINANCEIRO — {datetime.now().strftime('%d/%m/%Y %H:%M')}",
             f"Arquivo: {diagnostico.get('arquivo', 'desconhecido')}",
-            f"Total de registros: {diagnostico['total_registros']:,}",
+            f"Total de registros: {diagnostico.get('total_registros', 0):,}",
             "",
         ]
         if diagnostico.get('problemas_formato'):
@@ -716,7 +717,7 @@ class ProcessadorArquivo:
         if len(df_auditoria):
             linhas.append(f"## Auditoria — {len(df_auditoria)} problemas encontrados")
             for sev in [Status.CRITICA, Status.ALTA, Status.MEDIA, Status.BAIXA]:
-                subset = df_auditoria[df_auditoria['Severidade'] == sev]
+                subset = df_auditoria[df_auditoria['Severidade'].astype(str) == str(sev)]
                 if len(subset):
                     linhas.append(f"\n### {sev} ({len(subset)})")
                     for _, row in subset.head(10).iterrows():
@@ -779,7 +780,7 @@ class ProcessadorArquivo:
             nums = pd.to_numeric(df[col_val_df], errors='coerce').dropna()
             receita = nums[nums > 0].sum()
             despesa = nums[nums < 0].abs().sum()
-            margem  = (receita - despesa) / receita * 100 if receita and receita == receita else 0
+            margem  = (receita - despesa) / receita * 100 if receita and math.isfinite(float(receita)) else 0
             pts_m   = 30 if margem >= 30 else (20 if margem >= 15 else (10 if margem >= 5 else 0))
 
             # Inadimplência aging (25 pts)
@@ -855,8 +856,8 @@ class ProcessadorArquivo:
 
             corpo = f"""
 <h2>Alerta Automático — Toolkit Financeiro</h2>
-<p><b>Arquivo:</b> {Path(resultado['arquivo_origem']).name}</p>
-<p><b>Processado em:</b> {resultado['timestamp']}</p>
+<p><b>Arquivo:</b> {_html_mod.escape(Path(resultado['arquivo_origem']).name)}</p>
+<p><b>Processado em:</b> {_html_mod.escape(str(resultado['timestamp']))}</p>
 <p><b>Problemas críticos:</b> {resultado['criticos']}</p>
 <p><b>Total de alertas:</b> {resultado['total_problemas']}</p>
 <hr>
@@ -946,7 +947,8 @@ class ObservadorPasta:
             if arquivo.suffix.lower() in ProcessadorArquivo.EXTENSOES_SUPORTADAS:
                 # Verifica estabilidade: aguarda o arquivo parar de ser copiado
                 try:
-                    estado_atual = (arquivo.stat().st_size, arquivo.stat().st_mtime)
+                    _st = arquivo.stat()
+                    estado_atual = (_st.st_size, _st.st_mtime)
                 except OSError:
                     continue
                 # Chave única por (nome, mtime) — permite reprocessar arquivos recriados
