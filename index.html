@@ -614,6 +614,77 @@ function calcularFluxoPeriodo(dados, colData, colValor, colTipo, freq) {
     }));
 }
 
+// ══════════════════════════════════════════════════════
+// MÓDULO 8: PROJEÇÃO LINEAR (regressão simples)
+// ══════════════════════════════════════════════════════
+
+function calcularProjecao(linhas, nProjecoes) {
+  nProjecoes = nProjecoes || 3;
+  if (!linhas || linhas.length < 3) return null;
+  const n = linhas.length;
+  const xm = (n - 1) / 2;
+  function _lr(ys) {
+    const ym = ys.reduce(function(a, b) { return a + b; }, 0) / n;
+    let num = 0, den = 0;
+    for (let i = 0; i < n; i++) { num += (i - xm) * (ys[i] - ym); den += (i - xm) * (i - xm); }
+    const b = den ? num / den : 0;
+    return { a: ym - b * xm, b };
+  }
+  const lrRec  = _lr(linhas.map(function(l) { return l.receita; }));
+  const lrDesp = _lr(linhas.map(function(l) { return l.despesa; }));
+  const nomesMes = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  const last = linhas[n - 1];
+  let baseAno = 2000, baseMes = 0;
+  if (last && last.periodo) {
+    const p = last.periodo.split('/');
+    if (p.length === 2) { baseMes = parseInt(p[0], 10) - 1; baseAno = parseInt(p[1], 10); }
+  }
+  return Array.from({ length: nProjecoes }, function(_, k) {
+    const idx = n + k;
+    const rec  = Math.max(0, Math.round((lrRec.a  + lrRec.b  * idx) * 100) / 100);
+    const desp = Math.max(0, Math.round((lrDesp.a + lrDesp.b * idx) * 100) / 100);
+    const mIdx = (baseMes + k + 1) % 12;
+    const ano  = baseAno + Math.floor((baseMes + k + 1) / 12);
+    return { periodo: nomesMes[mIdx] + '/' + ano, rec, desp, res: Math.round((rec - desp) * 100) / 100, projetado: true };
+  });
+}
+
+// ══════════════════════════════════════════════════════
+// MÓDULO 9: SAZONALIDADE (médias mensais Jan–Dez)
+// ══════════════════════════════════════════════════════
+
+function calcularSazonalidade(dados, colData, colValor, colTipo) {
+  if (!colData || !colValor) return null;
+  const buckets = Array.from({ length: 12 }, function() { return { rec: 0, desp: 0, anos: new Set() }; });
+  dados.forEach(function(r) {
+    const d = toDate(r[colData]);
+    if (!d || isNaN(d.getTime())) return;
+    const v = toNum(r[colValor]);
+    if (isNaN(v) || v === 0) return;
+    const m = d.getMonth();
+    buckets[m].anos.add(d.getFullYear());
+    const tipo = colTipo ? String(r[colTipo] || '').trim().toUpperCase() : '';
+    const isRec = /^(RECEITA|CR[EÉ]DITO|ENTRADA)$/.test(tipo) ||
+                  /RECEI|ENTRA|CR[EÉ]DI|VENDA|FATURAMENTO/.test(tipo) ||
+                  (!(/^(DESPESA|D[EÉ]BITO|SA[IÍ]DA)$/.test(tipo) || /DESPE|SA[IÍ]DA|D[EÉ]BITO/.test(tipo)) && v > 0);
+    if (isRec) buckets[m].rec  += v;
+    else        buckets[m].desp += Math.abs(v);
+  });
+  const nomes = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  const result = buckets.map(function(b, i) {
+    const nAnos = b.anos.size || 1;
+    return {
+      mes:      nomes[i],
+      receita:  Math.round(b.rec  / nAnos * 100) / 100,
+      despesa:  Math.round(b.desp / nAnos * 100) / 100,
+      resultado:Math.round((b.rec - b.desp) / nAnos * 100) / 100,
+      nAnos,
+    };
+  });
+  const temDados = result.some(function(r) { return r.receita > 0 || r.despesa > 0; });
+  return temDados ? result : null;
+}
+
 function renderFluxoPeriodo(dados, cols) {
   const el = document.getElementById('fluxo-content');
   if (!el) return;
