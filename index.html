@@ -1483,6 +1483,13 @@ tr:hover td{background:#EEF4FF;transition:background .15s}
   #upload-area{padding:32px 16px;min-height:calc(100vh - 56px)}
   .drop-zone{padding:36px 20px;border-radius:18px}
   .toolbar .btn-sm{flex:1;min-width:calc(50% - 5px)}
+  /* Busca responsiva */
+  .search-wrap{width:100%}
+  .search-wrap input{width:100%;box-sizing:border-box}
+  .busca-info{display:block;margin-left:0;margin-top:4px}
+  /* Filtro de período responsivo */
+  #filtro-periodo-wrap{flex-wrap:wrap}
+  #filtro-de,#filtro-ate{flex:1;min-width:110px;box-sizing:border-box}
 }
 /* ── Scrollbar premium ── */
 ::-webkit-scrollbar{width:6px;height:6px}
@@ -1789,7 +1796,7 @@ tr:hover td{background:#EEF4FF;transition:background .15s}
   <div class="card" id="card-dados" role="region" aria-label="Tabela de Dados">
     <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex-shrink:0"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>Dados <span id="dados-info" style="font-size:11px;font-weight:normal;color:#888;text-transform:none"></span></h2>
     <div style="margin-bottom:10px">
-      <div style="display:flex;align-items:center;gap:0">
+      <div style="display:flex;align-items:center;gap:0;flex-wrap:wrap">
         <div class="search-wrap" style="position:relative">
           <span class="search-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
           <input id="busca" type="text" placeholder="Buscar em todos os campos..." oninput="filtrarTabela()" aria-label="Buscar em todos os campos" style="padding-right:28px">
