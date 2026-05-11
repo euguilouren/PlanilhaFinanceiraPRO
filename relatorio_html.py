@@ -311,7 +311,10 @@ class GeradorHTML:
         for i, (_, r) in enumerate(df.iterrows()):
             faixa = str(r['Faixa_Aging'])
             _pct = r.get('Percentual', 0)
-            pct = float(_pct) if pd.notna(_pct) else 0.0
+            try:
+                pct = float(str(_pct).replace(',', '.')) if pd.notna(_pct) else 0.0
+            except (ValueError, TypeError):
+                pct = 0.0
             _qtd = r.get('Quantidade', 0)
             qtd = int(float(_qtd)) if pd.notna(_qtd) else 0
             _tot = r.get('Total_RS', 0)

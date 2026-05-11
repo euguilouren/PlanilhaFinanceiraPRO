@@ -388,7 +388,7 @@ def _secao_dre(df: pd.DataFrame | None) -> str:
         return ''
     rows = ''
     for _, r in df.iterrows():
-        linha_raw = str(r.get('Linha_DRE', r.iloc[0]))
+        linha_raw = str(r.get('Linha_DRE', r.iloc[0] if len(r) > 0 else ''))
         linha = _esc(linha_raw)
         val   = float(r.get('Valor_RS', 0))
         av    = r.get('AV_%', '')
