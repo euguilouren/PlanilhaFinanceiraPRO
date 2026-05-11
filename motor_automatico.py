@@ -789,7 +789,7 @@ class ProcessadorArquivo:
                 total_ag = df_aging['Total_RS'].sum() if 'Total_RS' in df_aging.columns else 0
                 col_faixa = next((c for c in df_aging.columns if 'faixa' in c.lower()), None)
                 if col_faixa and 'Total_RS' in df_aging.columns:
-                    vencido  = df_aging[~df_aging[col_faixa].str.contains('vencer|Sem', na=False)]['Total_RS'].sum()
+                    vencido  = df_aging[~df_aging[col_faixa].astype(str).str.contains('vencer|Sem', na=False)]['Total_RS'].sum()
                     pct_venc = vencido / total_ag * 100 if total_ag > 0 else 0
                     pts_a = 25 if pct_venc == 0 else (18 if pct_venc < 10 else (10 if pct_venc < 25 else 0))
 
