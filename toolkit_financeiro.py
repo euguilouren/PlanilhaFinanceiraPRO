@@ -548,7 +548,7 @@ class Auditor:
         receitas_neg = df[
             df[col_tipo].str.upper().str.contains('RECEITA|VENDA|FATURAMENTO', na=False) & (valores < 0)
         ]
-        for idx, row in receitas_neg.iterrows():
+        for idx, _row in receitas_neg.iterrows():
             inconsistencias.append({
                 'aba': aba, 'linha': idx + 2, 'coluna': col_valor,
                 'tipo': 'CLASSIFICAÇÃO_ERRADA', 'severidade': Status.ALTA,
