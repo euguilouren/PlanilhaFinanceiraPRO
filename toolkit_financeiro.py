@@ -177,12 +177,6 @@ class Leitor:
                 diagnostico['abas'].append(Leitor._info_aba('Extrato', df))
                 diagnostico['total_registros'] = len(df)
 
-            elif ext == '.xml':
-                df = Leitor._ler_nfe_xml(caminho)
-                dados['NF-e'] = df
-                diagnostico['abas'].append(Leitor._info_aba('NF-e', df))
-                diagnostico['total_registros'] = len(df)
-
             else:
                 raise ValueError(f"Formato não suportado: {ext}")
 
@@ -290,136 +284,6 @@ class Leitor:
                          'Descrição': descr, 'ID': fitid, 'Tipo': tipo})
 
         return pd.DataFrame(rows, columns=['Data', 'Vencimento', 'Valor', 'Descrição', 'ID', 'Tipo'])
-
-    @staticmethod
-    def _ler_nfe_xml(caminho: str) -> pd.DataFrame:
-        """Lê arquivo NF-e XML (padrão SEFAZ) e retorna DataFrame normalizado.
-
-        Suporta namespace ``http://www.portalfiscal.inf.br/nfe``.
-        Aceita tanto um único documento quanto lotes (múltiplas NF-e no mesmo
-        arquivo).  Usa ``errors='ignore'`` na decodificação para tolerar
-        arquivos com encoding misto.
-
-        Colunas retornadas: NF, Data, Valor, Cliente, Categoria, Status
-
-        Se o XML não for uma NF-e válida, registra um aviso e retorna
-        DataFrame vazio com as mesmas colunas.
-        """
-        try:
-            import defusedxml.ElementTree as ET
-        except ImportError:
-            import xml.etree.ElementTree as ET  # nosec B314
-
-        _NS = 'http://www.portalfiscal.inf.br/nfe'
-        _EMPTY_COLS = ['NF', 'Data', 'Valor', 'Cliente', 'Categoria', 'Status']
-
-        def _tag(local: str) -> str:
-            return f'{{{_NS}}}{local}'
-
-        def _find_text(elem, *path) -> str:
-            """Percorre path de tags e retorna .text ou ''."""
-            cur = elem
-            for part in path:
-                if cur is None:
-                    return ''
-                cur = cur.find(_tag(part))
-            return (cur.text or '').strip() if cur is not None else ''
-
-        try:
-            # Lê bytes brutos para tolerar BOM e encodings variados
-            with open(caminho, 'rb') as fh:
-                raw = fh.read()
-
-            # ElementTree aceita bytes diretamente; errors='ignore' via decode prévia
-            try:
-                root = ET.fromstring(raw)  # nosec B314 — ET é defusedxml (ver import acima)
-            except ET.ParseError:
-                # Tenta remover BOM/caracteres inválidos e reparsar
-                text = raw.decode('utf-8', errors='ignore')
-                root = ET.fromstring(text.encode('utf-8'))  # nosec B314
-
-        except ET.ParseError as exc:
-            logger.warning("NF-e XML: falha ao parsear '%s': %s", caminho, exc)
-            return pd.DataFrame(columns=_EMPTY_COLS)
-        except OSError as exc:
-            logger.warning("NF-e XML: erro de I/O em '%s': %s", caminho, exc)
-            return pd.DataFrame(columns=_EMPTY_COLS)
-
-        # Coleta todos os elementos <NFe> — suporta arquivo único e lote
-        nfes = root.findall(f'.//{_tag("NFe")}')
-        if not nfes:
-            # O próprio root pode ser <NFe>
-            if root.tag in (_tag('NFe'), _tag('nfeProc')):
-                nfes = [root]
-            else:
-                logger.warning(
-                    "NF-e XML: nenhuma NF-e encontrada em '%s' — o arquivo "
-                    "pode não ser uma NF-e SEFAZ válida.", caminho
-                )
-                return pd.DataFrame(columns=_EMPTY_COLS)
-
-        rows = []
-        for nfe_elem in nfes:
-            inf = nfe_elem.find(f'.//{_tag("infNFe")}')
-            if inf is None:
-                continue
-
-            ide  = inf.find(_tag('ide'))
-            emit = inf.find(_tag('emit'))
-            dest = inf.find(_tag('dest'))
-            total = inf.find(_tag('total'))
-
-            # Número da NF
-            n_nf = _find_text(ide, 'nNF') if ide is not None else ''
-
-            # Data de emissão (dhEmi ou dEmi)
-            data_raw = ''
-            if ide is not None:
-                data_raw = _find_text(ide, 'dhEmi') or _find_text(ide, 'dEmi')
-            # Normaliza para YYYY-MM-DD (ignora parte do horário se presente)
-            data = data_raw[:10] if data_raw else ''
-
-            # Valor total da NF
-            v_nf = ''
-            if total is not None:
-                icms_tot = total.find(_tag('ICMSTot'))
-                if icms_tot is not None:
-                    v_nf = _find_text(icms_tot, 'vNF')
-
-            # Preferência: destinatário como "Cliente"; emitente como fallback
-            x_nome_dest = _find_text(dest, 'xNome') if dest is not None else ''
-            x_nome_emit = _find_text(emit, 'xNome') if emit is not None else ''
-            cliente = x_nome_dest or x_nome_emit
-
-            # Descrição do primeiro produto (<det seq="1">)
-            categoria = ''
-            primeiro_det = inf.find(_tag('det'))
-            if primeiro_det is not None:
-                prod = primeiro_det.find(_tag('prod'))
-                if prod is not None:
-                    categoria = _find_text(prod, 'xProd')
-
-            try:
-                valor = float(v_nf) if v_nf else None
-            except ValueError:
-                valor = None
-
-            rows.append({
-                'NF':        n_nf,
-                'Data':      data,
-                'Valor':     valor,
-                'Cliente':   cliente,
-                'Categoria': categoria,
-                'Status':    'Emitida',
-            })
-
-        if not rows:
-            logger.warning("NF-e XML: nenhum item extraído de '%s'.", caminho)
-            return pd.DataFrame(columns=_EMPTY_COLS)
-
-        df = pd.DataFrame(rows, columns=_EMPTY_COLS)
-        logger.info("NF-e XML: %d nota(s) lida(s) de '%s'.", len(df), caminho)
-        return df
 
     @staticmethod
     def _detectar_problemas_formato(df: pd.DataFrame, aba: str) -> list:
@@ -620,7 +484,7 @@ class Auditor:
         if col_data not in df.columns:
             return inconsistencias
         df = df.reset_index(drop=True)
-        datas = pd.to_datetime(df[col_data], errors="coerce", dayfirst=True, format="mixed")
+        datas = pd.to_datetime(df[col_data], errors='coerce', dayfirst=True)
         if hasattr(datas.dtype, 'tz') and datas.dtype.tz is not None:
             datas = datas.dt.tz_localize(None)
         hoje = pd.Timestamp.now()
@@ -633,7 +497,7 @@ class Auditor:
                 'impacto_rs': 0,
             })
         if col_data2 and col_data2 in df.columns:
-            datas2 = pd.to_datetime(df[col_data2], errors="coerce", dayfirst=True, format="mixed")
+            datas2 = pd.to_datetime(df[col_data2], errors='coerce', dayfirst=True)
             if hasattr(datas2.dtype, 'tz') and datas2.dtype.tz is not None:
                 datas2 = datas2.dt.tz_localize(None)
             mask = (datas2 < datas).fillna(False)
@@ -684,13 +548,13 @@ class Auditor:
         receitas_neg = df[
             df[col_tipo].str.upper().str.contains('RECEITA|VENDA|FATURAMENTO', na=False) & (valores < 0)
         ]
-        for idx, row in receitas_neg.iterrows():
+        for idx, _row in receitas_neg.iterrows():
             inconsistencias.append({
                 'aba': aba, 'linha': idx + 2, 'coluna': col_valor,
                 'tipo': 'CLASSIFICAÇÃO_ERRADA', 'severidade': Status.ALTA,
-                'valor': f"R$ {row[col_valor]:,.2f}",
+                'valor': f"R$ {float(valores.loc[idx]):,.2f}",
                 'descricao': "Receita com valor negativo (possível estorno ou erro de classificação)",
-                'impacto_rs': abs(float(row[col_valor])),
+                'impacto_rs': abs(float(valores.loc[idx])),
             })
         return inconsistencias
 
@@ -953,7 +817,7 @@ class AnalistaFinanceiro:
         if data_ref is None:
             data_ref = datetime.now()
         df = df.copy()
-        venc = pd.to_datetime(df[col_vencimento], errors="coerce", dayfirst=True, format="mixed")
+        venc = pd.to_datetime(df[col_vencimento], errors='coerce', dayfirst=True)
         # Garantir tz-naive em ambos os lados para evitar TypeError em planilhas com timezone
         if hasattr(venc.dtype, 'tz') and venc.dtype.tz is not None:
             venc = venc.dt.tz_localize(None)
@@ -1081,7 +945,7 @@ class AnalistaFinanceiro:
                 if i > 0:
                     anterior, atual = row[cols[i - 1]], row[col]
                     r[f'Var_{cols[i-1]}_para_{col}_R$'] = round(atual - anterior, 2)
-                    r[f'Var_{cols[i-1]}_para_{col}_%']  = round((atual - anterior) / abs(anterior) * 100, 1) if anterior != 0 else None
+                    r[f'Var_{cols[i-1]}_para_{col}_%']  = round((atual - anterior) / abs(anterior) * 100, 1) if anterior != 0 else np.nan
             result_rows.append(r)
         return pd.DataFrame(result_rows)
 
@@ -1211,7 +1075,8 @@ class AnalistaFinanceiro:
         if hasattr(df_valid['_data'].dtype, 'tz') and df_valid['_data'].dtype.tz is not None:
             df_valid['_data'] = df_valid['_data'].dt.tz_localize(None)
         df_valid = df_valid.set_index('_data')
-        chave_col = col_chave if col_chave in df_valid.columns else df_valid.columns[0]
+        chave_col = (col_chave if col_chave in df_valid.columns
+                     else (df_valid.columns[0] if len(df_valid.columns) > 0 else '_valor'))
 
         def _agg(mask, abs_val=False):
             sub = df_valid[mask].copy()
@@ -1855,36 +1720,39 @@ class Verificador:
     @staticmethod
     def verificar_formulas_planilha(caminho_xlsx: str) -> dict:
         wb = load_workbook(caminho_xlsx)
-        resultado = {
-            'arquivo': os.path.basename(caminho_xlsx),
-            'abas_verificadas': [], 'alertas': [],
-        }
-        for ws_name in wb.sheetnames:
-            ws = wb[ws_name]
-            aba_info = {'nome': ws_name, 'total_celulas': 0,
-                        'celulas_com_formula': 0, 'celulas_com_valor_numerico': 0}
-            for row in ws.iter_rows():
-                for cell in row:
-                    if cell.value is None:
-                        continue
-                    aba_info['total_celulas'] += 1
-                    if isinstance(cell.value, str) and cell.value.startswith('='):
-                        aba_info['celulas_com_formula'] += 1
-                    elif isinstance(cell.value, (int, float)):
-                        aba_info['celulas_com_valor_numerico'] += 1
-                    # Detectar linha de totais com valor fixo em vez de fórmula
-                    if isinstance(cell.value, str) and cell.value.upper().strip() in ('TOTAIS', 'TOTAL', 'TOTAL GERAL', 'SOMA'):
-                        for next_cell in row:
-                            if next_cell.column > cell.column and isinstance(next_cell.value, (int, float)):
-                                resultado['alertas'].append({
-                                    'aba': ws_name,
-                                    'celula': f'{next_cell.column_letter}{next_cell.row}',
-                                    'tipo': 'TOTAL_SEM_FORMULA', 'severidade': Status.CRITICA,
-                                    'mensagem': f'Célula de total com valor fixo ({next_cell.value}) — use =SUM()',
-                                })
-            resultado['abas_verificadas'].append(aba_info)
-        resultado['status'] = Status.OK if not resultado['alertas'] else 'FALHA'
-        return resultado
+        try:
+            resultado = {
+                'arquivo': os.path.basename(caminho_xlsx),
+                'abas_verificadas': [], 'alertas': [],
+            }
+            for ws_name in wb.sheetnames:
+                ws = wb[ws_name]
+                aba_info = {'nome': ws_name, 'total_celulas': 0,
+                            'celulas_com_formula': 0, 'celulas_com_valor_numerico': 0}
+                for row in ws.iter_rows():
+                    for cell in row:
+                        if cell.value is None:
+                            continue
+                        aba_info['total_celulas'] += 1
+                        if isinstance(cell.value, str) and cell.value.startswith('='):
+                            aba_info['celulas_com_formula'] += 1
+                        elif isinstance(cell.value, (int, float)):
+                            aba_info['celulas_com_valor_numerico'] += 1
+                        # Detectar linha de totais com valor fixo em vez de fórmula
+                        if isinstance(cell.value, str) and cell.value.upper().strip() in ('TOTAIS', 'TOTAL', 'TOTAL GERAL', 'SOMA'):
+                            for next_cell in row:
+                                if next_cell.column > cell.column and isinstance(next_cell.value, (int, float)):
+                                    resultado['alertas'].append({
+                                        'aba': ws_name,
+                                        'celula': f'{next_cell.column_letter}{next_cell.row}',
+                                        'tipo': 'TOTAL_SEM_FORMULA', 'severidade': Status.CRITICA,
+                                        'mensagem': f'Célula de total com valor fixo ({next_cell.value}) — use =SUM()',
+                                    })
+                resultado['abas_verificadas'].append(aba_info)
+            resultado['status'] = Status.OK if not resultado['alertas'] else 'FALHA'
+            return resultado
+        finally:
+            wb.close()
 
     @staticmethod
     def verificar_atualizacao(
@@ -2182,7 +2050,7 @@ class Normalizador:
                 serie = _direct.fillna(0.0)
 
             elif tipo == 'data':
-                serie = pd.to_datetime(serie, errors="coerce", dayfirst=True, format="mixed")
+                serie = pd.to_datetime(serie, errors='coerce', dayfirst=True)
                 serie = serie.dt.strftime('%d/%m/%Y').fillna('')
 
             elif tipo == 'lista':
@@ -2269,6 +2137,7 @@ class Normalizador:
             Lista vazia significa dados válidos.
         """
         problemas = []
+        df = df.reset_index(drop=True)
 
         # Verifica colunas obrigatórias presentes
         for col in Normalizador.COLUNAS_OBRIGATORIAS:

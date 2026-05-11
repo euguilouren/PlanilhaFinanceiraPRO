@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.sheetjs.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src https://api.anthropic.com; object-src 'none'; frame-src 'none'; base-uri 'self'; form-action 'self';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.sheetjs.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'self'; form-action 'self';">
 <title>Planilha Financeira Pro — por Luan Guilherme Lourenço</title>
 <meta name="description" content="Dashboard financeiro 100% no navegador. Analise planilhas Excel e CSV com KPIs, aging, DRE e detecção de fraudes — sem instalar nada. Por Luan Guilherme Lourenço.">
 <meta name="author" content="Luan Guilherme Lourenço">
@@ -68,7 +68,7 @@ const PADROES_COLUNAS = {
   categoria:  /categoria|category|natureza|hist[oó]rico|descri[cç][aã]o|conta\b/i,
   entidade:   /cliente|fornecedor|customer|supplier|nome|name|empresa|parceiro|favorecido/i,
   chave:      /^(nf|nfe|numero|n[uú]mero|id\b|doc|documento|chave|key|c[oó]digo|pedido)/i,
-  tipo:       /^(tipo|type|natureza|dire[cç][aã]o|entrada[\s_-]sa[ií]da|nf[\s_-]tipo)/i,
+  tipo:       /^(tipo|type|dire[cç][aã]o|entrada[\s_-]sa[ií]da|nf[\s_-]tipo)/i,
 };
 
 function detectarColunas(headers) {
@@ -104,9 +104,6 @@ const MAPAS_ERP_JS = {
   TINY:          { sinais:['numero_nota','nome_cliente','valor_nota'],  mapa:{'numero_nota':'chave','valor_nota':'valor','data_emissao':'data','data_vencimento':'vencimento','nome_cliente':'entidade'} },
   GESTAO_CLICK:  { sinais:['Código','Cliente','Vencimento'],            mapa:{'Código':'chave','Valor':'valor','Data':'data','Vencimento':'vencimento','Cliente':'entidade','Categoria':'categoria'} },
   NFE_XML:       { sinais:['nNF','dhEmi','vNF'],                       mapa:{'nNF':'chave','vNF':'valor','dhEmi':'data','dVenc':'vencimento','xNome_dest':'entidade'} },
-  SIENGE:        { sinais:['NumDocumento','Fornecedor','ValorContrato'], mapa:{'NumDocumento':'chave','ValorContrato':'valor','DataEmissao':'data','DataVencimento':'vencimento','Fornecedor':'entidade','CentroCusto':'categoria'} },
-  VHSYS:         { sinais:['numero_nf','cliente_nome','valor_total'],   mapa:{'numero_nf':'chave','valor_total':'valor','data_emissao':'data','data_vencimento':'vencimento','cliente_nome':'entidade','categoria':'categoria'} },
-  NUVEMSHOP:     { sinais:['order_id','customer_name','total_price'],   mapa:{'order_id':'chave','total_price':'valor','created_at':'data','customer_name':'entidade','financial_status':'status'} },
 };
 
 const NOMES_ERP = {
@@ -116,7 +113,6 @@ const NOMES_ERP = {
   CIGAM:'Cigam', ALTERDATA:'Alterdata', LINX:'Linx', MEGA:'Mega Sistemas',
   NIBO:'Nibo', GRANATUM:'Granatum', CONTA_AZUL:'Conta Azul',
   BLING:'Bling', TINY:'Tiny ERP', GESTAO_CLICK:'GestãoClick', NFE_XML:'NFe XML',
-  SIENGE:'Sienge (Softplan)', VHSYS:'VHSYS', NUVEMSHOP:'Nuvemshop',
 };
 
 function detectarERP(headers) {
@@ -147,8 +143,8 @@ function calcularIntegridade(dados, cols, kpis, dre, pareto) {
     detalhe:`${comValor} de ${dados.length} (${pctVal.toFixed(0)}%)`,
     como: okVal ? null : `Verifique as linhas com célula em branco ou texto não-numérico na coluna "${cols.valor||'Valor'}". No Excel: use Ctrl+End para ver o intervalo de dados e filtre pela coluna buscando células vazias.` });
 
-  // Check 2: checksum (informativo)
-  total++;  passed++;
+  // Check 2: checksum (informativo) — não conta no score de confiança
+  // total++;  passed++;
   const checksum = dados.reduce((s,r)=>{ const v=toNum(r[cols.valor]); return s+(isNaN(v)?0:Math.abs(v)); }, 0);
   checks.push({ nome:'Checksum (soma |valores|)', status:'INFO',
     detalhe:`${fmtBRL(checksum)} — confirme com =SOMA() no Excel`,
@@ -191,7 +187,7 @@ function calcularIntegridade(dados, cols, kpis, dre, pareto) {
   if (!cols.categoria) {
     const negativos = dados.filter(r => { const v = toNum(r[cols.valor]); return !isNaN(v) && v < 0; }).length;
     if (negativos > 0) {
-      total++; passed++;
+      // INFO — não conta no score de confiança
       checks.push({ nome:'Classificação automática', status:'INFO',
         detalhe:`${negativos} lançamento(s) negativo(s) → Despesa; demais → Receita`,
         como: null });
@@ -208,7 +204,7 @@ function calcularIntegridade(dados, cols, kpis, dre, pareto) {
 
 function toNum(v) {
   if (v === null || v === undefined || v === '') return NaN;
-  if (typeof v === 'number') return v;
+  if (typeof v === 'number') return isFinite(v) ? v : NaN;
   let s = String(v).replace(/R\$\s?/g,'').trim();
   // Parênteses contábeis: (1.500,00) → -1500
   const neg = s.startsWith('(') && s.endsWith(')');
@@ -240,8 +236,8 @@ function toDate(v) {
     return new Date(u.getUTCFullYear(), u.getUTCMonth(), u.getUTCDate());
   }
   const s = String(v).trim();
-  // DD/MM/YYYY (aceita horário opcional após a data)
-  const br = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  // DD/MM/YYYY
+  const br = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
   if (br) {
     const d = new Date(+br[3], +br[2]-1, +br[1]);
     if (d.getFullYear() !== +br[3] || d.getMonth() !== +br[2]-1 || d.getDate() !== +br[1]) return null;
@@ -251,7 +247,15 @@ function toDate(v) {
   const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (iso) {
     const d = new Date(+iso[1], +iso[2]-1, +iso[3]);
-    return isNaN(d) ? null : d;
+    if (d.getFullYear() !== +iso[1] || d.getMonth() !== +iso[2]-1 || d.getDate() !== +iso[3]) return null;
+    return d;
+  }
+  // Loose BR fallback: D/M/YYYY or DD/M/YYYY etc.
+  const brLoose = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (brLoose) {
+    const d = new Date(+brLoose[3], +brLoose[2]-1, +brLoose[1]);
+    if (d.getFullYear() !== +brLoose[3] || d.getMonth() !== +brLoose[2]-1 || d.getDate() !== +brLoose[1]) return null;
+    return d;
   }
   const d = new Date(s);
   return isNaN(d) ? null : d;
@@ -306,7 +310,7 @@ function auditoria(dados, cols) {
   for (const col of obrigatorias) {
     const vazios = dados.map((r, i) => [r, i]).filter(([r]) => {
       const v = r[col];
-      return v === null || v === undefined || v === '';
+      return v === null || v === undefined || String(v).trim() === '';
     }).map(([,i]) => i + 2);
     if (vazios.length > 0) {
       problemas.push({
@@ -456,8 +460,8 @@ function calcularPareto(dados, colEntidade, colValor, top = 15) {
 // ══════════════════════════════════════════════════════
 
 const MAPA_DRE = [
-  { linha:'Receita Bruta',              termos:/RECEITA|VENDA|FATURAMENTO/ },
   { linha:'(-) Deduções',               termos:/DEDU[CÇ]|IMPOSTO.*VENDA|DEVOLU|ABATIMENTO|PIS|COFINS|ISS|ICMS/ },
+  { linha:'Receita Bruta',              termos:/RECEITA|VENDA|FATURAMENTO/ },
   { linha:'(-) CMV/CPV',                termos:/CMV|CPV|CUSTO.*MERCADORIA|CUSTO.*PRODUTO|CUSTO.*VARI/ },
   { linha:'(-) Despesas Operacionais',  termos:/DESPESA|GASTO|CUSTO[\s_]FIX|FOLHA|PAGAMENTO|SALARIO|ALUGUEL|MARKETING|ENERGIA|TELEFONE|INTERNET|MATERIAL|MANUTENC/ },
   { linha:'(-/+) Resultado Financeiro', termos:/FINANCEI|JUROS|CAMBIAL/ },
@@ -481,27 +485,20 @@ function construirDRE(dados, colCat, colValor) {
       else if (v < 0) valores['(-) Despesas Operacionais'] += v;
     });
   } else {
-    let classificados = 0;
     dados.forEach(row => {
       const cat = String(row[colCat] ?? '').toUpperCase().trim();
       const v   = toNum(row[colValor]);
       if (isNaN(v)) return;
+      let matched = false;
       for (const { linha, termos } of MAPA_DRE) {
-        if (termos.test(cat)) { valores[linha] += v; classificados++; break; }
+        if (termos.test(cat)) { valores[linha] += v; matched = true; break; }
       }
-    });
-    // Se nenhuma linha foi classificada, aplica fallback por sinal
-    if (classificados === 0) {
-      modo = 'sinal';
-      // Zero all accumulators before fallback pass to avoid double-counting
-      MAPA_DRE.forEach(({ linha }) => { valores[linha] = 0; });
-      dados.forEach(row => {
-        const v = toNum(row[colValor]);
-        if (isNaN(v)) return;
+      // Per-row fallback by sign for unclassified rows
+      if (!matched) {
         if (v > 0) valores['Receita Bruta'] += v;
         else if (v < 0) valores['(-) Despesas Operacionais'] += v;
-      });
-    }
+      }
+    });
   }
 
   const rb  = valores['Receita Bruta'];
@@ -591,7 +588,7 @@ function calcularFluxoPeriodo(dados, colData, colValor, colTipo, freq) {
     const tipo = colTipo ? String(r[colTipo] ?? '').trim().toUpperCase() : '';
     const isRec = /^(RECEITA|CR[EÉ]DITO|ENTRADA)$/.test(tipo) || /RECEI|ENTRA|CRÉDI|VENDA|FATURAMENTO/.test(tipo)
       || (!(/^(DESPESA|D[EÉ]BITO|SA[IÍ]DA)$/.test(tipo) || /DESPE|SAÍDA|SAIDA|DÉBITO|DEBITO/.test(tipo)) && v > 0);
-    if (isRec) { grupos[key].rec += v;  grupos[key].nfRec++; }
+    if (isRec) { grupos[key].rec += Math.abs(v);  grupos[key].nfRec++; }
     else       { grupos[key].desp += Math.abs(v); grupos[key].nfDesp++; }
   });
 
@@ -615,6 +612,77 @@ function calcularFluxoPeriodo(dados, colData, colValor, colTipo, freq) {
       nfDesp: g.nfDesp,
       pct: g.rec !== 0 ? Math.round((g.rec - g.desp) / g.rec * 1000) / 10 : 0,
     }));
+}
+
+// ══════════════════════════════════════════════════════
+// MÓDULO 8: PROJEÇÃO LINEAR (regressão simples)
+// ══════════════════════════════════════════════════════
+
+function calcularProjecao(linhas, nProjecoes) {
+  nProjecoes = nProjecoes || 3;
+  if (!linhas || linhas.length < 3) return null;
+  const n = linhas.length;
+  const xm = (n - 1) / 2;
+  function _lr(ys) {
+    const ym = ys.reduce(function(a, b) { return a + b; }, 0) / n;
+    let num = 0, den = 0;
+    for (let i = 0; i < n; i++) { num += (i - xm) * (ys[i] - ym); den += (i - xm) * (i - xm); }
+    const b = den ? num / den : 0;
+    return { a: ym - b * xm, b };
+  }
+  const lrRec  = _lr(linhas.map(function(l) { return l.receita; }));
+  const lrDesp = _lr(linhas.map(function(l) { return l.despesa; }));
+  const nomesMes = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  const last = linhas[n - 1];
+  let baseAno = 2000, baseMes = 0;
+  if (last && last.periodo) {
+    const p = last.periodo.split('/');
+    if (p.length === 2) { baseMes = parseInt(p[0], 10) - 1; baseAno = parseInt(p[1], 10); }
+  }
+  return Array.from({ length: nProjecoes }, function(_, k) {
+    const idx = n + k;
+    const rec  = Math.max(0, Math.round((lrRec.a  + lrRec.b  * idx) * 100) / 100);
+    const desp = Math.max(0, Math.round((lrDesp.a + lrDesp.b * idx) * 100) / 100);
+    const mIdx = (baseMes + k + 1) % 12;
+    const ano  = baseAno + Math.floor((baseMes + k + 1) / 12);
+    return { periodo: nomesMes[mIdx] + '/' + ano, rec, desp, res: Math.round((rec - desp) * 100) / 100, projetado: true };
+  });
+}
+
+// ══════════════════════════════════════════════════════
+// MÓDULO 9: SAZONALIDADE (médias mensais Jan–Dez)
+// ══════════════════════════════════════════════════════
+
+function calcularSazonalidade(dados, colData, colValor, colTipo) {
+  if (!colData || !colValor) return null;
+  const buckets = Array.from({ length: 12 }, function() { return { rec: 0, desp: 0, anos: new Set() }; });
+  dados.forEach(function(r) {
+    const d = toDate(r[colData]);
+    if (!d || isNaN(d.getTime())) return;
+    const v = toNum(r[colValor]);
+    if (isNaN(v) || v === 0) return;
+    const m = d.getMonth();
+    buckets[m].anos.add(d.getFullYear());
+    const tipo = colTipo ? String(r[colTipo] || '').trim().toUpperCase() : '';
+    const isRec = /^(RECEITA|CR[EÉ]DITO|ENTRADA)$/.test(tipo) ||
+                  /RECEI|ENTRA|CR[EÉ]DI|VENDA|FATURAMENTO/.test(tipo) ||
+                  (!(/^(DESPESA|D[EÉ]BITO|SA[IÍ]DA)$/.test(tipo) || /DESPE|SA[IÍ]DA|D[EÉ]BITO/.test(tipo)) && v > 0);
+    if (isRec) buckets[m].rec  += v;
+    else        buckets[m].desp += Math.abs(v);
+  });
+  const nomes = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  const result = buckets.map(function(b, i) {
+    const nAnos = b.anos.size || 1;
+    return {
+      mes:      nomes[i],
+      receita:  Math.round(b.rec  / nAnos * 100) / 100,
+      despesa:  Math.round(b.desp / nAnos * 100) / 100,
+      resultado:Math.round((b.rec - b.desp) / nAnos * 100) / 100,
+      nAnos,
+    };
+  });
+  const temDados = result.some(function(r) { return r.receita > 0 || r.despesa > 0; });
+  return temDados ? result : null;
 }
 
 function renderFluxoPeriodo(dados, cols) {
@@ -670,6 +738,7 @@ function renderFluxoPeriodo(dados, cols) {
   const tabD = _tabela('D');
   const tabM = _tabela('M');
   const tabA = _tabela('A');
+  if (_chartFluxoM) { _chartFluxoM.destroy(); _chartFluxoM = null; }
   el.innerHTML = `
     <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
       <button class="btn-sm btn-outline fluxo-tab active" onclick="switchFluxo('M',this)"
@@ -715,7 +784,7 @@ function _eFeriado(d) {
 function calcularAntiFraude(dados, cols) {
   const col = cols.valor, colEnt = cols.entidade, colChave = cols.chave, colData = cols.data || cols.vencimento;
   const resultado = { benford:null, duplicatas:[], numerosRedondos:[], fracionamento:[],
-                      anomaliasTemporais:[], outliers:[], concentracao:[], scoreRisco:0, alertas:[] };
+                      anomaliasTEmporais:[], outliers:[], concentracao:[], scoreRisco:0, alertas:[] };
   if (!dados.length || !col) return resultado;
 
   const vals = dados.map(r => toNum(r[col])).filter(v => isFinite(v));
@@ -749,8 +818,8 @@ function calcularAntiFraude(dados, cols) {
       if (seen.has(k)) {
         const orig = seen.get(k);
         resultado.duplicatas.push({ tipo:'DUPLICATA_EXATA', severidade:'CRÍTICA',
-          linha: i+2, descricao:`Chave '${k}' duplicada (linha ${orig+2})`,
-          valor: toNum(r[col]), entidade: colEnt ? String(r[colEnt]||'') : '' });
+          linha: i+2, descricao:`Chave '${esc(k)}' duplicada (linha ${orig+2})`,
+          valor: toNum(r[col]), entidade: colEnt ? esc(String(r[colEnt]||'')) : '' });
       } else { seen.set(k, i); }
     });
   }
@@ -772,7 +841,7 @@ function calcularAntiFraude(dados, cols) {
           if (da && db && Math.abs(da-db) > 30*864e5) continue;
           resultado.duplicatas.push({ tipo:'DUPLICATA_FUZZY', severidade:'ALTA',
             linha:ia+2, descricao:`Valor similar (${fmtBRL(va)} ≈ ${fmtBRL(vb)}) para '${ent}' — linha ${ib+2}`,
-            valor:va, entidade:ent });
+            valor:va, entidade:esc(ent) });
         }
       }
     });
@@ -799,10 +868,10 @@ function calcularAntiFraude(dados, cols) {
       const dt = new Date(d);
       if (_eFimDeSemana(dt)) {
         const motivo = dt.getDay()===6 ? 'Sábado' : 'Domingo';
-        resultado.anomaliasTemporais.push({ tipo:'ANOMALIA_TEMPORAL', severidade:'MÉDIA',
+        resultado.anomaliasTEmporais.push({ tipo:'ANOMALIA_TEMPORAL', severidade:'MÉDIA',
           linha:i+2, data: fmtData(d), motivo, descricao:`Lançamento em ${motivo} (${fmtData(d)})` });
       } else if (_eFeriado(dt)) {
-        resultado.anomaliasTemporais.push({ tipo:'ANOMALIA_TEMPORAL', severidade:'MÉDIA',
+        resultado.anomaliasTEmporais.push({ tipo:'ANOMALIA_TEMPORAL', severidade:'MÉDIA',
           linha:i+2, data: fmtData(d), motivo:'Feriado Nacional', descricao:`Lançamento em feriado nacional (${fmtData(d)})` });
       }
     });
@@ -820,15 +889,14 @@ function calcularAntiFraude(dados, cols) {
     });
     grupos.forEach((itens, ent) => {
       if (itens.length < 3) return;
-      const absItens = itens.map(x => ({ ...x, v: Math.abs(x.v) }));
-      const media = absItens.reduce((s,x)=>s+x.v,0) / absItens.length;
-      const std = Math.sqrt(absItens.reduce((s,x)=>s+Math.pow(x.v-media,2),0) / absItens.length);
+      const media = itens.reduce((s,x)=>s+x.v,0) / itens.length;
+      const std = Math.sqrt(itens.reduce((s,x)=>s+Math.pow(x.v-media,2),0) / itens.length);
       if (std === 0) return;
-      absItens.forEach(({i, v}) => {
+      itens.forEach(({i, v}) => {
         const z = (v - media) / std;
         if (Math.abs(z) < 3) return;
         resultado.outliers.push({ tipo:'OUTLIER', severidade: Math.abs(z)>=4.5?'ALTA':'MÉDIA',
-          linha:i+2, entidade:ent, valor:v, zScore:Math.round(z*10)/10,
+          linha:i+2, entidade:esc(ent), valor:v, zScore:Math.round(z*10)/10,
           descricao:`'${ent}': ${fmtBRL(v)} é ${Math.abs(z).toFixed(1)}σ ${z>0?'acima':'abaixo'} da média (${fmtBRL(media)})` });
       });
     });
@@ -836,21 +904,21 @@ function calcularAntiFraude(dados, cols) {
 
   // ── Concentração ──
   if (colEnt) {
-    const grupos = new Map();
-    dados.forEach(r => {
-      const ent = String(r[colEnt]||'').trim().toUpperCase();
-      if (!ent) return;
-      const v = Math.abs(toNum(r[col]) || 0);
-      grupos.set(ent, (grupos.get(ent)||{total:0,n:0}));
-      grupos.get(ent).total += v; grupos.get(ent).n++;
-    });
-    const total = Array.from(grupos.values()).reduce((s,g)=>s+g.total, 0);
+    const total = vals.reduce((s,v)=>s+Math.abs(v),0);
     if (total > 0) {
+      const grupos = new Map();
+      dados.forEach(r => {
+        const ent = String(r[colEnt]||'').trim().toUpperCase();
+        if (!ent) return;
+        const v = Math.abs(toNum(r[col]) || 0);
+        grupos.set(ent, (grupos.get(ent)||{total:0,n:0}));
+        grupos.get(ent).total += v; grupos.get(ent).n++;
+      });
       grupos.forEach((g, ent) => {
         const pct = g.total / total * 100;
         if (pct < 30) return;
         resultado.concentracao.push({ tipo:'CONCENTRAÇÃO', severidade: pct>=50?'CRÍTICA':'ALTA',
-          entidade:ent, totalRs:g.total, ocorrencias:g.n, pctTotal:Math.round(pct*100)/100,
+          entidade:esc(ent), totalRs:g.total, ocorrencias:g.n, pctTotal:Math.round(pct*100)/100,
           descricao:`'${ent}' concentra ${pct.toFixed(1)}% do total (${fmtBRL(g.total)} em ${g.n} lançamentos)` });
       });
     }
@@ -870,8 +938,7 @@ function calcularAntiFraude(dados, cols) {
       if (itens.length < 3) return;
       itens.sort((a,b) => a.d - b.d);
       for (let i = 0; i < itens.length; i++) {
-        const janela = [];
-        for (let j = i; j < itens.length && itens[j].d - itens[i].d <= 30*864e5; j++) janela.push(itens[j]);
+        const janela = itens.slice(i).filter(x => x.d - itens[i].d <= 30*864e5);
         if (janela.length < 3) continue;
         const vs = janela.map(x => x.v);
         const media = vs.reduce((s,v)=>s+v,0)/vs.length;
@@ -880,7 +947,7 @@ function calcularAntiFraude(dados, cols) {
         if (cv < 0.30) {
           const dur = Math.round((janela[janela.length-1].d - janela[0].d) / 864e5);
           resultado.fracionamento.push({ tipo:'FRACIONAMENTO', severidade:'ALTA',
-            entidade:ent, ocorrencias:janela.length, totalRs:vs.reduce((s,v)=>s+v,0),
+            entidade:esc(ent), ocorrencias:janela.length, totalRs:vs.reduce((s,v)=>s+v,0),
             mediaRs:media, janelaDias:dur,
             descricao:`'${ent}': ${janela.length} transações similares (média ${fmtBRL(media)}, CV=${(cv*100).toFixed(0)}%) em ${dur} dias` });
           break;
@@ -900,7 +967,7 @@ function calcularAntiFraude(dados, cols) {
   _add(resultado.fracionamento,    'f', n=>`${n} caso(s) de fracionamento suspeito`, 20);
   _add(resultado.outliers,         'o', n=>`${n} outlier(s) estatístico(s) por entidade`, 15);
   _add(resultado.concentracao,     'c', n=>`${n} entidade(s) com concentração anormal`, 10);
-  _add(resultado.anomaliasTemporais,'t', n=>`${n} lançamento(s) em fim de semana ou feriado`, 5);
+  _add(resultado.anomaliasTEmporais,'t', n=>`${n} lançamento(s) em fim de semana ou feriado`, 5);
   resultado.scoreRisco = Math.min(Math.round(score), 100);
   resultado.alertas = alertas;
   return resultado;
@@ -966,75 +1033,6 @@ function calcularKPIsComparativo(kpisA, kpisB) {
   };
 }
 
-// ══════════════════════════════════════════════════════
-// MÓDULO 8: PROJEÇÃO DE FLUXO (regressão linear simples)
-// ══════════════════════════════════════════════════════
-function calcularProjecao(linhas, nProjecoes) {
-  nProjecoes = nProjecoes || 3;
-  if (!linhas || linhas.length < 3) return null;
-  const n = linhas.length;
-  const xm = (n - 1) / 2;
-  function _lr(ys) {
-    const ym = ys.reduce(function(a, b) { return a + b; }, 0) / n;
-    let num = 0, den = 0;
-    for (let i = 0; i < n; i++) { num += (i - xm) * (ys[i] - ym); den += (i - xm) * (i - xm); }
-    const b = den ? num / den : 0;
-    return { a: ym - b * xm, b };
-  }
-  const lrRec  = _lr(linhas.map(function(l) { return l.receita; }));
-  const lrDesp = _lr(linhas.map(function(l) { return l.despesa; }));
-  const nomesMes = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
-  const last = linhas[n - 1];
-  let baseAno = 2000, baseMes = 0;
-  if (last && last.periodo) {
-    const p = last.periodo.split('/');
-    if (p.length === 2) { baseMes = parseInt(p[0], 10) - 1; baseAno = parseInt(p[1], 10); }
-  }
-  return Array.from({ length: nProjecoes }, function(_, k) {
-    const idx = n + k;
-    const rec  = Math.max(0, Math.round((lrRec.a  + lrRec.b  * idx) * 100) / 100);
-    const desp = Math.max(0, Math.round((lrDesp.a + lrDesp.b * idx) * 100) / 100);
-    const mIdx = (baseMes + k + 1) % 12;
-    const ano  = baseAno + Math.floor((baseMes + k + 1) / 12);
-    return { periodo: nomesMes[mIdx] + '/' + ano, rec, desp, res: Math.round((rec - desp) * 100) / 100, projetado: true };
-  });
-}
-
-// ══════════════════════════════════════════════════════
-// MÓDULO 9: SAZONALIDADE (médias mensais Jan–Dez)
-// ══════════════════════════════════════════════════════
-function calcularSazonalidade(dados, colData, colValor, colTipo) {
-  if (!colData || !colValor) return null;
-  const buckets = Array.from({ length: 12 }, function() { return { rec: 0, desp: 0, anos: new Set() }; });
-  dados.forEach(function(r) {
-    const d = toDate(r[colData]);
-    if (!d || isNaN(d.getTime())) return;
-    const v = toNum(r[colValor]);
-    if (isNaN(v) || v === 0) return;
-    const m = d.getMonth();
-    buckets[m].anos.add(d.getFullYear());
-    const tipo = colTipo ? String(r[colTipo] || '').trim().toUpperCase() : '';
-    const isRec = /^(RECEITA|CR[EÉ]DITO|ENTRADA)$/.test(tipo) ||
-                  /RECEI|ENTRA|CR[EÉ]DI|VENDA|FATURAMENTO/.test(tipo) ||
-                  (!(/^(DESPESA|D[EÉ]BITO|SA[IÍ]DA)$/.test(tipo) || /DESPE|SA[IÍ]DA|D[EÉ]BITO/.test(tipo)) && v > 0);
-    if (isRec) buckets[m].rec  += v;
-    else        buckets[m].desp += Math.abs(v);
-  });
-  const nomes = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
-  const result = buckets.map(function(b, i) {
-    const nAnos = b.anos.size || 1;
-    return {
-      mes:      nomes[i],
-      receita:  Math.round(b.rec  / nAnos * 100) / 100,
-      despesa:  Math.round(b.desp / nAnos * 100) / 100,
-      resultado:Math.round((b.rec - b.desp) / nAnos * 100) / 100,
-      nAnos,
-    };
-  });
-  const temDados = result.some(function(r) { return r.receita > 0 || r.despesa > 0; });
-  return temDados ? result : null;
-}
-
 // Exportar para uso no app.js
 // (module.exports removido para uso direto no navegador)
 
@@ -1075,7 +1073,7 @@ function parseOFX(text) {
     const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(dt);
     if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`;
     // OFX SGML: 20240115 or 20240115120000[-3:BRT]
-    const s = dt.trim().replace(/[^\d].*/, '').slice(0, 8);
+    const s = dt.replace(/[^\d].*/, '').slice(0, 8);
     return s.length === 8 ? `${s.slice(6)}/${s.slice(4,6)}/${s.slice(0,4)}` : '';
   }
 
@@ -1108,27 +1106,18 @@ function parseOFX(text) {
   --verde:#006100;--verde-bg:#C6EFCE;
   --amarelo:#9C5700;--amarelo-bg:#FFEB9C;
   --vermelho:#9C0006;--vermelho-bg:#FFC7CE;
-  --cinza:#F7F9FC;--branco:#fff;
-  --border:#E8EDF4;--text-2:#64748B;--text-3:#94a3b8;
+  --cinza:#f4f6f9;--branco:#fff;
+  --border:#E2E8F0;--text-2:#64748B;--text-3:#94a3b8;
   --radius:10px;--radius-sm:6px;
   /* aliases usados no CSS */
   --navy:#1F4E79;--navy-2:#2E75B6;--navy-3:#1a4068;
-  --bg:#F7F9FC;--text:#1a1a2e;
-  --surface:#fff;--surface-2:#F0F4F9;
+  --bg:#f4f6f9;--text:#1a1a2e;
+  --surface:#fff;--surface-2:#f4f6f9;
   --success:#006100;--success-bg:#C6EFCE;
   --danger:#9C0006;--danger-bg:#FFC7CE;
   --alta-bg:#FEF3C7;--alta-text:#92400E;
   --warning:#9C5700;--warning-bg:#FFEB9C;
-  /* Premium elevation system */
-  --shadow-xs:0 1px 2px rgba(0,0,0,.05);
-  --shadow-sm:0 1px 3px rgba(0,0,0,.08),0 1px 2px rgba(0,0,0,.06);
-  --shadow-md:0 4px 6px -1px rgba(0,0,0,.08),0 2px 4px -2px rgba(0,0,0,.05);
-  --shadow-lg:0 10px 15px -3px rgba(0,0,0,.09),0 4px 6px -4px rgba(0,0,0,.05);
-  --shadow-xl:0 20px 25px -5px rgba(0,0,0,.10),0 8px 10px -6px rgba(0,0,0,.04);
-  --shadow-gold:0 4px 20px rgba(201,168,76,.35),0 1px 3px rgba(201,168,76,.2);
-  --shadow-navy:0 4px 20px rgba(31,78,121,.30),0 1px 3px rgba(31,78,121,.15);
-  --transition:all .2s cubic-bezier(.4,0,.2,1);
-  --transition-slow:all .35s cubic-bezier(.4,0,.2,1);
+  --shadow-sm:0 1px 3px rgba(0,0,0,.1);
 }
 [data-theme="dark"]{
   --bg:#0f172a;--text:#e2e8f0;--surface:#1e293b;--surface-2:#334155;
@@ -1136,13 +1125,12 @@ function parseOFX(text) {
   --azul:#2E75B6;--navy:#2E75B6;--navy-2:#3b82f6;--navy-3:#1d4ed8;
 }
 [data-theme="dark"] body{background:#0f172a;background-image:radial-gradient(circle,#1e293b 1px,transparent 1px);background-size:22px 22px}
-[data-theme="dark"] .card{background:var(--surface);border-color:rgba(255,255,255,.06);box-shadow:0 4px 6px -1px rgba(0,0,0,.3),0 2px 4px -2px rgba(0,0,0,.2)}
-[data-theme="dark"] .card:hover{box-shadow:0 10px 15px -3px rgba(0,0,0,.4),0 4px 6px -4px rgba(0,0,0,.25);border-color:rgba(46,117,182,.2)}
+[data-theme="dark"] .card{background:var(--surface);border-color:var(--border)}
 [data-theme="dark"] .header{background:rgba(15,23,42,0.97)}
 [data-theme="dark"] table th{background:#1e3a5f}
 [data-theme="dark"] table tr:nth-child(even){background:#1e293b}
 [data-theme="dark"] table tr:hover{background:#334155}
-[data-theme="dark"] .kpi{background:var(--surface);border-color:rgba(255,255,255,.06)}
+[data-theme="dark"] .kpi{background:var(--surface)}
 [data-theme="dark"] #upload-area{background:linear-gradient(155deg,#020b18 0%,#1e3a5f 50%,#071525 100%)}
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Inter',Arial,sans-serif;font-size:13.5px;background:#E8EDF4;
@@ -1211,12 +1199,12 @@ body{font-family:'Inter',Arial,sans-serif;font-size:13.5px;background:#E8EDF4;
   background:linear-gradient(135deg,#C9A84C 0%,#D4A843 60%,#B8931F 100%);
   color:#0A1628;border:none;border-radius:22px;
   padding:12px 34px;font-size:13px;cursor:pointer;margin-top:4px;
-  transition:var(--transition);font-weight:700;letter-spacing:.2px;
+  transition:.22s;font-weight:700;letter-spacing:.2px;
   box-shadow:0 4px 18px rgba(201,168,76,.45)
 }
 .btn-upload:hover{
-  transform:translateY(-2px) scale(1.01);
-  box-shadow:var(--shadow-gold)
+  transform:translateY(-2px);
+  box-shadow:0 8px 28px rgba(201,168,76,.55)
 }
 .btn-template{
   background:transparent;color:#fff;
@@ -1246,28 +1234,7 @@ body{font-family:'Inter',Arial,sans-serif;font-size:13.5px;background:#E8EDF4;
 .upload-steps .step.done .step-num{background:rgba(80,200,120,.25);color:#6EE7A0;border-color:rgba(80,200,120,.4)}
 .upload-steps .step.done .step-label{color:rgba(255,255,255,.5)}
 .upload-steps .step.active .step-num{background:var(--gold);color:#0A1628;border-color:var(--gold)}
-.upload-steps .step.active .step-label{color:#fff;font-weight:700;text-shadow:0 0 20px rgba(201,168,76,.4)}
-/* Step bar (progress bar) refinement */
-.step-bar{
-  display:flex;align-items:center;gap:0;
-  border-bottom:1px solid var(--border);
-  padding:0;background:var(--surface);
-  overflow:hidden
-}
-.step-bar .step{
-  flex:1;padding:10px 16px;font-size:11px;font-weight:600;
-  color:var(--text-2);text-align:center;cursor:pointer;
-  border-bottom:2px solid transparent;transition:var(--transition);
-  white-space:nowrap
-}
-.step-bar .step.active{
-  color:var(--navy);border-bottom-color:var(--gold);
-  background:linear-gradient(180deg,transparent 0%,rgba(201,168,76,.06) 100%);
-  text-shadow:0 0 20px rgba(201,168,76,.4)
-}
-.step-bar .step:hover:not(.active){
-  background:var(--surface-2);color:var(--navy-2)
-}
+.upload-steps .step.active .step-label{color:#fff;font-weight:700}
 #file-input{display:none}
 /* Config colunas */
 .col-config{
@@ -1294,12 +1261,12 @@ body{font-family:'Inter',Arial,sans-serif;font-size:13.5px;background:#E8EDF4;
   background:linear-gradient(135deg,#1F4E79,#2E75B6);
   color:#fff;border:none;border-radius:22px;
   padding:13px 40px;font-size:14px;cursor:pointer;margin-top:18px;font-weight:700;
-  transition:var(--transition);letter-spacing:.3px;
+  transition:.22s;letter-spacing:.3px;
   box-shadow:0 4px 18px rgba(31,78,121,.35)
 }
 .btn-analisar:hover{
-  transform:translateY(-2px) scale(1.01);
-  box-shadow:var(--shadow-navy)
+  transform:translateY(-2px);
+  box-shadow:0 8px 28px rgba(31,78,121,.45)
 }
 /* ERP selector */
 .erp-selector-wrap{margin-bottom:18px}
@@ -1321,53 +1288,43 @@ body{font-family:'Inter',Arial,sans-serif;font-size:13.5px;background:#E8EDF4;
 /* KPIs */
 .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:22px}
 .kpi{
-  background:var(--surface);border-radius:16px;padding:24px 20px 20px;
-  box-shadow:var(--shadow-md);
-  border:1px solid var(--border);
-  border-top:none;
-  position:relative;overflow:hidden;transition:var(--transition)
-}
-.kpi::before{
-  content:'';position:absolute;bottom:0;left:0;right:0;
-  height:3px;
-  background:linear-gradient(90deg,var(--navy),var(--navy-2));
-  border-radius:0 0 16px 16px
+  background:#fff;border-radius:14px;padding:22px 20px 18px;
+  box-shadow:0 4px 24px rgba(0,0,0,.09),0 1px 3px rgba(0,0,0,.06);
+  border-left:none;border-top:3px solid var(--azul2);
+  position:relative;overflow:hidden;transition:transform .2s,box-shadow .2s
 }
 .kpi::after{
-  content:'';position:absolute;top:-30px;right:-30px;
-  width:100px;height:100px;border-radius:50%;
-  background:radial-gradient(circle,rgba(46,117,182,.06),transparent 70%);
+  content:'';position:absolute;bottom:-20px;right:-20px;
+  width:80px;height:80px;border-radius:50%;
+  background:radial-gradient(circle,rgba(46,117,182,.07),transparent 70%);
   pointer-events:none
 }
-.kpi.critico::before{background:linear-gradient(90deg,#C00000,#E53935)}
-.kpi.ok::before{background:linear-gradient(90deg,#006100,#2E7D32)}
-.kpi.gold::before{background:linear-gradient(90deg,var(--gold),var(--gold-2))}
+.kpi.critico{border-top-color:#C00000}
+.kpi.ok{border-top-color:var(--verde)}
+.kpi.gold{border-top-color:var(--gold)}
 .kpi .lbl{font-size:10.5px;color:var(--text-3);text-transform:uppercase;letter-spacing:.7px;font-weight:700}
 .kpi .val{font-size:clamp(22px,2.6vw,34px);font-weight:800;color:var(--azul);
   margin:7px 0 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-  line-height:1;letter-spacing:-1.5px;
-  font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
+  line-height:1;letter-spacing:-1.2px}
 .kpi.critico .val{color:#C00000}
 .kpi.ok .val{color:var(--verde)}
 .kpi .sub{font-size:11px;color:var(--text-3);font-weight:500}
 /* Cards */
 .card{
-  background:var(--surface);border-radius:16px;padding:26px;
-  margin-bottom:22px;
-  box-shadow:var(--shadow-md);
-  border:1px solid var(--border);
-  transition:var(--transition)
+  background:#fff;border-radius:14px;padding:24px;
+  margin-bottom:20px;
+  box-shadow:0 4px 24px rgba(0,0,0,.08),0 1px 3px rgba(0,0,0,.05);
+  transition:box-shadow .22s,transform .22s
 }
 .card:hover{
-  box-shadow:var(--shadow-lg);
-  transform:translateY(-2px);
-  border-color:rgba(46,117,182,.15)
+  box-shadow:0 8px 36px rgba(0,0,0,.11),0 1px 3px rgba(0,0,0,.05);
+  transform:translateY(-1px)
 }
 .card h2{
-  font-size:10.5px;color:var(--navy);margin-bottom:20px;
-  padding-bottom:12px;border-bottom:1.5px solid var(--border);
+  font-size:11px;color:var(--azul);margin-bottom:18px;
+  padding-bottom:10px;border-bottom:1.5px solid #EEF2F7;
   display:flex;align-items:center;gap:8px;
-  text-transform:uppercase;letter-spacing:1px;font-weight:800
+  text-transform:uppercase;letter-spacing:.8px;font-weight:800
 }
 /* Check badges (verificação) */
 .check-badge{display:inline-flex;align-items:center;gap:5px;padding:4px 11px;
@@ -1387,16 +1344,15 @@ body{font-family:'Inter',Arial,sans-serif;font-size:13.5px;background:#E8EDF4;
 .tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
 table{width:100%;border-collapse:collapse;font-size:12px}
 th{
-  background:linear-gradient(135deg,#162d46 0%,#1F4E79 60%,#2E75B6 100%);
-  color:#fff;padding:11px 14px;text-align:left;
-  white-space:nowrap;font-size:10px;text-transform:uppercase;letter-spacing:.8px;font-weight:700
+  background:linear-gradient(135deg,#1F4E79,#2E75B6);
+  color:#fff;padding:10px 14px;text-align:left;
+  white-space:nowrap;font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;font-weight:700
 }
 th:first-child{border-radius:8px 0 0 0}
 th:last-child{border-radius:0 8px 0 0}
-td{padding:10px 14px;border-bottom:1px solid #F0F5FB;font-size:12.5px;
-  font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
+td{padding:9px 14px;border-bottom:1px solid #F0F4F8}
 tr:nth-child(even) td{background:#FAFBFD}
-tbody tr:hover td{background:linear-gradient(90deg,#EEF6FF,#F5F9FF)!important;transition:background .15s}
+tr:hover td{background:#EEF4FF;transition:background .15s}
 /* Badges */
 .badge{display:inline-block;padding:3px 10px;border-radius:4px;font-size:10.5px;
   font-weight:700;white-space:nowrap;letter-spacing:.3px;text-transform:uppercase}
@@ -1408,20 +1364,6 @@ tbody tr:hover td{background:linear-gradient(90deg,#EEF6FF,#F5F9FF)!important;tr
 .bar-w{background:#e8e8e8;border-radius:4px;height:10px;min-width:80px}
 .bar-f{height:10px;border-radius:4px;transition:.5s}
 /* Toast */
-#banner-sessao{
-  position:sticky;top:0;z-index:98;
-  background:linear-gradient(135deg,#1F4E79,#1a3f63);
-  color:#fff;padding:10px 20px;
-  display:flex;align-items:center;gap:10px;
-  box-shadow:0 2px 12px rgba(0,0,0,.25);
-  font-size:13px;font-weight:600;
-  animation:slideDown .3s ease-out;
-}
-@keyframes slideDown{from{transform:translateY(-100%);opacity:0}to{transform:translateY(0);opacity:1}}
-@media(max-width:600px){
-  #banner-sessao{padding:8px 12px;font-size:12px;gap:8px;flex-wrap:nowrap}
-  #banner-sessao span{font-size:11.5px}
-}
 #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);
   background:var(--azul);color:#fff;padding:10px 22px;border-radius:20px;
   font-size:12.5px;font-weight:600;z-index:1000;transition:.3s;pointer-events:none;opacity:0}
@@ -1462,7 +1404,7 @@ tbody tr:hover td{background:linear-gradient(90deg,#EEF6FF,#F5F9FF)!important;tr
   background:linear-gradient(135deg,#2E75B6,#1F4E79);
   color:#fff;border:none;border-radius:20px;
   padding:7px 18px;font-size:12px;cursor:pointer;font-weight:600;
-  font-family:inherit;transition:var(--transition);letter-spacing:.1px
+  font-family:inherit;transition:all .2s;letter-spacing:.1px
 }
 .btn-sm:hover{
   transform:translateY(-1px);
@@ -1483,11 +1425,6 @@ tbody tr:hover td{background:linear-gradient(90deg,#EEF6FF,#F5F9FF)!important;tr
   border-radius:var(--radius-sm);font-size:12.5px;width:300px;color:var(--text);
   background:var(--surface-2);font-family:inherit;outline:none;transition:border-color .2s}
 .search-wrap input:focus{border-color:var(--navy-3);background:var(--surface)}
-input:focus,select:focus{
-  border-color:var(--navy-2);
-  box-shadow:0 0 0 3px rgba(46,117,182,.12);
-  outline:none
-}
 .search-icon{position:absolute;left:10px;top:50%;transform:translateY(-50%);
   color:var(--text-3);font-size:13px;pointer-events:none;display:flex;align-items:center}
 /* Gráficos */
@@ -1546,26 +1483,13 @@ input:focus,select:focus{
   #upload-area{padding:32px 16px;min-height:calc(100vh - 56px)}
   .drop-zone{padding:36px 20px;border-radius:18px}
   .toolbar .btn-sm{flex:1;min-width:calc(50% - 5px)}
-  /* Floating bottom action bar for analyze button */
-  .btn-analisar{
-    position:fixed;bottom:20px;left:50%;
-    transform:translateX(-50%);
-    z-index:200;min-width:220px;
-    box-shadow:var(--shadow-gold),0 0 0 6px rgba(255,255,255,.9);
-    font-size:13.5px
-  }
-  .btn-analisar:hover{transform:translateX(-50%) translateY(-2px) scale(1.01)}
-  #col-config{padding-bottom:80px}
 }
 /* ── Scrollbar premium ── */
 ::-webkit-scrollbar{width:6px;height:6px}
-::-webkit-scrollbar-track{background:var(--bg)}
-::-webkit-scrollbar-thumb{background:rgba(31,78,121,.25);border-radius:3px}
-::-webkit-scrollbar-thumb:hover{background:rgba(31,78,121,.4)}
-*{scrollbar-width:thin;scrollbar-color:rgba(31,78,121,.25) transparent}
-[data-theme="dark"] ::-webkit-scrollbar-track{background:#0f172a}
-[data-theme="dark"] ::-webkit-scrollbar-thumb{background:rgba(148,163,184,.2)}
-[data-theme="dark"] ::-webkit-scrollbar-thumb:hover{background:rgba(148,163,184,.35)}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#CBD5E1;border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:#94A3B8}
+*{scrollbar-width:thin;scrollbar-color:#CBD5E1 transparent}
 /* ── Animações de entrada ── */
 /* ── Onboarding tour ── */
 #onboarding-overlay{position:fixed;inset:0;background:rgba(10,20,40,.82);z-index:9999;
@@ -1595,7 +1519,7 @@ input:focus,select:focus{
 .drop-zone .upload-icon svg{animation:floatIcon 3s ease-in-out infinite}
 #upload-area{animation:fadeUp .5s ease-out both}
 /* ── KPI premium ── */
-.kpi:hover{transform:translateY(-4px);box-shadow:var(--shadow-xl);border-color:rgba(46,117,182,.2)}
+.kpi:hover{transform:translateY(-3px);box-shadow:0 12px 32px rgba(0,0,0,.14)}
 .kpi-icon{position:absolute;top:14px;right:14px;opacity:.18;pointer-events:none;color:var(--azul)}
 /* ── Skeleton loading ── */
 @keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
@@ -1727,7 +1651,7 @@ input:focus,select:focus{
     <button class="btn-upload btn-template" onclick="baixarTemplate()">
       ↓ Baixar Template Padrão
     </button>
-    <input type="file" id="file-input" accept=".xlsx,.xls,.xlsm,.csv,.tsv,.ofx,.xml">
+    <input type="file" id="file-input" accept=".xlsx,.xls,.xlsm,.csv,.tsv,.ofx">
   </div>
 
   <!-- Histórico de arquivos recentes -->
@@ -1762,9 +1686,6 @@ input:focus,select:focus{
         <option value="TINY">Tiny ERP</option>
         <option value="GESTAO_CLICK">GestãoClick</option>
         <option value="NFE_XML">NFe XML exportada</option>
-        <option value="SIENGE">Sienge (Softplan)</option>
-        <option value="VHSYS">VHSYS</option>
-        <option value="NUVEMSHOP">Nuvemshop</option>
       </select>
     </div>
     <div id="erp-banner" class="erp-banner" style="display:none"></div>
@@ -1787,7 +1708,7 @@ input:focus,select:focus{
   <div class="toolbar">
     <span class="tag-arquivo" id="tag-arquivo">—</span>
     <button class="btn-sm btn-outline" id="btn-darkmode" onclick="_toggleDarkMode()" title="Alternar tema claro/escuro" aria-label="Alternar tema claro/escuro" style="padding:5px 9px;font-size:15px">🌙</button>
-    <button class="btn-sm" onclick="document.getElementById('upload-area').style.display='block';document.getElementById('dashboard').style.display='none';document.getElementById('col-config').style.display='none';_dashboardVisivel=false;document.getElementById('btn-comparar').style.display='none';const _cc=document.getElementById('card-comparativo');if(_cc)_cc.style.display='none';_atualizarStep(1);_DB.limpar();window._sessaoRestaurada=null;">
+    <button class="btn-sm" onclick="document.getElementById('upload-area').style.display='block';document.getElementById('dashboard').style.display='none';document.getElementById('col-config').style.display='none';_dashboardVisivel=false;document.getElementById('btn-comparar').style.display='none';const _cc=document.getElementById('card-comparativo');if(_cc)_cc.style.display='none';_atualizarStep(1)">
       Novo arquivo
     </button>
     <button class="btn-sm btn-outline btn-imprimir" onclick="window.print()" aria-label="Imprimir relatório">Imprimir</button>
@@ -1832,20 +1753,6 @@ input:focus,select:focus{
   <div class="card" id="card-fluxo" role="region" aria-label="Fluxo por Período" style="display:none">
     <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex-shrink:0"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>Fluxo por Período</h2>
     <div id="fluxo-content"></div>
-  </div>
-
-  <!-- Projeção de Fluxo -->
-  <div class="card" id="card-projecao" role="region" aria-label="Projeção de Fluxo de Caixa" style="display:none">
-    <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex-shrink:0"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>Projeção de Fluxo — Próximos 3 meses</h2>
-    <div id="projecao-content"></div>
-    <canvas id="chart-projecao" height="160" style="margin-top:14px;max-width:100%"></canvas>
-  </div>
-
-  <!-- Sazonalidade -->
-  <div class="card" id="card-sazonalidade" role="region" aria-label="Análise de Sazonalidade" style="display:none">
-    <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Sazonalidade — Médias por Mês <span id="sazon-anos" style="font-size:11px;font-weight:400;color:var(--text-2);text-transform:none;letter-spacing:0"></span></h2>
-    <div id="sazonalidade-content"></div>
-    <canvas id="chart-sazonalidade" height="180" style="margin-top:14px;max-width:100%"></canvas>
   </div>
 
   <!-- Verificação de integridade -->
@@ -1944,50 +1851,13 @@ input:focus,select:focus{
 const esc = v => String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 
 // ══════════════════════════════════════════════════════
-// INDEXEDDB — PERSISTÊNCIA LOCAL
-// ══════════════════════════════════════════════════════
-const _DB = (() => {
-  const DB_NAME = 'PlanilhaFinanceiraPRO', STORE = 'sessao', KEY = 'ultima';
-  let _db = null;
-  function _open() {
-    return new Promise((res, rej) => {
-      if (_db) { res(_db); return; }
-      const req = indexedDB.open(DB_NAME, 1);
-      req.onupgradeneeded = e => e.target.result.createObjectStore(STORE);
-      req.onsuccess = e => { _db = e.target.result; res(_db); };
-      req.onerror   = () => rej(req.error);
-    });
-  }
-  return {
-    salvar(payload) {
-      _open().then(db => {
-        const tx = db.transaction(STORE, 'readwrite');
-        tx.objectStore(STORE).put(payload, KEY);
-      }).catch(() => {});
-    },
-    restaurar() {
-      return _open().then(db => new Promise((res, rej) => {
-        const req = db.transaction(STORE).objectStore(STORE).get(KEY);
-        req.onsuccess = () => res(req.result || null);
-        req.onerror   = () => rej(req.error);
-      })).catch(() => null);
-    },
-    limpar() {
-      _open().then(db => db.transaction(STORE, 'readwrite').objectStore(STORE).delete(KEY)).catch(() => {});
-    },
-  };
-})();
-
-// ══════════════════════════════════════════════════════
 // ESTADO GLOBAL
 // ══════════════════════════════════════════════════════
 let _dadosOriginais = [];
 let _headers        = [];
 let _cols           = {};
 let _nomeArquivo    = '';
-let _chartAging        = null;
-let _chartProjecao     = null;
-let _chartSazonalidade = null;
+let _chartAging     = null;
 let _erpDetectado   = null;
 let _toastTimer     = null;
 let _ultimosKpis     = null;
@@ -2124,7 +1994,7 @@ document.getElementById('file-input').addEventListener('change', e => {
   carregarArquivo(f);
 });
 
-const _EXTS_OK = new Set(['.xlsx', '.xls', '.xlsm', '.csv', '.tsv', '.ofx', '.xml']);
+const _EXTS_OK = new Set(['.xlsx', '.xls', '.xlsm', '.csv', '.tsv', '.ofx']);
 function _tipoPermitido(nome) {
   const i = nome.lastIndexOf('.');
   if (i < 0) return false;
@@ -2214,7 +2084,6 @@ function carregarArquivo(file) {
           const uteis = arr[i].filter(c => c && !String(c).startsWith('__EMPTY'));
           if (uteis.length >= 2) { headerRow = i; break; }
         }
-        if (!arr[headerRow]) throw new Error('Não foi possível detectar cabeçalho na planilha.');
         const rawHeaders = arr[headerRow].map(String);
         headers = rawHeaders.filter(h => h && !h.startsWith('__EMPTY'));
 
@@ -2276,11 +2145,9 @@ function carregarArquivo(file) {
       _colsComparativos = null;
       _kpisComparativos = null;
       _nomeArquivoComp  = '';
-      if (_chartAging)        { _chartAging.destroy();        _chartAging = null; }
-      if (_chartComparativo)  { _chartComparativo.destroy();  _chartComparativo = null; }
-      if (_chartFluxoM)       { _chartFluxoM.destroy();       _chartFluxoM = null; }
-      if (_chartProjecao)     { _chartProjecao.destroy();     _chartProjecao = null; }
-      if (_chartSazonalidade) { _chartSazonalidade.destroy(); _chartSazonalidade = null; }
+      if (_chartAging)       { _chartAging.destroy();       _chartAging = null; }
+      if (_chartComparativo) { _chartComparativo.destroy(); _chartComparativo = null; }
+      if (_chartFluxoM)      { _chartFluxoM.destroy();      _chartFluxoM = null; }
       const _ccReset = document.getElementById('card-comparativo');
       if (_ccReset) _ccReset.style.display = 'none';
       document.getElementById('btn-comparar').style.display = 'none';
@@ -2295,7 +2162,7 @@ function carregarArquivo(file) {
       _mostrarErro('Erro ao ler o arquivo: ' + err.message);
     }
   };
-  reader.onerror = () => { mostrarLoader(false); _mostrarErro('Erro ao ler o arquivo. Verifique se ele não está aberto em outro programa.'); };
+  reader.onerror = () => { _mostrarErro('Erro ao ler o arquivo. Verifique se ele não está aberto em outro programa.'); };
   if (file.name.toLowerCase().endsWith('.ofx'))
     reader.readAsArrayBuffer(file);
   else if (file.name.toLowerCase().endsWith('.csv') || file.name.toLowerCase().endsWith('.tsv'))
@@ -2310,7 +2177,7 @@ function carregarArquivo(file) {
 function abrirComparativo() {
   const inp = document.createElement('input');
   inp.type = 'file';
-  inp.accept = '.xlsx,.xls,.xlsm,.csv,.tsv,.ofx,.xml';
+  inp.accept = '.xlsx,.xls,.xlsm,.csv,.tsv,.ofx';
   inp.style.display = 'none';
   inp.onchange = e => {
     const f = e.target.files[0];
@@ -2337,8 +2204,10 @@ function carregarArquivoComparativo(file) {
         ({ headers, dados } = parseOFX(text));
         if (!dados.length) throw new Error('Nenhuma transação encontrada no arquivo OFX comparativo.');
       } else if (file.name.toLowerCase().match(/\.(csv|tsv)$/)) {
+        let _csvTxt = e.target.result;
+        if (_csvTxt.charCodeAt(0) === 0xFEFF) _csvTxt = _csvTxt.slice(1);
         const sep = file.name.toLowerCase().endsWith('.tsv') ? '\t' : undefined;
-        const wb  = XLSX.read(e.target.result, { type:'string', raw:false, FS: sep });
+        const wb  = XLSX.read(_csvTxt, { type:'string', raw:false, FS: sep });
         const ws  = wb.Sheets[wb.SheetNames[0]];
         const arr = XLSX.utils.sheet_to_json(ws, { header:1, defval:'' });
         if (!arr.length || !arr[0]) throw new Error('Arquivo comparativo vazio ou sem cabeçalho.');
@@ -2356,7 +2225,6 @@ function carregarArquivoComparativo(file) {
         for (let i = 0; i < Math.min(5, arr.length); i++) {
           if (arr[i].filter(c => c && !String(c).startsWith('__EMPTY')).length >= 2) { headerRow = i; break; }
         }
-        if (!arr[headerRow]) throw new Error('Não foi possível detectar cabeçalho na planilha comparativa.');
         const rawH = arr[headerRow].map(String);
         headers = rawH.filter(h => h && !h.startsWith('__EMPTY'));
         dados   = arr.slice(headerRow + 1).filter(row => row.some(c => c !== '')).map(row => {
@@ -2379,7 +2247,7 @@ function carregarArquivoComparativo(file) {
       _mostrarErro('Erro ao ler arquivo comparativo: ' + err.message);
     }
   };
-  reader.onerror = () => { mostrarLoader(false); _mostrarErro('Erro ao ler o arquivo comparativo. Verifique se ele não está aberto em outro programa.'); };
+  reader.onerror = () => { _mostrarErro('Erro ao ler o arquivo comparativo. Verifique se ele não está aberto em outro programa.'); };
   if (file.name.toLowerCase().endsWith('.ofx'))
     reader.readAsArrayBuffer(file);
   else if (file.name.toLowerCase().endsWith('.csv') || file.name.toLowerCase().endsWith('.tsv'))
@@ -2426,7 +2294,7 @@ function mostrarConfigColunas(headers, cols, erpDetectado) {
       `<option value="${esc(h)}" ${cols[tipo]===h?'selected':''}>${esc(h)}</option>`
     ).join('');
     div.innerHTML = `<label>${label}</label>
-      <select id="sel-${tipo}" onchange="_atualizarPreview('${tipo}')"><option value="" ${!cols[tipo]?'selected':''}>(nenhuma)</option>${sel}</select>
+      <select id="sel-${tipo}" onchange="_atualizarPreview('${tipo}')"><option value="">(nenhuma)</option>${sel}</select>
       <div id="prev-${tipo}" class="col-preview"></div>`;
     grid.appendChild(div);
     if (cols[tipo]) setTimeout(() => _atualizarPreview(tipo), 0);
@@ -2472,14 +2340,14 @@ function lerColsSelecionadas() {
 // ══════════════════════════════════════════════════════
 // EXECUTAR ANÁLISE
 // ══════════════════════════════════════════════════════
-async function executarAnalise(colsOverride = null) {
+async function executarAnalise() {
   if (_analisandoAgora) return;
   _analisandoAgora = true;
   mostrarLoader(true);
   _setLoaderStep('Preparando análise...');
   await _yield();
   try {
-      _cols = colsOverride || lerColsSelecionadas();
+      _cols = lerColsSelecionadas();
       _auditConfirmados.clear();
       const dados = _dadosOriginais;
 
@@ -2538,13 +2406,10 @@ async function executarAnalise(colsOverride = null) {
       const _scoreData = calcularScoreFinanceiro(kpis, ag, par, audit);
       renderScoreFinanceiro(_scoreData);
 
-      // Fluxo por Período + Projeção + Sazonalidade
-      _setLoaderStep('Gerando fluxo de caixa, projeção e sazonalidade...');
+      // Fluxo por Período
+      _setLoaderStep('Gerando fluxo de caixa e relatórios...');
       await _yield();
       renderFluxoPeriodo(dados, _cols);
-      const _linhasM = calcularFluxoPeriodo(dados, _cols.data, _cols.valor, _cols.tipo, 'M');
-      renderProjecao(_linhasM);
-      renderSazonalidade(dados, _cols);
 
       // Verificação de integridade
       const integ = calcularIntegridade(dados, _cols, kpis, dre, par);
@@ -2562,17 +2427,6 @@ async function executarAnalise(colsOverride = null) {
       document.getElementById('tag-arquivo').textContent   = _nomeArquivo;
       _atualizarStep(3);
       _toast(`${_dadosOriginais.length.toLocaleString('pt-BR')} registros analisados com sucesso`, 3500, 'sucesso');
-      // Salvar sessão no IndexedDB
-      _DB.salvar({ dados: _dadosOriginais, headers: _headers, cols: _cols, nome: _nomeArquivo });
-      // Stagger de entrada dos cards e KPIs
-      const _sc = [...document.querySelectorAll('#dashboard .card')];
-      _sc.forEach(el => el.classList.remove('card-animate'));
-      void document.body.offsetWidth;
-      _sc.forEach((el,i) => { el.style.animationDelay=(i*70)+'ms'; el.classList.add('card-animate'); });
-      const _sk = [...document.querySelectorAll('#kpis .kpi')];
-      _sk.forEach(el => el.classList.remove('card-animate'));
-      void document.body.offsetWidth;
-      _sk.forEach((el,i) => { el.style.animationDelay=(i*55)+'ms'; el.classList.add('card-animate'); });
     } catch(err) {
       _mostrarErro('Erro na análise: ' + err.message);
       document.getElementById('upload-area').style.display = 'block';
@@ -2583,6 +2437,15 @@ async function executarAnalise(colsOverride = null) {
       mostrarLoader(false);
       _setLoaderStep('');
     }
+    // Stagger de entrada dos cards e KPIs
+    const _sc = [...document.querySelectorAll('#dashboard .card')];
+    _sc.forEach(el => el.classList.remove('card-animate'));
+    void document.body.offsetWidth;
+    _sc.forEach((el,i) => { el.style.animationDelay=(i*70)+'ms'; el.classList.add('card-animate'); });
+    const _sk = [...document.querySelectorAll('#kpis .kpi')];
+    _sk.forEach(el => el.classList.remove('card-animate'));
+    void document.body.offsetWidth;
+    _sk.forEach((el,i) => { el.style.animationDelay=(i*55)+'ms'; el.classList.add('card-animate'); });
 }
 
 // ══════════════════════════════════════════════════════
@@ -2592,7 +2455,7 @@ function renderKPIs(k) {
   const periodo = (k.periodoInicio && k.periodoFim)
     ? `${fmtData(k.periodoInicio)} → ${fmtData(k.periodoFim)}` : '—';
   const corRes = k.resultado >= 0 ? 'var(--success)' : 'var(--danger)';
-  const margem = (k.margem != null && isFinite(k.margem)) ? k.margem.toFixed(1) : '—';
+  const margem = isFinite(k.margem) ? k.margem.toFixed(1) : '—';
   document.getElementById('kpis').innerHTML = `
     <div class="kpi ok">
       <svg class="kpi-icon" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
@@ -2801,9 +2664,9 @@ function renderAuditoria(lista) {
       : 'background:#d1fae5;color:#065f46;border:1px solid #6ee7b7';
     return `<tr class="${rowClass}" style="${rowStyle}">
       <td>${sevCell}</td>
-      <td>${esc(String(p.tipo??''))}</td><td>${esc(String(p.linha??''))}</td>
-      <td>${esc(String(p.coluna??''))}</td><td>${esc(String(p.valor??''))}</td>
-      <td>${esc(String(p.descricao??''))}</td>
+      <td>${esc(p.tipo)}</td><td>${esc(p.linha)}</td>
+      <td>${esc(p.coluna)}</td><td>${esc(p.valor)}</td>
+      <td>${esc(p.descricao)}</td>
       <td><button data-audit-key="${esc(key)}" onclick="confirmarAuditoria(this.dataset.auditKey)"
         style="font-size:11px;padding:3px 10px;border-radius:6px;cursor:pointer;font-weight:600;white-space:nowrap;${btnStyle}">${btnLabel}</button></td>
     </tr>`;
@@ -2865,25 +2728,6 @@ function renderAging(lista) {
         <td style="text-align:right">${fmtBRL(total)}</td><td style="text-align:right">100%</td><td></td>
       </tr></tfoot>
     </table></div>`;
-
-  // Score de inadimplência ponderado (0% = tudo a vencer, 100% = tudo +90d)
-  const _PESOS_AGING = { 'A vencer':0, 'Vencido 1-30d':1, 'Vencido 31-60d':2, 'Vencido 61-90d':3, 'Vencido +90d':4, 'Sem data':0 };
-  const _pesoTotal = lista.reduce((s, i) => s + (_PESOS_AGING[i.faixa] || 0) * i.total, 0);
-  const _scoreInadimp = total > 0 ? Math.min(100, Math.round(_pesoTotal / (4 * total) * 100)) : 0;
-  const _corScore = _scoreInadimp < 15 ? '#2e7d32' : _scoreInadimp < 40 ? '#e8a020' : '#C00000';
-  const _labelScore = _scoreInadimp < 15 ? 'Saudável' : _scoreInadimp < 40 ? 'Atenção' : 'Crítico';
-  const _elContent = document.getElementById('aging-content');
-  if (_elContent) {
-    _elContent.insertAdjacentHTML('beforeend',
-      `<div style="margin-top:12px;padding:10px 14px;background:var(--surface-2);border-radius:var(--radius-sm);display:flex;align-items:center;gap:14px;flex-wrap:wrap">
-        <span style="font-size:12px;color:var(--text-2);font-weight:600">Score de Inadimplência</span>
-        <div style="flex:1;min-width:120px;background:#E2E8F0;border-radius:6px;height:8px">
-          <div style="width:${_scoreInadimp}%;height:8px;border-radius:6px;background:${_corScore};transition:width .6s ease-out"></div>
-        </div>
-        <span style="font-size:13px;font-weight:700;color:${_corScore}">${_scoreInadimp}% — ${_labelScore}</span>
-        <span style="font-size:11px;color:var(--text-3)">(0% = tudo a vencer · 100% = tudo +90d)</span>
-      </div>`);
-  }
 
   // Gráfico
   const _canvAging = document.getElementById('chart-aging');
@@ -2960,12 +2804,6 @@ function renderPareto(lista) {
       </p></div>`;
     return;
   }
-  const top3Pct = lista.slice(0, 3).reduce((s, i) => s + i.pct, 0);
-  const alertaConc = top3Pct > 60
-    ? `<div style="background:#FEF3C7;border:1px solid #FCD34D;border-radius:var(--radius-sm);padding:8px 14px;margin-bottom:10px;font-size:12px;color:#92400E">
-        ⚠ <strong>Concentração de risco:</strong> Top 3 entidades representam <strong>${fmtNum(top3Pct,1)}%</strong> do total — risco elevado de dependência.
-       </div>` : '';
-
   const rows = lista.map(i => `
     <tr>
       <td style="text-align:center;font-weight:bold">${esc(i.ranking)}</td>
@@ -2976,119 +2814,10 @@ function renderPareto(lista) {
       <td><span class="badge" style="background:${i.classe==='A'?'var(--gold-bg)':'var(--surface-2)'};color:${i.classe==='A'?'var(--gold)':'var(--text-3)'};border:1px solid ${i.classe==='A'?'rgba(201,162,39,.3)':'var(--border)'}">${i.classe}</span></td>
     </tr>`).join('');
   document.getElementById('pareto-content').innerHTML = `
-    ${alertaConc}
     <div class="tbl-wrap"><table>
       <thead><tr><th>#</th><th>Entidade</th><th>Total R$</th><th>%</th><th>Acum.</th><th>Classe</th></tr></thead>
       <tbody>${rows}</tbody>
     </table></div>`;
-}
-
-// ══════════════════════════════════════════════════════
-// RENDER PROJEÇÃO DE FLUXO
-// ══════════════════════════════════════════════════════
-function renderProjecao(linhasHistorico) {
-  const card = document.getElementById('card-projecao');
-  if (!card) return;
-  const proj = calcularProjecao(linhasHistorico, 3);
-  if (!proj || !proj.length) {
-    if (_chartProjecao) { _chartProjecao.destroy(); _chartProjecao = null; }
-    card.style.display = 'none'; return;
-  }
-  card.style.display = 'block';
-  const rows = proj.map(p => {
-    const cor = p.res >= 0 ? 'var(--success)' : 'var(--danger)';
-    return `<tr style="background:${p.res>=0?'#D1FAE5':'#FEE2E2'}">
-      <td style="font-weight:600">${esc(p.periodo)} <span style="font-size:10px;background:#E0E7FF;color:#3730A3;padding:1px 6px;border-radius:10px;margin-left:4px">Proj.</span></td>
-      <td style="text-align:right;color:var(--success)">${fmtBRL(p.rec)}</td>
-      <td style="text-align:right;color:var(--danger)">${fmtBRL(p.desp)}</td>
-      <td style="text-align:right;font-weight:bold;color:${cor}">${fmtBRL(p.res)}</td>
-    </tr>`;
-  }).join('');
-  document.getElementById('projecao-content').innerHTML = `
-    <p style="font-size:11px;color:var(--text-2);margin-bottom:8px">Projeção baseada em regressão linear dos ${linhasHistorico.length} meses anteriores.</p>
-    <div class="tbl-wrap"><table>
-      <thead><tr><th>Período</th><th style="text-align:right">Receita Est.</th><th style="text-align:right">Despesa Est.</th><th style="text-align:right">Resultado Est.</th></tr></thead>
-      <tbody>${rows}</tbody>
-    </table></div>`;
-
-  const _canvP = document.getElementById('chart-projecao');
-  if (!_canvP) return;
-  if (_chartProjecao) { _chartProjecao.destroy(); _chartProjecao = null; }
-  const hist = linhasHistorico.slice(-6);
-  const allLabels = [...hist.map(l => l.periodo), ...proj.map(p => p.periodo)];
-  const histRec  = hist.map(l => l.receita);
-  const histDesp = hist.map(l => l.despesa);
-  const projRec  = [...Array(hist.length).fill(null), ...proj.map(p => p.rec)];
-  const projDesp = [...Array(hist.length).fill(null), ...proj.map(p => p.desp)];
-  _chartProjecao = new Chart(_canvP.getContext('2d'), {
-    type: 'bar',
-    data: {
-      labels: allLabels,
-      datasets: [
-        { label:'Receita (histórico)', data:histRec, backgroundColor:'rgba(46,125,50,.65)', borderRadius:4 },
-        { label:'Despesa (histórico)', data:histDesp, backgroundColor:'rgba(192,0,0,.65)', borderRadius:4 },
-        { label:'Receita (proj.)', data:projRec, backgroundColor:'rgba(46,125,50,.25)', borderColor:'rgba(46,125,50,.8)', borderWidth:2, borderRadius:4 },
-        { label:'Despesa (proj.)', data:projDesp, backgroundColor:'rgba(192,0,0,.2)', borderColor:'rgba(192,0,0,.7)', borderWidth:2, borderRadius:4 },
-      ]
-    },
-    options: {
-      responsive:true, maintainAspectRatio:false,
-      plugins:{ legend:{ position:'bottom', labels:{ font:{ size:11 }, boxWidth:12 } } },
-      scales:{ y:{ ticks:{ callback: v => 'R$ '+v.toLocaleString('pt-BR',{minimumFractionDigits:0}) } } }
-    }
-  });
-}
-
-// ══════════════════════════════════════════════════════
-// RENDER SAZONALIDADE
-// ══════════════════════════════════════════════════════
-function renderSazonalidade(dados, cols) {
-  const card = document.getElementById('card-sazonalidade');
-  if (!card) return;
-  const saz = calcularSazonalidade(dados, cols.data, cols.valor, cols.tipo);
-  if (!saz) {
-    if (_chartSazonalidade) { _chartSazonalidade.destroy(); _chartSazonalidade = null; }
-    card.style.display = 'none'; return;
-  }
-  card.style.display = 'block';
-  const nAnos = Math.max(...saz.map(m => m.nAnos));
-  const elAnos = document.getElementById('sazon-anos');
-  if (elAnos) elAnos.textContent = nAnos > 1 ? `(média de ${nAnos} anos)` : '(1 ano de dados)';
-
-  const melhorMes  = saz.reduce((a, b) => b.resultado > a.resultado ? b : a);
-  const piorMes    = saz.reduce((a, b) => b.resultado < a.resultado ? b : a);
-  document.getElementById('sazonalidade-content').innerHTML = `
-    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px">
-      <div style="background:#D1FAE5;border-radius:var(--radius-sm);padding:8px 14px;font-size:12px">
-        <span style="color:var(--text-2)">Melhor mês:</span> <strong style="color:#2e7d32">${melhorMes.mes}</strong>
-        <span style="color:#2e7d32;font-weight:600"> (${fmtBRL(melhorMes.resultado)})</span>
-      </div>
-      <div style="background:#FEE2E2;border-radius:var(--radius-sm);padding:8px 14px;font-size:12px">
-        <span style="color:var(--text-2)">Pior mês:</span> <strong style="color:#C00000">${piorMes.mes}</strong>
-        <span style="color:#C00000;font-weight:600"> (${fmtBRL(piorMes.resultado)})</span>
-      </div>
-    </div>`;
-
-  const _canvS = document.getElementById('chart-sazonalidade');
-  if (!_canvS) return;
-  if (_chartSazonalidade) { _chartSazonalidade.destroy(); _chartSazonalidade = null; }
-  _chartSazonalidade = new Chart(_canvS.getContext('2d'), {
-    type: 'bar',
-    data: {
-      labels: saz.map(m => m.mes),
-      datasets: [
-        { label:'Receita média', data:saz.map(m=>m.receita), backgroundColor:'rgba(46,125,50,.7)', borderRadius:4 },
-        { label:'Despesa média', data:saz.map(m=>m.despesa), backgroundColor:'rgba(192,0,0,.6)', borderRadius:4 },
-        { label:'Resultado', data:saz.map(m=>m.resultado), type:'line', borderColor:'#C9A84C',
-          backgroundColor:'transparent', borderWidth:2, pointRadius:4, tension:.3 },
-      ]
-    },
-    options: {
-      responsive:true, maintainAspectRatio:false,
-      plugins:{ legend:{ position:'bottom', labels:{ font:{size:11}, boxWidth:12 } } },
-      scales:{ y:{ ticks:{ callback: v => 'R$ '+v.toLocaleString('pt-BR',{minimumFractionDigits:0}) } } }
-    }
-  });
 }
 
 // ══════════════════════════════════════════════════════
@@ -3255,7 +2984,7 @@ function renderAntiFraude(r) {
     ${_section('Outliers Estatísticos', '📈', r.outliers, x => _row(x.severidade, x.descricao))}
     ${_section('Concentração Anormal', '⚠️', r.concentracao, x => _row(x.severidade, x.descricao))}
     ${_section('Números Redondos', '🔢', r.numerosRedondos, x => _row(x.severidade, x.descricao))}
-    ${_section('Anomalias Temporais', '🗓️', r.anomaliasTemporais, x => _row(x.severidade, x.descricao))}
+    ${_section('Anomalias Temporais', '🗓️', r.anomaliasTEmporais, x => _row(x.severidade, x.descricao))}
   `;
 }
 
@@ -3278,10 +3007,7 @@ function renderTabela(dados, headers) {
     tbody.innerHTML = `<tr><td colspan="${headers.length}" style="text-align:center;color:var(--text-3);padding:24px;font-style:italic">Nenhum resultado encontrado.</td></tr>`;
   } else {
     tbody.innerHTML = slice.map(row =>
-      '<tr>' + headers.map(h => {
-        const v = row[h];
-        return `<td>${v instanceof Date ? fmtData(v) : esc(v ?? '')}</td>`;
-      }).join('') + '</tr>'
+      '<tr>' + headers.map(h => `<td>${esc(row[h])}</td>`).join('') + '</tr>'
     ).join('');
   }
 
@@ -3313,9 +3039,10 @@ function _irPagina(n) {
 }
 
 function _toSortKey(v) {
-  if (v instanceof Date) return isNaN(v) ? null : v.getTime();
-  const s = String(v ?? '').trim();
-  const n = parseFloat(s.replace(/[^\d.,\-]/g,'').replace(/\./g,'').replace(',','.'));
+  const s = String(v ?? '').trim().replace(/[^\d.,\-]/g,'');
+  const n = s.includes(',')
+    ? parseFloat(s.replace(/\./g,'').replace(',','.'))
+    : parseFloat(s.replace(/,/g,''));
   return isFinite(n) ? n : null;
 }
 
@@ -3386,10 +3113,14 @@ function _filtrarTabelaImediato() {
 function _parseDataBR(s) {
   // Converts DD/MM/YYYY, YYYY-MM-DD, Date object, or Excel serial to YYYY-MM-DD string
   if (!s) return null;
-  if (s instanceof Date) return isNaN(s) ? null : s.toISOString().slice(0, 10);
+  if (s instanceof Date) {
+    if (isNaN(s)) return null;
+    return `${s.getFullYear()}-${String(s.getMonth()+1).padStart(2,'0')}-${String(s.getDate()).padStart(2,'0')}`;
+  }
   if (typeof s === 'number') {
     const d = new Date(Math.round((s - 25569) * 86400 * 1000));
-    return isNaN(d) ? null : d.toISOString().slice(0, 10);
+    if (isNaN(d)) return null;
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   }
   const m1 = String(s).match(/^(\d{2})\/(\d{2})\/(\d{4})/);
   if (m1) return `${m1[3]}-${m1[2]}-${m1[1]}`;
@@ -3484,18 +3215,7 @@ function _gerarBriefing() {
   if (_ultimoPareto && _ultimoPareto.length) {
     linhas.push(`\n## Top Entidades (Pareto)`);
     _ultimoPareto.slice(0, 5).forEach((r, i) =>
-      linhas.push(`${i + 1}. ${String(r.nome||'').replace(/[*_\\]/g,'\\$&')}: ${fmtV(r.total)} (${(r.pct || 0).toFixed(1)}%)`));
-  }
-
-  if (_ultimoAntiFraude && _ultimoAntiFraude.scoreRisco > 0) {
-    const af = _ultimoAntiFraude;
-    linhas.push(`\n## Anti-Fraude (Score de Risco: ${af.scoreRisco}/100)`);
-    af.alertas.forEach(a => linhas.push(`- ${a}`));
-    if (af.duplicatas.length)        linhas.push(`- ${af.duplicatas.length} duplicata(s) detectada(s)`);
-    if (af.fracionamento.length)     linhas.push(`- ${af.fracionamento.length} caso(s) de fracionamento`);
-    if (af.concentracao.length)      linhas.push(`- Concentração: ${af.concentracao.length} entidade(s) com concentração anormal`);
-    if (af.benford?.valido && af.benford.nivel !== 'OK')
-      linhas.push(`- Lei de Benford: ${af.benford.nivel} (χ²=${af.benford.chi2})`);
+      linhas.push(`${i + 1}. ${r.nome}: ${fmtV(r.total)} (${(r.pct || 0).toFixed(1)}%)`));
   }
 
   return linhas.join('\n');
@@ -3562,29 +3282,21 @@ async function analisarComClaude(btn) {
   btn.textContent = 'Analisando...';
 
   try {
-    const _abortCtrl = new AbortController();
-    const _abortTimer = setTimeout(() => _abortCtrl.abort(), 45000);
-    let res;
-    try {
-      res = await fetch('https://api.anthropic.com/v1/messages', {
-        signal: _abortCtrl.signal,
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-allow-browser': 'true',
-        },
-        body: JSON.stringify({
-          model: 'claude-opus-4-7',
-          max_tokens: 2048,
-          system: _CLAUDE_SYSTEM,
-          messages: [{ role: 'user', content: _gerarBriefing() }],
-        }),
-      });
-    } finally {
-      clearTimeout(_abortTimer);
-    }
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-allow-browser': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-opus-4-5',
+        max_tokens: 2048,
+        system: _CLAUDE_SYSTEM,
+        messages: [{ role: 'user', content: _gerarBriefing() }],
+      }),
+    });
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
@@ -3741,14 +3453,10 @@ function exportarJSON() {
 }
 
 function exportarCSV() {
-  const buscaAtiva = (document.getElementById('busca')?.value || '').trim().length > 0;
-  const dados = buscaAtiva ? _dadosVisivelArr : (_dadosVisivelArr.length ? _dadosVisivelArr : _dadosOriginais);
+  const dados = _dadosVisivelArr.length ? _dadosVisivelArr : _dadosOriginais;
   if (!dados.length) { _toast('Sem dados para exportar', 2500, 'aviso'); return; }
   if (typeof XLSX === 'undefined') { _toast('SheetJS não carregado', 2500, 'erro'); return; }
-  const rows = [_headers, ...dados.map(r => _headers.map(h => {
-    const v = r[h];
-    return v instanceof Date ? fmtData(v) : (v ?? '');
-  }))];
+  const rows = [_headers, ...dados.map(r => _headers.map(h => r[h] ?? ''))];
   const ws = XLSX.utils.aoa_to_sheet(rows);
   const wb2 = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb2, ws, 'Dados');
@@ -3765,8 +3473,6 @@ function _trocarAba(nomAba) {
   _headers = aba.headers;
   const info = document.getElementById('sel-aba-info');
   if (info) info.textContent = `${aba.dados.length.toLocaleString('pt-BR')} registros`;
-  const headerInfo = document.getElementById('header-info');
-  if (headerInfo) headerInfo.textContent = `${nomAba} — ${aba.dados.length.toLocaleString('pt-BR')} registros`;
   // Invalidar caches da análise anterior para evitar dados da aba antiga
   _ultimosKpis = null; _ultimaAuditoria = null; _ultimoAging = null;
   _ultimoDre = null; _ultimoPareto = null; _ultimoAntiFraude = null;
@@ -3897,39 +3603,6 @@ function _renderHistorico() {
 
 // Renderizar histórico ao carregar a página
 window.addEventListener('DOMContentLoaded', _renderHistorico);
-
-// ══════════════════════════════════════════════════════
-// RESTAURAR SESSÃO INDEXEDDB
-// ══════════════════════════════════════════════════════
-window.addEventListener('DOMContentLoaded', () => {
-  _DB.restaurar().then(sess => {
-    if (!sess || !sess.dados || !sess.dados.length) return;
-    const banner = document.createElement('div');
-    banner.id = 'banner-sessao';
-    banner.innerHTML = `
-      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📂 Sessão anterior: <strong>${esc(sess.nome || 'arquivo')}</strong> <span style="opacity:.75">(${sess.dados.length.toLocaleString('pt-BR')} registros)</span></span>
-      <button onclick="_restaurarSessao()" style="flex-shrink:0;background:#C9A84C;color:#1A1A2E;border:none;padding:6px 16px;border-radius:7px;cursor:pointer;font-weight:700;font-size:12px;white-space:nowrap">Restaurar</button>
-      <button onclick="document.getElementById('banner-sessao')?.remove()" style="flex-shrink:0;background:transparent;color:rgba(255,255,255,.8);border:1px solid rgba(255,255,255,.3);padding:6px 10px;border-radius:7px;cursor:pointer;font-size:13px;line-height:1" aria-label="Fechar">✕</button>`;
-    const uploadArea = document.getElementById('upload-area');
-    if (uploadArea) uploadArea.insertAdjacentElement('beforebegin', banner);
-    else document.body.appendChild(banner);
-    window._sessaoRestaurada = sess;
-  });
-});
-
-function _restaurarSessao() {
-  const sess = window._sessaoRestaurada;
-  if (!sess) return;
-  document.getElementById('banner-sessao')?.remove();
-  _dadosOriginais = sess.dados;
-  _headers        = sess.headers || Object.keys(sess.dados[0] || {});
-  _cols           = sess.cols   || {};
-  _nomeArquivo    = sess.nome   || 'sessão restaurada';
-  // Oculta upload-area imediatamente para o loader aparecer corretamente
-  document.getElementById('upload-area').style.display = 'none';
-  // Passa _cols diretamente para evitar que lerColsSelecionadas() sobrescreva com DOM vazio
-  executarAnalise(_cols);
-}
 
 // ══════════════════════════════════════════════════════
 // PWA — Service Worker

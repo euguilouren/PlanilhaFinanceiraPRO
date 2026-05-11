@@ -317,7 +317,7 @@ class GeradorHTML:
             _tot = r.get('Total_RS', 0)
             tot = float(_tot) if pd.notna(_tot) else 0.0
             faixa_l = faixa.lower()
-            if 'vencer' in faixa_l or i == 0:
+            if 'vencer' in faixa_l:
                 bar_cls = 'bar-ok'
             elif i <= 2 or re.search(r'\b[1-9]\d?-\d+\b', faixa):
                 bar_cls = 'bar-atencao'
@@ -374,7 +374,7 @@ class GeradorHTML:
 
     def _secao_pareto(self, df: pd.DataFrame) -> str:
         col_ent = df.columns[0]
-        max_val = float(df['Total_RS'].max()) if len(df) else 1
+        max_val = float(df['Total_RS'].max()) if 'Total_RS' in df.columns and len(df) else 1
         if not max_val or pd.isna(max_val):
             max_val = 1
         rows = ''
@@ -382,15 +382,21 @@ class GeradorHTML:
             total_rs = r.get('Total_RS', 0)
             total_rs_f = float(total_rs) if pd.notna(total_rs) else 0.0
             pct_bar = min(total_rs_f / max_val * 100, 100)
-            classe  = str(r.get('Classe_Pareto') or '').strip().upper()
-            cor_cls = '#C9A227' if classe == 'A' else '#9BA8B5'
+            classe_raw = str(r.get('Classe_Pareto') or '').strip().upper()
+            cor_cls = '#C9A227' if classe_raw == 'A' else '#9BA8B5'
             bar = f'<div class="bar-wrap"><div class="bar" style="width:{pct_bar:.1f}%;background:{cor_cls}"></div></div>'
-            rows += (f"<tr><td style='text-align:center'>{int(r.get('Ranking',0))}</td>"
+            _rank = r.get('Ranking', 0)
+            rank = int(float(_rank)) if pd.notna(_rank) else 0
+            _pct = r.get('Percentual', 0)
+            pct_val = float(_pct) if pd.notna(_pct) else 0.0
+            _acum = r.get('Acumulado_%', 0)
+            acum_val = float(_acum) if pd.notna(_acum) else 0.0
+            rows += (f"<tr><td style='text-align:center'>{rank}</td>"
                      f"<td>{self._esc(r[col_ent])}</td>"
                      f"<td style='text-align:right'>{self._fmt_brl(r.get('Total_RS', 0))}</td>"
-                     f"<td style='text-align:right'>{float(r.get('Percentual',0)):.1f}%</td>"
-                     f"<td style='text-align:right'>{float(r.get('Acumulado_%',0)):.1f}%</td>"
-                     f"<td><span style='color:{cor_cls};font-weight:bold'>{classe}</span></td>"
+                     f"<td style='text-align:right'>{pct_val:.1f}%</td>"
+                     f"<td style='text-align:right'>{acum_val:.1f}%</td>"
+                     f"<td><span style='color:{cor_cls};font-weight:bold'>{self._esc(classe_raw)}</span></td>"
                      f"<td style='width:120px'>{bar}</td></tr>")
         return f"""
   <section class="card" role="region" aria-label="Análise Pareto — top {min(15,len(df))} entidades">
@@ -426,9 +432,9 @@ class GeradorHTML:
                     f"<tr style='background:{cor}'>"
                     f"<td style='font-weight:600'>{self._esc(str(r['Periodo']))}</td>"
                     f"<td style='text-align:right;color:#065F46'>{self._fmt_brl(r['Receita_RS'])}</td>"
-                    f"<td style='text-align:center'>{int(r['NFs_Receita']) if pd.notna(r['NFs_Receita']) else 0}</td>"
+                    f"<td style='text-align:center'>{int(float(r['NFs_Receita'])) if pd.notna(r['NFs_Receita']) else 0}</td>"
                     f"<td style='text-align:right;color:#991B1B'>{self._fmt_brl(r['Despesa_RS'])}</td>"
-                    f"<td style='text-align:center'>{int(r['NFs_Despesa']) if pd.notna(r['NFs_Despesa']) else 0}</td>"
+                    f"<td style='text-align:center'>{int(float(r['NFs_Despesa'])) if pd.notna(r['NFs_Despesa']) else 0}</td>"
                     f"<td style='text-align:right;font-weight:bold;color:{'#065F46' if res>=0 else '#991B1B'}'>"
                     f"{self._fmt_brl(res)}</td>"
                     f"<td style='text-align:center'>{pct_str}</td></tr>"
