@@ -1,6 +1,6 @@
 {
-  "name": "Planilha Financeira Pro",
-  "short_name": "Planilha Pro",
+  "name": "FluxoPRO",
+  "short_name": "FluxoPRO",
   "description": "Dashboard financeiro 100% no navegador — análise de planilhas Excel e CSV",
   "start_url": "/PlanilhaFinanceiraPRO/",
   "scope": "/PlanilhaFinanceiraPRO/",

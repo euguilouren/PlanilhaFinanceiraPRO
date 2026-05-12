@@ -1,4 +1,4 @@
-# CLAUDE.md — Planilha Financeira Pro
+# CLAUDE.md — FluxoPRO
 
 > Guia de arquitetura para refinamentos. Leia antes de qualquer edição.
 
@@ -201,6 +201,6 @@ Arquivo: `.github/workflows/ci.yml`
 | Job | O que faz |
 |-----|-----------|
 | `test` | pytest em Python 3.10/3.11/3.12 |
-| `validate-html` | Verifica `<!DOCTYPE html>`, "Luan Guilherme", "Planilha Financeira Pro" |
+| `validate-html` | Verifica `<!DOCTYPE html>`, "Luan Guilherme", "FluxoPRO" |
 | `security-audit` | pip-audit nas dependências Python |
 | `validate-config` | Estrutura do config.yaml |

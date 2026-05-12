@@ -1,5 +1,5 @@
 """
-E2E tests for Planilha Financeira Pro PWA using Playwright.
+E2E tests for FluxoPRO PWA using Playwright.
 
 Run with:
     pytest tests/test_e2e_pwa.py -m e2e
@@ -16,7 +16,7 @@ import pytest
 def test_page_title(e2e_page):
     """A página carrega com o título correto."""
     e2e_page.goto("http://localhost:8765/index.html")
-    assert "Planilha Financeira Pro" in e2e_page.title()
+    assert "FluxoPRO" in e2e_page.title()
 
 
 @pytest.mark.e2e

@@ -26,7 +26,7 @@ echo "🔎 Validando index.html..."
 # ── 1. Estrutura obrigatória ──────────────────────────────────────────────────
 grep -q '<!DOCTYPE html>'       "$HTML" && ok "DOCTYPE presente"      || erro "DOCTYPE html ausente"
 grep -q 'Luan Guilherme'        "$HTML" && ok "Branding presente"     || erro "Branding 'Luan Guilherme' ausente"
-grep -q 'Planilha Financeira Pro' "$HTML" && ok "Título correto"      || erro "Título 'Planilha Financeira Pro' ausente"
+grep -q 'FluxoPRO' "$HTML" && ok "Título correto"      || erro "Título 'FluxoPRO' ausente"
 grep -q 'SheetJS\|xlsx\.full'   "$HTML" && ok "SheetJS referenciado"  || erro "CDN SheetJS ausente"
 grep -q 'chart\.js\|Chart\.js'  "$HTML" && ok "Chart.js referenciado" || erro "CDN Chart.js ausente"
 
