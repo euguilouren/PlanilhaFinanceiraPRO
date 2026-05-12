@@ -6,7 +6,7 @@
 
 **Dashboard financeiro 100% no navegador**
 
-[![CI](https://github.com/euguilouren/PlanilhaFinanceiraPRO/actions/workflows/ci.yml/badge.svg)](https://github.com/euguilouren/PlanilhaFinanceiraPRO/actions/workflows/ci.yml)
+[![CI](https://github.com/euguilouren/FluxoPRO/actions/workflows/ci.yml/badge.svg)](https://github.com/euguilouren/FluxoPRO/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
 ![Testes](https://img.shields.io/badge/testes-391%20passando-2e7d32)
 ![Anti-Fraude](https://img.shields.io/badge/anti--fraude-8%20algoritmos-C9A84C)
@@ -17,7 +17,7 @@
 [![GitHub](https://img.shields.io/badge/GitHub-euguilouren-181717?logo=github&logoColor=white)](https://github.com/euguilouren)
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-euguilouren-0A66C2?logo=linkedin&logoColor=white)](https://linkedin.com/in/euguilouren)
 
-**[🚀 Abrir dashboard online →](https://euguilouren.github.io/PlanilhaFinanceiraPRO/)**
+**[🚀 Abrir dashboard online →](https://euguilouren.github.io/FluxoPRO/)**
 
 </div>
 
@@ -81,8 +81,8 @@ TOTVS Protheus · TOTVS RM · TOTVS Datasul · Omie · Questor · SAP B1 · Dom�
 ## Instalação
 
 ```bash
-git clone https://github.com/euguilouren/PlanilhaFinanceiraPRO
-cd PlanilhaFinanceiraPRO
+git clone https://github.com/euguilouren/FluxoPRO
+cd FluxoPRO
 pip install -r requirements.txt
 ```
 
@@ -151,7 +151,7 @@ pytest tests/ -v
 push → main
   └─► .github/workflows/deploy.yml
         → scripts/obfuscar_html.py (obfusca JS)
-        → GitHub Pages → euguilouren.github.io/PlanilhaFinanceiraPRO/
+        → GitHub Pages → euguilouren.github.io/FluxoPRO/
 ```
 
 ---
