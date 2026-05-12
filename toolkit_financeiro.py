@@ -1583,7 +1583,7 @@ class MontadorPlanilha:
                                   header: str, formula_template: str,
                                   number_format: str = None) -> None:
         nome_aba = nome_aba[:31]
-        if nome_aba not in self._aba_meta:
+        if nome_aba not in self._aba_meta or nome_aba not in self.wb.sheetnames:
             return
         meta = self._aba_meta[nome_aba]; ws = self.wb[nome_aba]
         hcell = ws.cell(row=meta['start_row'], column=col_destino, value=header)
@@ -1669,7 +1669,10 @@ class MontadorPlanilha:
 
     def salvar(self, caminho: str) -> str:
         logger.info("Salvando planilha: %s", caminho)
-        self.wb.save(caminho)
+        try:
+            self.wb.save(caminho)
+        except (OSError, PermissionError) as e:
+            raise OSError(f"Não foi possível salvar a planilha em '{caminho}': {e}") from e
         return caminho
 
 
@@ -1720,7 +1723,11 @@ class Verificador:
 
     @staticmethod
     def verificar_formulas_planilha(caminho_xlsx: str) -> dict:
-        wb = load_workbook(caminho_xlsx)
+        try:
+            wb = load_workbook(caminho_xlsx)
+        except (FileNotFoundError, OSError) as e:
+            return {'arquivo': os.path.basename(caminho_xlsx), 'erro': str(e),
+                    'abas_verificadas': [], 'alertas': []}
         try:
             resultado = {
                 'arquivo': os.path.basename(caminho_xlsx),
