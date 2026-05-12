@@ -11,7 +11,6 @@ Execução:
 """
 
 import os
-import math
 import ssl
 import html as _html_mod
 import time
