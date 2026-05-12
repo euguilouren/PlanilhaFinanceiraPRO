@@ -427,17 +427,31 @@ class GeradorHTML:
             tot_res  = df['Resultado_RS'].sum()
             rows = ''
             for _, r in df.iterrows():
-                res = float(r['Resultado_RS']) if pd.notna(r['Resultado_RS']) else 0.0
+                try:
+                    res = float(r['Resultado_RS']) if pd.notna(r['Resultado_RS']) else 0.0
+                except (ValueError, TypeError):
+                    res = 0.0
                 cor = '#D1FAE5' if res >= 0 else '#FEE2E2'
-                pct = float(r['Resultado_Pct']) if pd.notna(r['Resultado_Pct']) else 0.0
+                try:
+                    pct = float(r['Resultado_Pct']) if pd.notna(r['Resultado_Pct']) else 0.0
+                except (ValueError, TypeError):
+                    pct = 0.0
                 pct_str = f'+{pct:.1f}%' if pct >= 0 else f'{pct:.1f}%'
+                try:
+                    nfs_rec = int(float(r['NFs_Receita'])) if pd.notna(r['NFs_Receita']) else 0
+                except (ValueError, TypeError):
+                    nfs_rec = 0
+                try:
+                    nfs_desp = int(float(r['NFs_Despesa'])) if pd.notna(r['NFs_Despesa']) else 0
+                except (ValueError, TypeError):
+                    nfs_desp = 0
                 rows += (
                     f"<tr style='background:{cor}'>"
                     f"<td style='font-weight:600'>{self._esc(str(r['Periodo']))}</td>"
                     f"<td style='text-align:right;color:#065F46'>{self._fmt_brl(r['Receita_RS'])}</td>"
-                    f"<td style='text-align:center'>{int(float(r['NFs_Receita'])) if pd.notna(r['NFs_Receita']) else 0}</td>"
+                    f"<td style='text-align:center'>{nfs_rec}</td>"
                     f"<td style='text-align:right;color:#991B1B'>{self._fmt_brl(r['Despesa_RS'])}</td>"
-                    f"<td style='text-align:center'>{int(float(r['NFs_Despesa'])) if pd.notna(r['NFs_Despesa']) else 0}</td>"
+                    f"<td style='text-align:center'>{nfs_desp}</td>"
                     f"<td style='text-align:right;font-weight:bold;color:{'#065F46' if res>=0 else '#991B1B'}'>"
                     f"{self._fmt_brl(res)}</td>"
                     f"<td style='text-align:center'>{pct_str}</td></tr>"
