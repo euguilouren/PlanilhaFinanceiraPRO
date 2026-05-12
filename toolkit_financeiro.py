@@ -1156,7 +1156,7 @@ class AnalistaComercial:
         total_geral             = agrupado['Total_RS'].sum()
         agrupado['Percentual']  = (agrupado['Total_RS'] / total_geral * 100).round(1) if total_geral else 0.0
         agrupado['Acumulado_%'] = agrupado['Percentual'].cumsum().round(1)
-        classe = np.where(agrupado['Acumulado_%'] <= top_pct * 100, 'A', 'B')
+        classe = np.where(agrupado['Acumulado_%'] <= top_pct * 100, 'A', 'B').copy()
         if len(classe):
             classe[0] = 'A'  # garante que o primeiro item seja sempre Classe A
         agrupado['Classe_Pareto'] = classe

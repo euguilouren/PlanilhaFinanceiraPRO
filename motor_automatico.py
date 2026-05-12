@@ -11,7 +11,6 @@ Execução:
 """
 
 import os
-import math
 import ssl
 import html as _html_mod
 import time
@@ -780,7 +779,7 @@ class ProcessadorArquivo:
             nums = pd.to_numeric(df[col_val_df], errors='coerce').dropna()
             receita = nums[nums > 0].sum()
             despesa = nums[nums < 0].abs().sum()
-            margem  = (receita - despesa) / receita * 100 if receita and math.isfinite(float(receita)) else 0
+            margem  = (receita - despesa) / receita * 100 if receita > 0 else 0
             pts_m   = 30 if margem >= 30 else (20 if margem >= 15 else (10 if margem >= 5 else 0))
 
             # Inadimplência aging (25 pts)
