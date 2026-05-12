@@ -1,13 +1,11 @@
 name: Lighthouse CI
 
+# Não bloqueia merges (já era `continue-on-error: true` em quase tudo).
+# Rodar sob demanda quando quiser checar performance, ou no cron mensal.
 on:
-  push:
-    branches:
-      - main
-      - "claude/**"
-  pull_request:
-    branches:
-      - main
+  workflow_dispatch:
+  schedule:
+    - cron: '0 10 1 * *'  # Dia 1 de cada mês, 10:00 UTC
 
 jobs:
   lighthouse:
