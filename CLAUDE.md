@@ -16,7 +16,7 @@ Análise 100% client-side: SheetJS lê XLSX/CSV (+ OFX nativo via `parseOFX`), C
 | 3–52 | `<head>` + CDNs + CSP | CSP meta (linha 6), SheetJS 0.20.3, Chart.js 4.4.0, JSON-LD schema.org |
 | 53–1101 | `<script>` analise.js | Módulos **puros de cálculo** — sem DOM, sem `_` globais |
 | 64–82 | `PADROES_COLUNAS` + `detectarColunas()` | Regex genéricas (valor, data, vencimento, entidade, chave, categoria, tipo) |
-| 86–130 | `MAPAS_ERP_JS` + `NOMES_ERP` + `detectarERP()` | 19 ERPs com `sinais`/`mapa` — aplicado em `lerColsSelecionadas()` |
+| 86–130 | `MAPAS_ERP_JS` + `NOMES_ERP` + `detectarERP()` | 20 ERPs com `sinais`/`mapa` — aplicado em `lerColsSelecionadas()` |
 | 132–281 | `calcularIntegridade()` | Verificação cruzada (soma, contagens, KPIs vs. amostra) |
 | 283–387 | `auditoria()` | Duplicatas, campos vazios, outliers, datas futuras |
 | 389–429 | `calcularAging()` | Aging de recebíveis em 5 faixas |
@@ -233,10 +233,11 @@ Arquivo: `base_conhecimento/__init__.py` → `MAPAS_ERP` (Python) e `MAPAS_ERP_J
 |-------|------|
 | TOTVS | TOTVS (Protheus), TOTVS_RM, TOTVS_DATASUL |
 | Mid-market BR | OMIE, QUESTOR, DOMINIO, SANKHYA, SENIOR, CIGAM, ALTERDATA, LINX, MEGA |
+| SAP | SAP_B1 |
 | Cloud/SMB | CONTA_AZUL, BLING, TINY, NIBO, GRANATUM, GESTAO_CLICK |
 | Fiscal | NFE_XML |
 
-> Total atual: **19 ERPs**. SAP_B1 está listado na documentação histórica mas **não** está em `MAPAS_ERP` no momento — verificar antes de referenciar.
+> Total atual: **20 ERPs** — Python (`MAPAS_ERP`) e JS (`MAPAS_ERP_JS`) em paridade.
 
 ---
 
