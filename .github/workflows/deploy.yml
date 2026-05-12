@@ -54,9 +54,6 @@ jobs:
       - name: Bump SW cache version
         run: sed -i -E "s/(CACHE_NAME = ')pfp-v[0-9]+/\1pfp-v${{ github.run_number }}/" dist/sw.js
 
-      - name: Bump SW cache version
-        run: sed -i "s/pfp-v[0-9]*/pfp-v${{ github.run_number }}/" dist/sw.js
-
       - name: Verificar resultado
         run: |
           python3 -c "
