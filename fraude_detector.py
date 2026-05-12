@@ -53,6 +53,8 @@ def _e_fim_de_semana(d) -> bool:
 
 
 def _e_feriado(d) -> bool:
+    if d is None:
+        return False
     return d.strftime("%m-%d") in _FERIADOS_FIXOS
 
 

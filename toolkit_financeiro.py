@@ -1469,7 +1469,8 @@ class MontadorPlanilha:
                 content_len = 15
         else:
             str_lens = series.astype(str).str.len()
-            content_len = int(str_lens.quantile(0.95)) if len(str_lens) > 0 else 10
+            q95 = str_lens.quantile(0.95) if len(str_lens) > 0 else None
+            content_len = int(q95) if q95 is not None and pd.notna(q95) else 10
         return min(max(header_len, min(content_len, 50)) + 3, 45)
 
     def adicionar_aba(
