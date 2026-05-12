@@ -841,7 +841,7 @@ class AnalistaFinanceiro:
 
         df['Faixa_Aging'] = dias.apply(_faixa)
         df['Dias_Atraso'] = dias.clip(lower=0)
-        resumo = df.groupby('Faixa_Aging').agg(
+        resumo = df.groupby('Faixa_Aging', observed=True).agg(
             Quantidade=(col_valor, 'count'),
             Total_RS=(col_valor, lambda x: pd.to_numeric(x, errors='coerce').abs().sum()),
         ).reset_index()
@@ -930,10 +930,10 @@ class AnalistaFinanceiro:
         df['_periodo'] = df['_data'].dt.to_period(_period_alias)
 
         if col_categoria and col_categoria in df.columns:
-            grupo = df.groupby([col_categoria, '_periodo']).agg(Total=('_valor', 'sum')).reset_index()
+            grupo = df.groupby([col_categoria, '_periodo'], observed=True).agg(Total=('_valor', 'sum')).reset_index()
             grupo = grupo.pivot(index=col_categoria, columns='_periodo', values='Total').fillna(0)
         else:
-            grupo = df.groupby('_periodo').agg(Total=('_valor', 'sum')).reset_index()
+            grupo = df.groupby('_periodo', observed=True).agg(Total=('_valor', 'sum')).reset_index()
             grupo = grupo.set_index('_periodo')[['Total']].T
 
         cols = list(grupo.columns)
@@ -1132,7 +1132,7 @@ class AnalistaComercial:
     @staticmethod
     def ticket_medio(df: pd.DataFrame, col_valor: str, col_grupo: str = None) -> pd.DataFrame:
         if col_grupo and col_grupo in df.columns:
-            resultado = df.groupby(col_grupo).agg(
+            resultado = df.groupby(col_grupo, observed=True).agg(
                 Transações=(col_valor, 'count'),
                 Faturamento_RS=(col_valor, lambda x: pd.to_numeric(x, errors='coerce').sum()),
                 Ticket_Medio_RS=(col_valor, lambda x: pd.to_numeric(x, errors='coerce').mean()),
@@ -1149,7 +1149,7 @@ class AnalistaComercial:
 
     @staticmethod
     def pareto(df: pd.DataFrame, col_entidade: str, col_valor: str, top_pct: float = 0.8) -> pd.DataFrame:
-        agrupado = df.groupby(col_entidade).agg(
+        agrupado = df.groupby(col_entidade, observed=True).agg(
             Total_RS=(col_valor, lambda x: pd.to_numeric(x, errors='coerce').sum())
         ).reset_index().sort_values('Total_RS', ascending=False).reset_index(drop=True)
         agrupado['Total_RS']    = agrupado['Total_RS'].round(2)
@@ -1170,7 +1170,7 @@ class AnalistaComercial:
         atingimento_parcial_min: float = 80.0,
     ) -> pd.DataFrame:
         merged = pd.merge(
-            df_realizado.groupby(col_chave).agg(
+            df_realizado.groupby(col_chave, observed=True).agg(
                 Realizado_RS=(col_valor_real, lambda x: pd.to_numeric(x, errors='coerce').sum())
             ).reset_index(),
             df_meta[[col_chave, col_valor_meta]].rename(columns={col_valor_meta: 'Meta_RS'}),
@@ -1320,7 +1320,7 @@ class PrestadorContas:
         saidas_mask = ~entradas_mask
 
         def _agrupa(mask, natureza):
-            grp = df[mask].groupby(col_categoria).agg(
+            grp = df[mask].groupby(col_categoria, observed=True).agg(
                 Qtd=(col_valor, 'count'),
                 Total=(col_valor, lambda x: pd.to_numeric(x, errors='coerce').abs().sum()),
             ).reset_index().rename(columns={col_categoria: 'Categoria'})
@@ -1361,10 +1361,10 @@ class PrestadorContas:
         df_realizado: pd.DataFrame, df_orcado: pd.DataFrame,
         col_categoria: str, col_valor_real: str, col_valor_orcado: str,
     ) -> pd.DataFrame:
-        real = df_realizado.groupby(col_categoria).agg(
+        real = df_realizado.groupby(col_categoria, observed=True).agg(
             Realizado=(col_valor_real, lambda x: pd.to_numeric(x, errors='coerce').sum())
         ).reset_index()
-        orc = df_orcado.groupby(col_categoria).agg(
+        orc = df_orcado.groupby(col_categoria, observed=True).agg(
             Orçado=(col_valor_orcado, lambda x: pd.to_numeric(x, errors='coerce').sum())
         ).reset_index()
         merged = pd.merge(orc, real, on=col_categoria, how='outer').fillna(0)

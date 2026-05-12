@@ -1425,6 +1425,7 @@ tr:hover td{background:#EEF4FF;transition:background .15s}
   border-radius:var(--radius-sm);font-size:12.5px;width:300px;color:var(--text);
   background:var(--surface-2);font-family:inherit;outline:none;transition:border-color .2s}
 .search-wrap input:focus{border-color:var(--navy-3);background:var(--surface)}
+#claude-api-key:focus{border-color:#7C3AED;box-shadow:0 0 0 3px rgba(124,58,237,.2);outline:none}
 .search-icon{position:absolute;left:10px;top:50%;transform:translateY(-50%);
   color:var(--text-3);font-size:13px;pointer-events:none;display:flex;align-items:center}
 /* Gráficos */
@@ -2896,7 +2897,9 @@ function renderComparativo() {
   const canvas = document.getElementById('chart-comparativo');
   if (!canvas) return;
   if (_chartComparativo) { _chartComparativo.destroy(); _chartComparativo = null; }
-  _chartComparativo = new Chart(canvas.getContext('2d'), {
+  const _ctx2d = canvas.getContext('2d');
+  if (!_ctx2d) return;
+  _chartComparativo = new Chart(_ctx2d, {
     type: 'bar',
     data: {
       labels: [labelA, labelB],
@@ -3471,7 +3474,8 @@ function exportarCSV() {
   const dados = _dadosVisivelArr.length ? _dadosVisivelArr : _dadosOriginais;
   if (!dados.length) { _toast('Sem dados para exportar', 2500, 'aviso'); return; }
   if (typeof XLSX === 'undefined') { _toast('SheetJS não carregado', 2500, 'erro'); return; }
-  const rows = [_headers, ...dados.map(r => _headers.map(h => r[h] ?? ''))];
+  const _csvEsc = v => { const s = String(v ?? ''); return /^[=+\-@\t\r]/.test(s) ? "'" + s : s; };
+  const rows = [_headers, ...dados.map(r => _headers.map(h => _csvEsc(r[h])))];
   const ws = XLSX.utils.aoa_to_sheet(rows);
   const wb2 = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb2, ws, 'Dados');
