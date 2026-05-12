@@ -245,7 +245,7 @@ class FraudeDetector:
             df_w["_ent"] = df_w[col_entidade].astype(str).str.strip().str.upper()
             df_w = df_w[~df_w["_ent"].isin(["NAN", "NONE", "NAT", ""])]
             if col_data and col_data in df_w.columns:
-                df_w["_dt"] = pd.to_datetime(df_w[col_data], errors="coerce", dayfirst=True)
+                df_w["_dt"] = pd.to_datetime(df_w[col_data], errors="coerce", dayfirst=True, format="mixed")
             else:
                 df_w["_dt"] = pd.NaT
 
@@ -340,7 +340,7 @@ class FraudeDetector:
 
         df_w = df.copy()
         df_w["_val"] = pd.to_numeric(df_w[col_valor], errors="coerce")
-        df_w["_dt"] = pd.to_datetime(df_w[col_data], errors="coerce", dayfirst=True)
+        df_w["_dt"] = pd.to_datetime(df_w[col_data], errors="coerce", dayfirst=True, format="mixed")
         df_w["_ent"] = df_w[col_entidade].astype(str).str.strip().str.upper()
         df_w = df_w.dropna(subset=["_val", "_dt"])
         df_w = df_w[df_w["_val"] > 0]
@@ -397,7 +397,7 @@ class FraudeDetector:
             return _empty
 
         df_w = df.copy().reset_index(drop=True)
-        df_w["_dt"] = pd.to_datetime(df_w[col_data], errors="coerce", dayfirst=True)
+        df_w["_dt"] = pd.to_datetime(df_w[col_data], errors="coerce", dayfirst=True, format="mixed")
         df_v = df_w.dropna(subset=["_dt"])
 
         alertas: list[dict] = []
