@@ -9,7 +9,7 @@
 [![CI](https://github.com/euguilouren/FluxoPRO/actions/workflows/ci.yml/badge.svg)](https://github.com/euguilouren/FluxoPRO/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
 ![Testes](https://img.shields.io/badge/testes-391%20Python%20%2B%2098%20JS-2e7d32)
-![Anti-Fraude](https://img.shields.io/badge/anti--fraude-7%20JS%20%2F%208%20Python-C9A84C)
+![Anti-Fraude](https://img.shields.io/badge/anti--fraude-8%20algoritmos-C9A84C)
 ![License](https://img.shields.io/badge/licença-MIT-22c55e)
 
 **Criado por [Luan Guilherme Lourenço](https://github.com/euguilouren)**
@@ -43,23 +43,25 @@ Arraste qualquer planilha `.xlsx` ou `.csv` e obtenha instantaneamente:
 | **Aging / Recebíveis** | Faixas de vencimento com gráfico visual |
 | **DRE automático** | Receitas, CMV e despesas classificados (padrão CPC 26) |
 | **Pareto (curva ABC)** | Clientes/fornecedores que geram 80% do resultado |
-| **Anti-Fraude** | 7 algoritmos no dashboard web · 8 no módulo Python (com Lei de Benford) |
+| **Anti-Fraude** | 8 algoritmos: Lei de Benford, duplicatas (exatas + fuzzy), fracionamento e mais |
 | **Detecção de ERP** | Mapeamento automático de colunas de 20 sistemas brasileiros |
 
-### Sistema Anti-Fraude
+### Sistema Anti-Fraude (8 algoritmos)
 
-| Algoritmo | Detecta | JS | Python |
-|-----------|---------|:--:|:------:|
-| Duplicatas Exatas | Mesma chave/valor/data — registros idênticos | ✅ | ✅ |
-| Duplicatas Fuzzy | Mesmo valor ±1% + mesma entidade + data ±30 dias | ✅ | ✅ |
-| Números Redondos | Concentração suspeita de valores redondos (>15%) | ✅ | ✅ |
-| Fracionamento | Transações fracionadas abaixo de limites em janela de 30 dias | ✅ | ✅ |
-| Anomalias Temporais | Transações em fins de semana e feriados nacionais | ✅ | ✅ |
-| Outliers por Entidade | Z-score por fornecedor/cliente (σ ≥ 3) | ✅ | ✅ |
-| Concentração | Entidade com >30% do volume total | ✅ | ✅ |
-| Lei de Benford | Distribuição anômala de primeiros dígitos (chi-quadrado) | — | ✅ |
+Implementação em paridade entre o dashboard web (JS, `calcularAntiFraude` em `index.html`) e o módulo Python (`fraude_detector.py`).
 
-> O score consolidado (CRÍTICO / ALTO / MÉDIO / BAIXO / LIMPO) é gerado a partir dos algoritmos acima em ambos os modos.
+| Algoritmo | Detecta |
+|-----------|---------|
+| Lei de Benford | Distribuição anômala de primeiros dígitos (chi-quadrado) |
+| Duplicatas Exatas | Mesma chave/valor/data — registros idênticos |
+| Duplicatas Fuzzy | Mesmo valor ±1% + mesma entidade + data ±30 dias |
+| Números Redondos | Concentração suspeita de valores redondos (>15%) |
+| Fracionamento | Transações fracionadas abaixo de limites em janela de 30 dias |
+| Anomalias Temporais | Transações em fins de semana e feriados nacionais |
+| Outliers por Entidade | Z-score por fornecedor/cliente (σ ≥ 3) |
+| Concentração | Entidade com >30% do volume total |
+
+> O score consolidado (CRÍTICO / ALTO / MÉDIO / BAIXO / LIMPO) é gerado a partir dos algoritmos acima.
 
 ---
 
