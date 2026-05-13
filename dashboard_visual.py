@@ -5,13 +5,14 @@ Não requer servidor — abre diretamente no navegador.
 """
 from __future__ import annotations
 
-import html
 import json
 import logging
 from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
+
+from _utils import esc_html as _esc, fmt_brl as _fmt_brl
 
 logger = logging.getLogger(__name__)
 
@@ -184,20 +185,7 @@ tr:hover td{{background:#F9FAFB}}
 
 # ── helpers privados ──────────────────────────────────────────────
 
-def _esc(v) -> str:
-    return html.escape(str(v) if v is not None else '')
-
-
-def _fmt_brl(val, dec: int = 2) -> str:
-    try:
-        v = float(val)
-        if v != v:  # NaN check
-            return '—'
-        us = f"{abs(v):,.{dec}f}"
-        br = us.replace(',', 'X').replace('.', ',').replace('X', '.')
-        return f"{'-' if v < 0 else ''}R$ {br}"
-    except (ValueError, TypeError):
-        return '—'
+# _esc e _fmt_brl agora vêm de _utils (importados no topo).
 
 
 def _calcular_kpis(df: pd.DataFrame, df_mensal: pd.DataFrame | None) -> dict:
