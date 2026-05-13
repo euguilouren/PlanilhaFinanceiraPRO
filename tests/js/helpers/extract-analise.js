@@ -50,6 +50,7 @@ vm.runInContext(code, ctx);
 
 export const {
   detectarColunas,
+  detectarERP,
   toNum,
   toDate,
   fmtBRL,
@@ -61,6 +62,12 @@ export const {
   calcularFluxoPeriodo,
   calcularProjecao,
   calcularSazonalidade,
+  calcularAntiFraude,
+  calcularScoreFinanceiro,
+  calcularKPIsComparativo,
+  calcularIntegridade,
+  parseOFX,
   PADROES_COLUNAS,
   MAPA_DRE,
+  MAPAS_ERP_JS,
 } = ctx;
