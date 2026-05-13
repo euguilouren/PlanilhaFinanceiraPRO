@@ -18,4 +18,4 @@ build/
 pasta_entrada/
 pasta_saida/
 node_modules/
-package-lock.json
+# package-lock.json é commitado para suportar `npm ci` em CI (reprodutibilidade)

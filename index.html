@@ -2750,6 +2750,7 @@ function renderAging(lista) {
   // Gráfico
   const _canvAging = document.getElementById('chart-aging');
   if (!_canvAging) return;
+  if (typeof Chart === 'undefined') { console.warn('Chart.js indisponível — gráfico de aging não renderizado'); return; }
   if (_chartAging) { _chartAging.destroy(); _chartAging = null; }
   const ctx = _canvAging.getContext('2d');
   _chartAging = new Chart(ctx, {
@@ -2901,6 +2902,7 @@ function renderComparativo() {
 
   const canvas = document.getElementById('chart-comparativo');
   if (!canvas) return;
+  if (typeof Chart === 'undefined') { console.warn('Chart.js indisponível — gráfico comparativo não renderizado'); return; }
   if (_chartComparativo) { _chartComparativo.destroy(); _chartComparativo = null; }
   const _ctx2d = canvas.getContext('2d');
   if (!_ctx2d) return;
@@ -3430,6 +3432,7 @@ function _renderChartFluxoM(linhas) {
     return;
   }
   if (_chartFluxoM) { _chartFluxoM.destroy(); _chartFluxoM = null; }
+  if (typeof Chart === 'undefined') { console.warn('Chart.js indisponível — gráfico de fluxo não renderizado'); return; }
   _chartFluxoM = new Chart(ctx, {
     type: 'bar',
     data: {
