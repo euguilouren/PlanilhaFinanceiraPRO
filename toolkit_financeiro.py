@@ -484,7 +484,7 @@ class Auditor:
         if col_data not in df.columns:
             return inconsistencias
         df = df.reset_index(drop=True)
-        datas = pd.to_datetime(df[col_data], errors='coerce', dayfirst=True)
+        datas = pd.to_datetime(df[col_data], errors='coerce', dayfirst=True, format='mixed')
         if hasattr(datas.dtype, 'tz') and datas.dtype.tz is not None:
             datas = datas.dt.tz_localize(None)
         hoje = pd.Timestamp.now()
@@ -497,7 +497,7 @@ class Auditor:
                 'impacto_rs': 0,
             })
         if col_data2 and col_data2 in df.columns:
-            datas2 = pd.to_datetime(df[col_data2], errors='coerce', dayfirst=True)
+            datas2 = pd.to_datetime(df[col_data2], errors='coerce', dayfirst=True, format='mixed')
             if hasattr(datas2.dtype, 'tz') and datas2.dtype.tz is not None:
                 datas2 = datas2.dt.tz_localize(None)
             mask = (datas2 < datas).fillna(False)
@@ -817,7 +817,7 @@ class AnalistaFinanceiro:
         if data_ref is None:
             data_ref = datetime.now()
         df = df.copy()
-        venc = pd.to_datetime(df[col_vencimento], errors='coerce', dayfirst=True)
+        venc = pd.to_datetime(df[col_vencimento], errors='coerce', dayfirst=True, format='mixed')
         # Garantir tz-naive em ambos os lados para evitar TypeError em planilhas com timezone
         if hasattr(venc.dtype, 'tz') and venc.dtype.tz is not None:
             venc = venc.dt.tz_localize(None)
@@ -2058,7 +2058,7 @@ class Normalizador:
                 serie = _direct.fillna(0.0)
 
             elif tipo == 'data':
-                serie = pd.to_datetime(serie, errors='coerce', dayfirst=True)
+                serie = pd.to_datetime(serie, errors='coerce', dayfirst=True, format='mixed')
                 serie = serie.dt.strftime('%d/%m/%Y').fillna('')
 
             elif tipo == 'lista':

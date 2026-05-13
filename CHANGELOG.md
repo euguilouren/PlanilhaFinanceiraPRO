@@ -5,6 +5,31 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.3.1] — 2026-05-12
+
+### Removed
+- **Docker stack** — `Dockerfile`, `docker-compose.yml`, `.dockerignore` (sem callers em
+  CI/README; produto é GitHub Pages estático, ninguém builda imagem).
+- **systemd unit** — `systemd/toolkit-financeiro.service` (sem instruções de instalação,
+  ambiente solo, sem servidor sysd ativo).
+- **Scripts Linux redundantes** — `abrir.sh`, `instalar.sh`, `build.sh` (não referenciados
+  pelo README; `python3 -m http.server` + `pip install -r requirements.txt` cobrem o caso).
+- **`BUGS_CORRIGIDOS.md`** — log histórico de auditorias r4–r11; informação preservada
+  no `git log`.
+- **`skill_financeiro.md`** — config externa de Claude Project, não usada pelo repo.
+
+### Changed
+- **CI**: matriz Python reduzida de `[3.10, 3.11, 3.12]` para apenas `3.12` — sem
+  comportamento divergente entre versões nas dependências usadas.
+- **Lighthouse CI** e **auto-review semanal** viraram `workflow_dispatch` (manuais);
+  Lighthouse ganhou cron mensal (dia 1, 10:00 UTC).
+
+### Fixed
+- **`deploy.yml`**: removido `sed` duplicado no step "Bump SW cache version" — dois
+  steps sequenciais faziam a mesma substituição.
+
+---
+
 ## [1.3.0] — 2026-04-26
 
 ### Added

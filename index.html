@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.sheetjs.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'self'; form-action 'self';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.sheetjs.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src https://api.anthropic.com; object-src 'none'; frame-src 'none'; base-uri 'self'; form-action 'self';">
 <title>Planilha Financeira Pro — por Luan Guilherme Lourenço</title>
 <meta name="description" content="Dashboard financeiro 100% no navegador. Analise planilhas Excel e CSV com KPIs, aging, DRE e detecção de fraudes — sem instalar nada. Por Luan Guilherme Lourenço.">
 <meta name="author" content="Luan Guilherme Lourenço">
@@ -12,7 +12,7 @@
 <meta property="og:type" content="website">
 <meta property="og:title" content="Planilha Financeira Pro — por Luan Guilherme Lourenço">
 <meta property="og:description" content="Dashboard financeiro 100% no navegador. Analise Excel e CSV com KPIs, aging, DRE e detecção de fraudes — sem instalar nada.">
-<meta property="og:url" content="https://euguilouren.github.io/PlanilhaFinanceiraPRO/">
+<meta property="og:url" content="https://euguilouren.github.io/FluxoPRO/">
 <meta property="og:image" content="https://github.com/euguilouren.png?size=400">
 <meta property="og:site_name" content="Planilha Financeira Pro">
 <meta property="og:locale" content="pt_BR">
@@ -38,7 +38,7 @@
   "@type": "SoftwareApplication",
   "name": "Planilha Financeira Pro",
   "description": "Dashboard financeiro 100% no navegador. Analise planilhas Excel e CSV com KPIs, aging, DRE e detecção de fraudes — sem instalar nada.",
-  "url": "https://euguilouren.github.io/PlanilhaFinanceiraPRO/",
+  "url": "https://euguilouren.github.io/FluxoPRO/",
   "applicationCategory": "FinanceApplication",
   "operatingSystem": "Any",
   "inLanguage": "pt-BR",
@@ -767,6 +767,11 @@ window.switchFluxo = function(id, btn) {
 // ANTI-FRAUDE
 // ══════════════════════════════════════════════════════
 const _BENFORD_ESPERADO = {1:.301,2:.176,3:.125,4:.097,5:.079,6:.067,7:.058,8:.051,9:.046};
+// Valores críticos da distribuição chi-quadrado com 8 graus de liberdade
+// (9 dígitos esperados − 1). Fonte: tabela qui-quadrado padrão.
+const _CHI2_CRITICO  = 20.09;  // p < 0.01 — CRÍTICO
+const _CHI2_ALTO     = 15.51;  // p < 0.05 — ALTO
+const _CHI2_MEDIO    = 13.36;  // p < 0.10 — MÉDIO
 const _FERIADOS_BR = new Set(['01-01','04-21','05-01','09-07','10-12','11-02','11-15','11-20','12-25']);
 
 function _primeiroDigito(v) {
@@ -801,7 +806,7 @@ function calcularAntiFraude(dados, cols) {
       chi2 += n * Math.pow(obs - esp, 2) / esp;
     }
     chi2 = Math.round(chi2 * 100) / 100;
-    const nivel = chi2 > 20.09 ? 'CRÍTICO' : chi2 > 15.51 ? 'ALTO' : chi2 > 13.36 ? 'MÉDIO' : 'OK';
+    const nivel = chi2 > _CHI2_CRITICO ? 'CRÍTICO' : chi2 > _CHI2_ALTO ? 'ALTO' : chi2 > _CHI2_MEDIO ? 'MÉDIO' : 'OK';
     resultado.benford = { valido:true, chi2, nivel, totalRegistros:n,
       observado: Object.fromEntries([1,2,3,4,5,6,7,8,9].map(d=>[d, Math.round(contagem[d]/n*1000)/1000])),
       esperado: _BENFORD_ESPERADO };
@@ -1337,6 +1342,11 @@ body{font-family:'Inter',Arial,sans-serif;font-size:13.5px;background:#E8EDF4;
 .check-divergente{background:#FEE2E2;color:#991B1B}
 .check-baixa{background:#D1FAE5;color:#065F46}
 .check-alta{background:#FEF3C7;color:#92400E}
+/* Empty-state warning compartilhado por renderAging/renderDRE/renderPareto quando
+   uma coluna obrigatória não está mapeada. */
+.empty-warning{padding:14px;background:#FFF7ED;border-left:4px solid #F59E0B;border-radius:0 8px 8px 0}
+.empty-warning strong{color:#92400E}
+.empty-warning p{margin:6px 0 0;font-size:12px;color:#78350F;line-height:1.6}
 .check-item{margin-bottom:6px}
 .check-como{font-size:11px;color:#64748B;background:#F8FAFC;border-left:3px solid #CBD5E1;
   padding:6px 10px;margin-bottom:4px;border-radius:0 6px 6px 0;line-height:1.5}
@@ -1803,7 +1813,7 @@ tr:hover td{background:#EEF4FF;transition:background .15s}
         <div class="search-wrap" style="position:relative">
           <span class="search-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
           <input id="busca" type="text" placeholder="Buscar em todos os campos..." oninput="filtrarTabela()" aria-label="Buscar em todos os campos" style="padding-right:28px">
-          <button class="busca-clear" id="busca-clear" onclick="_limparBusca()" title="Limpar busca">✕</button>
+          <button class="busca-clear" id="busca-clear" onclick="_limparBusca()" title="Limpar busca" aria-label="Limpar busca">✕</button>
         </div>
         <span class="busca-info" id="busca-info"></span>
       </div>
@@ -2707,9 +2717,9 @@ function renderAging(lista) {
   if (!lista || !lista.length) {
     if (_chartAging) { _chartAging.destroy(); _chartAging = null; }
     document.getElementById('aging-content').innerHTML = `
-      <div style="padding:14px;background:#FFF7ED;border-left:4px solid #F59E0B;border-radius:0 8px 8px 0">
-        <strong style="color:#92400E">⚠ Coluna de vencimento não mapeada</strong>
-        <p style="margin:6px 0 0;font-size:12px;color:#78350F;line-height:1.6">
+      <div class="empty-warning">
+        <strong>⚠ Coluna de vencimento não mapeada</strong>
+        <p>
           O Aging de Recebíveis precisa de uma coluna com a <strong>data de vencimento</strong> de cada registro.<br>
           <strong>Como ativar:</strong> Clique em <em>"Novo arquivo"</em>, reimporte a planilha e no passo de
           <em>"Configuração de Colunas"</em> selecione a coluna correta no campo <strong>Vencimento</strong>.
@@ -2745,6 +2755,7 @@ function renderAging(lista) {
   // Gráfico
   const _canvAging = document.getElementById('chart-aging');
   if (!_canvAging) return;
+  if (typeof Chart === 'undefined') { console.warn('Chart.js indisponível — gráfico de aging não renderizado'); return; }
   if (_chartAging) { _chartAging.destroy(); _chartAging = null; }
   const ctx = _canvAging.getContext('2d');
   _chartAging = new Chart(ctx, {
@@ -2767,9 +2778,9 @@ function renderDRE(dre) {
   const el = document.getElementById('dre-content');
   if (!el) return;
   if (!dre) {
-    el.innerHTML = `<div style="padding:14px;background:#FFF7ED;border-left:4px solid #F59E0B;border-radius:0 8px 8px 0">
-      <strong style="color:#92400E">⚠ Categorias não detectadas</strong>
-      <p style="margin:6px 0 0;font-size:12px;color:#78350F;line-height:1.6">
+    el.innerHTML = `<div class="empty-warning">
+      <strong>⚠ Categorias não detectadas</strong>
+      <p>
         O DRE precisa de uma coluna com a <strong>categoria financeira</strong> de cada lançamento (ex: RECEITA, CMV, DESPESA OPERACIONAL).<br>
         <strong>Como ativar:</strong> Reimporte a planilha e no passo de configuração selecione a coluna correta no campo <strong>Categoria</strong>.
       </p></div>`;
@@ -2812,9 +2823,9 @@ function renderPareto(lista) {
   const elPareto = document.getElementById('pareto-content');
   if (!elPareto) return;
   if (!lista || !lista.length) {
-    elPareto.innerHTML = `<div style="padding:14px;background:#FFF7ED;border-left:4px solid #F59E0B;border-radius:0 8px 8px 0">
-      <strong style="color:#92400E">⚠ Entidade não mapeada</strong>
-      <p style="margin:6px 0 0;font-size:12px;color:#78350F;line-height:1.6">
+    elPareto.innerHTML = `<div class="empty-warning">
+      <strong>⚠ Entidade não mapeada</strong>
+      <p>
         O Pareto precisa de uma coluna com o nome do <strong>cliente ou fornecedor</strong> para ranquear concentração.<br>
         <strong>Como ativar:</strong> Reimporte a planilha e selecione a coluna correta no campo <strong>Cliente / Entidade</strong>.
       </p></div>`;
@@ -2896,6 +2907,7 @@ function renderComparativo() {
 
   const canvas = document.getElementById('chart-comparativo');
   if (!canvas) return;
+  if (typeof Chart === 'undefined') { console.warn('Chart.js indisponível — gráfico comparativo não renderizado'); return; }
   if (_chartComparativo) { _chartComparativo.destroy(); _chartComparativo = null; }
   const _ctx2d = canvas.getContext('2d');
   if (!_ctx2d) return;
@@ -3038,9 +3050,9 @@ function renderTabela(dados, headers) {
   let pagHtml = '';
   if (totalPags > 1) {
     pagHtml = `<div style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:12px;color:var(--text-2)">
-      <button class="btn-sm btn-outline" onclick="_irPagina(${_paginaAtual-1})" ${_paginaAtual===1?'disabled':''} style="padding:3px 10px">◀</button>
+      <button class="btn-sm btn-outline" onclick="_irPagina(${_paginaAtual-1})" ${_paginaAtual===1?'disabled':''} aria-label="Página anterior" style="padding:3px 10px">◀</button>
       <span>Página <strong>${_paginaAtual}</strong> de ${totalPags}</span>
-      <button class="btn-sm btn-outline" onclick="_irPagina(${_paginaAtual+1})" ${_paginaAtual===totalPags?'disabled':''} style="padding:3px 10px">▶</button>
+      <button class="btn-sm btn-outline" onclick="_irPagina(${_paginaAtual+1})" ${_paginaAtual===totalPags?'disabled':''} aria-label="Próxima página" style="padding:3px 10px">▶</button>
     </div>`;
   }
   let pag = document.getElementById('tabela-paginacao');
@@ -3425,6 +3437,7 @@ function _renderChartFluxoM(linhas) {
     return;
   }
   if (_chartFluxoM) { _chartFluxoM.destroy(); _chartFluxoM = null; }
+  if (typeof Chart === 'undefined') { console.warn('Chart.js indisponível — gráfico de fluxo não renderizado'); return; }
   _chartFluxoM = new Chart(ctx, {
     type: 'bar',
     data: {

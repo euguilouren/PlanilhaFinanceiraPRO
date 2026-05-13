@@ -3,12 +3,13 @@ Gerador de relatório HTML autônomo — sem dependências externas.
 Produz um arquivo .html autocontido que abre em qualquer navegador.
 """
 
-import html
 import logging
 import re
 from datetime import datetime
 
 import pandas as pd
+
+from _utils import esc_html, fmt_brl
 
 logger = logging.getLogger(__name__)
 
@@ -206,23 +207,9 @@ class GeradorHTML:
 
     # ── Seções privadas ───────────────────────────────────────────
 
-    @staticmethod
-    def _esc(val) -> str:
-        if val is None:
-            return ''
-        return html.escape(str(val))
-
-    @staticmethod
-    def _fmt_brl(val, dec: int = 2) -> str:
-        try:
-            v = float(val)
-            if v != v:  # NaN check
-                return '—'
-            us = f"{abs(v):,.{dec}f}"
-            br = us.replace(',', 'X').replace('.', ',').replace('X', '.')
-            return f"{'-' if v < 0 else ''}R$ {br}"
-        except (ValueError, TypeError):
-            return '—'
+    # _esc e _fmt_brl delegam para _utils — implementação única no projeto.
+    _esc = staticmethod(esc_html)
+    _fmt_brl = staticmethod(fmt_brl)
 
     def _badge(self, sev) -> str:
         sev_str = str(sev or '').upper()

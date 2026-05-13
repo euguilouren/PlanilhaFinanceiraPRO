@@ -1,15 +1,24 @@
 {
-  "name": "planilha-financeira-pro",
-  "version": "1.0.0",
+  "name": "fluxopro",
+  "version": "1.3.1",
   "description": "Build pipeline para obfuscação do dashboard financeiro",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/euguilouren/FluxoPRO.git"
+  },
   "scripts": {
     "build": "python3 scripts/obfuscar_html.py index.html dist/index.html",
     "test:js": "vitest run",
-    "test:js:watch": "vitest"
+    "test:js:watch": "vitest",
+    "test:js:coverage": "vitest run --coverage"
   },
   "devDependencies": {
+    "@vitest/coverage-v8": "^1.6.1",
     "javascript-obfuscator": "^4.1.1",
     "vitest": "^1.6.1"
   }

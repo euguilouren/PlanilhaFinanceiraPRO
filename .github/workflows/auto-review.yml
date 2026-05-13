@@ -1,9 +1,9 @@
 name: Revisão Automática de Código (Claude IA)
 
 on:
-  schedule:
-    # Toda segunda-feira às 08:00 UTC (05:00 BRT)
-    - cron: '0 8 * * 1'
+  # Removido o cron semanal: projeto solo, sem revisor humano para validar
+  # o PR robô — virava consumo recorrente de API sem ROI claro.
+  # Rode sob demanda quando quiser uma revisão profunda.
   workflow_dispatch:
     inputs:
       criar_pr:
