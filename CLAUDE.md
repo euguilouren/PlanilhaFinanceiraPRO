@@ -201,7 +201,7 @@ Adicionar em `ASSINATURAS_ERP`: `'NOME_ERP': ['ColunaTipica1', 'ColunaTipica2', 
 | O que | Por quê |
 |-------|---------|
 | URLs das CDNs (SheetJS, Chart.js) | Versões fixadas — mudança quebra compatibilidade e a CSP |
-| CSP meta tag (linha 6) | `connect-src 'none'` bloqueia exfiltração; só `cdn.sheetjs.com` e `cdn.jsdelivr.net` são liberados |
+| CSP meta tag (linha 6) | `connect-src` permite apenas `https://api.anthropic.com` (necessário para o briefing IA); `script-src` libera `cdn.sheetjs.com` e `cdn.jsdelivr.net` |
 | Nomes das chaves de `_cols` (`valor`, `data`, `vencimento`, `entidade`, `chave`, `categoria`, `tipo`) | Usadas em todas as funções de análise |
 | `MAPA_DRE` (array de `{linha, termos}`) | Qualquer mudança altera o DRE para todos os usuários |
 | `_chart*.destroy()` antes de `new Chart()` | Sem isso, múltiplos canvas vazam memória |
