@@ -134,9 +134,23 @@ print(f"Alertas: {resultado['alertas']}")
 
 ```bash
 pip install -r requirements-dev.txt
-pytest tests/ -v
-# 391 testes — Python 3.10, 3.11 e 3.12
+pytest tests/ -v              # Python: 391 testes
+npm ci && npm run test:js     # JavaScript: 160 testes (Vitest)
 ```
+
+---
+
+## Setup local (opcional)
+
+Instale o git hook de pré-commit para validar `index.html` antes de cada commit
+(DOCTYPE, branding, Service Worker registrado, `console.log`, `Chart.destroy`
+antes de `new Chart`, e mais):
+
+```bash
+bash scripts/install-hooks.sh
+```
+
+Para desinstalar: `rm .git/hooks/pre-commit`.
 
 ---
 
