@@ -18,8 +18,8 @@
     "test:js:coverage": "vitest run --coverage"
   },
   "devDependencies": {
-    "@vitest/coverage-v8": "^1.6.1",
+    "@vitest/coverage-v8": "^4.1.6",
     "javascript-obfuscator": "^4.1.1",
-    "vitest": "^1.6.1"
+    "vitest": "^4.1.6"
   }
 }
