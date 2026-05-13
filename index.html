@@ -1342,6 +1342,11 @@ body{font-family:'Inter',Arial,sans-serif;font-size:13.5px;background:#E8EDF4;
 .check-divergente{background:#FEE2E2;color:#991B1B}
 .check-baixa{background:#D1FAE5;color:#065F46}
 .check-alta{background:#FEF3C7;color:#92400E}
+/* Empty-state warning compartilhado por renderAging/renderDRE/renderPareto quando
+   uma coluna obrigatória não está mapeada. */
+.empty-warning{padding:14px;background:#FFF7ED;border-left:4px solid #F59E0B;border-radius:0 8px 8px 0}
+.empty-warning strong{color:#92400E}
+.empty-warning p{margin:6px 0 0;font-size:12px;color:#78350F;line-height:1.6}
 .check-item{margin-bottom:6px}
 .check-como{font-size:11px;color:#64748B;background:#F8FAFC;border-left:3px solid #CBD5E1;
   padding:6px 10px;margin-bottom:4px;border-radius:0 6px 6px 0;line-height:1.5}
@@ -2712,9 +2717,9 @@ function renderAging(lista) {
   if (!lista || !lista.length) {
     if (_chartAging) { _chartAging.destroy(); _chartAging = null; }
     document.getElementById('aging-content').innerHTML = `
-      <div style="padding:14px;background:#FFF7ED;border-left:4px solid #F59E0B;border-radius:0 8px 8px 0">
-        <strong style="color:#92400E">⚠ Coluna de vencimento não mapeada</strong>
-        <p style="margin:6px 0 0;font-size:12px;color:#78350F;line-height:1.6">
+      <div class="empty-warning">
+        <strong>⚠ Coluna de vencimento não mapeada</strong>
+        <p>
           O Aging de Recebíveis precisa de uma coluna com a <strong>data de vencimento</strong> de cada registro.<br>
           <strong>Como ativar:</strong> Clique em <em>"Novo arquivo"</em>, reimporte a planilha e no passo de
           <em>"Configuração de Colunas"</em> selecione a coluna correta no campo <strong>Vencimento</strong>.
@@ -2773,9 +2778,9 @@ function renderDRE(dre) {
   const el = document.getElementById('dre-content');
   if (!el) return;
   if (!dre) {
-    el.innerHTML = `<div style="padding:14px;background:#FFF7ED;border-left:4px solid #F59E0B;border-radius:0 8px 8px 0">
-      <strong style="color:#92400E">⚠ Categorias não detectadas</strong>
-      <p style="margin:6px 0 0;font-size:12px;color:#78350F;line-height:1.6">
+    el.innerHTML = `<div class="empty-warning">
+      <strong>⚠ Categorias não detectadas</strong>
+      <p>
         O DRE precisa de uma coluna com a <strong>categoria financeira</strong> de cada lançamento (ex: RECEITA, CMV, DESPESA OPERACIONAL).<br>
         <strong>Como ativar:</strong> Reimporte a planilha e no passo de configuração selecione a coluna correta no campo <strong>Categoria</strong>.
       </p></div>`;
@@ -2818,9 +2823,9 @@ function renderPareto(lista) {
   const elPareto = document.getElementById('pareto-content');
   if (!elPareto) return;
   if (!lista || !lista.length) {
-    elPareto.innerHTML = `<div style="padding:14px;background:#FFF7ED;border-left:4px solid #F59E0B;border-radius:0 8px 8px 0">
-      <strong style="color:#92400E">⚠ Entidade não mapeada</strong>
-      <p style="margin:6px 0 0;font-size:12px;color:#78350F;line-height:1.6">
+    elPareto.innerHTML = `<div class="empty-warning">
+      <strong>⚠ Entidade não mapeada</strong>
+      <p>
         O Pareto precisa de uma coluna com o nome do <strong>cliente ou fornecedor</strong> para ranquear concentração.<br>
         <strong>Como ativar:</strong> Reimporte a planilha e selecione a coluna correta no campo <strong>Cliente / Entidade</strong>.
       </p></div>`;
