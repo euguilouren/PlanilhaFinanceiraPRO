@@ -5,6 +5,13 @@ on:
     branches: [main, "claude/**", "feature/**", "fix/**"]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      run_e2e:
+        description: 'Rodar testes E2E (Playwright)?'
+        required: false
+        default: 'false'
+        type: boolean
 
 jobs:
   test:
@@ -245,14 +252,19 @@ jobs:
           "
 
   # E2E roda Playwright contra o index.html servido em http://localhost:8765.
-  # `continue-on-error: true` — não bloqueia merge (E2E pode falhar por motivos
-  # ambientais), mas dá visibilidade de regressões UI no PR. 13 testes cobrindo
-  # upload, KPIs, aging, Pareto, DRE, dark mode, ERP selector.
+  # Roda apenas sob demanda via `workflow_dispatch` (com input run_e2e=true) —
+  # E2E em CI requer config específica de pytest-playwright + chromium-headless-shell
+  # e gerava ruído de webhook a cada PR. 13 testes cobrindo upload, KPIs, aging,
+  # Pareto, DRE, dark mode, ERP selector. Para rodar local:
+  #
+  #   pip install -r requirements-e2e.txt
+  #   playwright install chromium
+  #   pytest tests/test_e2e_*.py -v
   e2e:
     name: E2E (Playwright)
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    continue-on-error: true
+    if: github.event_name == 'workflow_dispatch' && inputs.run_e2e == true
     steps:
       - uses: actions/checkout@v4
 
