@@ -15,10 +15,13 @@ Uso básico:
 
 from __future__ import annotations
 
+import logging
 import math
 from typing import Optional
 
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 # ── Distribuição esperada pela Lei de Benford (dígitos 1-9) ──────────────────
 _BENFORD: dict[int, float] = {
