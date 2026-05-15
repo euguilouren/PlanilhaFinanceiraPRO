@@ -772,6 +772,31 @@ class TestPipelineFinanceiro:
         assert 'pareto' in res
         assert 'ticket_medio' in res
 
+    def test_pipeline_analise_fraude(self, tmp_path):
+        from toolkit_financeiro import PipelineFinanceiro
+        path = self._make_xlsx(tmp_path)
+        p = PipelineFinanceiro(path)
+        res = p.executar_analise_fraude(
+            col_valor='Valor',
+            col_data='Data',
+            col_entidade='Cliente',
+            col_chave='NF',
+        )
+        # FraudeDetector retorna dict com chaves padrão (3 linhas é pouco
+        # para Benford, mas a estrutura precisa estar consistente)
+        assert isinstance(res, dict)
+        assert 'score_risco' in res
+        assert 'alertas' in res
+
+    def test_pipeline_analise_fraude_minima(self, tmp_path):
+        """Apenas col_valor (sem data/entidade/chave) ainda retorna dict válido."""
+        from toolkit_financeiro import PipelineFinanceiro
+        path = self._make_xlsx(tmp_path)
+        p = PipelineFinanceiro(path)
+        res = p.executar_analise_fraude(col_valor='Valor')
+        assert isinstance(res, dict)
+        assert 'score_risco' in res
+
     def test_pipeline_salvar(self, tmp_path):
         from toolkit_financeiro import PipelineFinanceiro
         path = self._make_xlsx(tmp_path)

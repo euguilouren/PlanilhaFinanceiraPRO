@@ -1952,6 +1952,35 @@ class PipelineFinanceiro:
             'ticket_medio': AnalistaComercial.ticket_medio(df, col_valor, col_entidade),
         }
 
+    # ── Análise de fraude ────────────────────────────────────────
+    def executar_analise_fraude(
+        self,
+        col_valor: str,
+        col_data: str = None,
+        col_entidade: str = None,
+        col_chave: str = None,
+        nome_aba_origem: str = None,
+    ) -> dict:
+        """Roda FraudeDetector sobre os dados carregados.
+
+        Retorna dict com score_risco, alertas e detalhes (Benford, duplicatas
+        fuzzy, números redondos, fim-de-semana/feriado, outliers, concentração,
+        fracionamento). Veja `fraude_detector.FraudeDetector.analisar`.
+        """
+        # Import local — fraude_detector é opcional, evita ciclo se algum dia
+        # for chamado a partir do próprio toolkit.
+        from fraude_detector import FraudeDetector  # noqa: PLC0415
+
+        nome_aba = nome_aba_origem or list(self.dados.keys())[0]
+        df = self.dados[nome_aba]
+        return FraudeDetector.analisar(
+            df,
+            col_valor=col_valor,
+            col_data=col_data or "",
+            col_entidade=col_entidade or "",
+            col_chave=col_chave or "",
+        )
+
     # ── Montar e salvar ──────────────────────────────────────────
     def adicionar_aba_resultado(self, nome: str, df: pd.DataFrame, **kwargs) -> None:
         self.montador.adicionar_aba(nome, df, **kwargs)

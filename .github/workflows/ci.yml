@@ -243,3 +243,32 @@ jobs:
               assert s in cfg, f'Seção ausente no config.yaml: {s}'
           print('config.yaml: OK')
           "
+
+  # E2E roda Playwright contra o index.html servido em http://localhost:8765.
+  # `continue-on-error: true` — não bloqueia merge (E2E pode falhar por motivos
+  # ambientais), mas dá visibilidade de regressões UI no PR. 13 testes cobrindo
+  # upload, KPIs, aging, Pareto, DRE, dark mode, ERP selector.
+  e2e:
+    name: E2E (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instalar dependências
+        run: |
+          pip install -r requirements.txt
+          pip install pytest pytest-playwright
+          pip install -r requirements-e2e.txt
+
+      - name: Instalar Chromium
+        run: playwright install --with-deps chromium
+
+      - name: Rodar testes E2E
+        run: pytest tests/test_e2e_analise.py tests/test_e2e_pwa.py -v --tb=short
