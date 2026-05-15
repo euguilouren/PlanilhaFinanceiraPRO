@@ -1,5 +1,7 @@
 # ══════════════════════════════════════════════
 # CONFIGURAÇÃO DO MOTOR AUTÔNOMO
+# ⚠️  DESKTOP ONLY — não é lido pelo dashboard web (index.html / GitHub Pages).
+#     Usado apenas por motor_automatico.py e rodar.py em uso local.
 # Edite este arquivo conforme sua necessidade
 # ══════════════════════════════════════════════
 
