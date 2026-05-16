@@ -271,11 +271,11 @@ push → main
 
 ## Suítes de Teste
 
-- **Python (pytest)** — 391 testes unitários em `tests/`; e2e Playwright em `tests/test_e2e_*.py` (requer servidor local na porta 8765)
+- **Python (pytest)** — testes unitários em `tests/`
 - **JavaScript (vitest)** — 98 testes em `tests/js/` cobrindo as funções puras de `analise.js`: `detectarColunas`, `auditoria`, `calcularAging`, `calcularPareto`, `construirDRE`, `calcularKPIs`, `calcularProjecao`, `calcularSazonalidade`
 
 Rodar localmente:
 ```bash
 npx vitest run                # JS
-python3 -m pytest tests/ --ignore=tests/test_e2e_analise.py --ignore=tests/test_e2e_pwa.py -q
+python3 -m pytest tests/ -q  # Python
 ```
