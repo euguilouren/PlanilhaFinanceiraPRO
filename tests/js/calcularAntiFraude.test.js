@@ -134,4 +134,23 @@ describe('calcularAntiFraude', () => {
     expect(item).toHaveProperty('severidade');
     expect(item).toHaveProperty('descricao');
   });
+
+  // Regressão: agent alegou que `grupos.set(ent, grupos.get(ent)||{...})`
+  // resetava o objeto em iterações subsequentes da mesma entidade. Falso —
+  // Map.get retorna a referência existente após o set inicial. Travando o
+  // comportamento correto: agregação multi-linha por entidade soma valores.
+  it('concentração agrega múltiplas linhas da MESMA entidade corretamente', () => {
+    const dados = [
+      { Valor: 500, Cliente: 'BIG',    NF: '1' },
+      { Valor: 400, Cliente: 'BIG',    NF: '2' },  // BIG total = 900
+      { Valor: 50,  Cliente: 'small1', NF: '3' },
+      { Valor: 50,  Cliente: 'small2', NF: '4' },
+    ];
+    const r = calcularAntiFraude(dados, COLS);
+    const bigAlert = r.concentracao.find(c => c.entidade === 'BIG');
+    expect(bigAlert).toBeDefined();
+    // 900 / 1000 = 90% — bem acima do threshold de 30%
+    expect(bigAlert.descricao).toMatch(/90/);
+    expect(bigAlert.descricao).toMatch(/2 lan[çc]amentos/);
+  });
 });

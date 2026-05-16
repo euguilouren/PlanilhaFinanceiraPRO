@@ -88,4 +88,29 @@ describe('construirDRE', () => {
     const ll = result.linhas.find(l => l.linha === '(=) Lucro Líquido');
     expect(ll.valor).toBeCloseTo(0, 2);
   });
+
+  // Regressão: quando rl=0 (dataset só com despesas), AV% antes
+  // retornava 0 pra todas as linhas — falso "estrutura zerada".
+  // Agora retorna NaN para o render mostrar '—'.
+  it('AV% retorna NaN quando Receita Líquida é zero (só despesas)', () => {
+    const dados = [
+      makeRow('DESPESA OPERACIONAL', -1000),
+      makeRow('DESPESA OPERACIONAL', -500),
+    ];
+    const result = construirDRE(dados, 'Categoria', 'Valor');
+    for (const linha of result.linhas) {
+      expect(Number.isNaN(linha.av)).toBe(true);
+    }
+  });
+
+  it('AV% é numérico finito quando há Receita Líquida', () => {
+    const dados = [
+      makeRow('RECEITA', 1000),
+      makeRow('DESPESA OPERACIONAL', -300),
+    ];
+    const result = construirDRE(dados, 'Categoria', 'Valor');
+    const rb = result.linhas.find(l => l.linha === 'Receita Bruta');
+    expect(Number.isFinite(rb.av)).toBe(true);
+    expect(rb.av).toBeCloseTo(100, 1);
+  });
 });
