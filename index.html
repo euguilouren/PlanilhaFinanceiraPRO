@@ -377,7 +377,11 @@ function auditoria(dados, cols) {
     dados.forEach((row, i) => {
       const cat = String(row[cols.categoria] ?? '').toUpperCase();
       const v   = toNum(row[cols.valor]);
-      if (/RECEITA|VENDA|FATURAMENTO/.test(cat) && v < 0) {
+      // Devolução/cancelamento/estorno DE venda é negativo por convenção
+      // contábil — não conta como "receita classificada errado".
+      const isVenda    = /RECEITA|VENDA|FATURAMENTO/.test(cat);
+      const isEstorno  = /DEVOLU|CANCELAMENT|ESTORNO|REVERS|CHARGEBACK/.test(cat);
+      if (isVenda && !isEstorno && v < 0) {
         problemas.push({
           severidade: 'ALTA', tipo: 'CLASSIFICAÇÃO_ERRADA',
           coluna: cols.valor, linha: i + 2,
@@ -597,9 +601,12 @@ function calcularFluxoPeriodo(dados, colData, colValor, colTipo, freq) {
     else if (freq === 'A') key = String(d.getFullYear());
     else key = `${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
 
-    if (!grupos[key]) grupos[key] = { rec:0, desp:0, nfRec:0, nfDesp:0 };
     const v    = toNum(r[colValor]);
     if (isNaN(v) || v === 0) return;
+    // Cria o grupo APENAS depois de confirmar valor válido — antes,
+    // datas com valor inválido/zero criavam buckets fantasma em R$ 0
+    // que apareciam no gráfico/tabela como períodos sem atividade.
+    if (!grupos[key]) grupos[key] = { rec:0, desp:0, nfRec:0, nfDesp:0 };
     const tipo = colTipo ? String(r[colTipo] ?? '').trim().toUpperCase() : '';
     const isRec = /^(RECEITA|CR[EÉ]DITO|ENTRADA)$/.test(tipo) || /RECEI|ENTRA|CRÉDI|VENDA|FATURAMENTO/.test(tipo)
       || (!(/^(DESPESA|D[EÉ]BITO|SA[IÍ]DA)$/.test(tipo) || /DESPE|SAÍDA|SAIDA|DÉBITO|DEBITO/.test(tipo)) && v > 0);

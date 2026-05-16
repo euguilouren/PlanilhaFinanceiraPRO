@@ -124,4 +124,33 @@ describe('auditoria', () => {
       expect(prev).toBeLessThanOrEqual(curr);
     }
   });
+
+  // Regressão: a regex /RECEITA|VENDA|FATURAMENTO/ casava "DEVOLUÇÃO DE
+  // VENDA", "CANCELAMENTO DE VENDA", "ESTORNO DE VENDA" — todas com
+  // valor negativo por convenção contábil — e flagava como
+  // "Classificação errada".
+  describe('CLASSIFICAÇÃO_ERRADA: estornos não devem ser falso-positivo', () => {
+    function rowComCategoria(cat, valor) {
+      return { NF: 'X', Valor: valor, Data: '01/01/2024', Cliente: 'C',
+               Vencimento: '', Categoria: cat, Tipo: '' };
+    }
+
+    it('RECEITA com valor negativo (real) ainda é flagada', () => {
+      const result = auditoria([rowComCategoria('RECEITA DE SERVIÇOS', -100)], COLS);
+      const classErr = result.filter(p => p.tipo === 'CLASSIFICAÇÃO_ERRADA');
+      expect(classErr).toHaveLength(1);
+    });
+
+    it.each([
+      'DEVOLUÇÃO DE VENDA',
+      'CANCELAMENTO DE VENDA',
+      'ESTORNO RECEITA',
+      'REVERSÃO DE FATURAMENTO',
+      'CHARGEBACK',
+    ])('"%s" negativa NÃO é falso-positivo', (cat) => {
+      const result = auditoria([rowComCategoria(cat, -100)], COLS);
+      const classErr = result.filter(p => p.tipo === 'CLASSIFICAÇÃO_ERRADA');
+      expect(classErr).toHaveLength(0);
+    });
+  });
 });
