@@ -107,4 +107,32 @@ describe('calcularSazonalidade', () => {
     const result = calcularSazonalidade(dados, 'Data', 'Valor');
     expect(result[7].receita).toBeCloseTo(100, 2);
   });
+
+  // Regressão: agent alegou que regex /SA[IÍ]DA/ não casava "SAIDA" sem acento.
+  // Falso — char class [IÍ] aceita os dois. Travando classificação correta.
+  it.each([
+    ['SAIDA',  'D'],   // sem acento
+    ['SAÍDA',  'D'],   // com acento
+    ['DEBITO', 'D'],   // sem acento
+    ['DÉBITO', 'D'],   // com acento
+    ['DESPESA','D'],
+    ['ENTRADA','R'],
+    ['CREDITO','R'],   // sem acento — fallback regex CR[EÉ]DI
+    ['CRÉDITO','R'],   // com acento
+    ['RECEITA','R'],
+    ['VENDA',  'R'],
+  ])('classifica tipo "%s" corretamente (R=receita, D=despesa)', (tipo, expected) => {
+    const result = calcularSazonalidade(
+      [makeRow('2024-01-15', 100, tipo)],
+      'Data', 'Valor', 'Tipo'
+    );
+    // Janeiro = índice 0
+    if (expected === 'R') {
+      expect(result[0].receita).toBeGreaterThan(0);
+      expect(result[0].despesa).toBe(0);
+    } else {
+      expect(result[0].despesa).toBeGreaterThan(0);
+      expect(result[0].receita).toBe(0);
+    }
+  });
 });
