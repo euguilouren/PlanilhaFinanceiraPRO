@@ -1,5 +1,4 @@
-"""Utilitários compartilhados entre toolkit_financeiro, relatorio_html,
-dashboard_visual e fraude_detector.
+"""Utilitários compartilhados entre toolkit_financeiro, relatorio_html e dashboard_visual.
 
 Antes esses helpers viviam duplicados em cada arquivo (~3x). Aqui está
 a única implementação canônica — mudanças de formato (locale BRL,
