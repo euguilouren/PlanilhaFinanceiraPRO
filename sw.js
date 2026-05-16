@@ -77,6 +77,24 @@ self.addEventListener('fetch', event => {
     return;
   }
 
+  // Navegação (HTML root, app shell) — network-first com fallback offline.
+  // Esse branch tem que vir ANTES do STATIC_EXT porque a URL raiz
+  // (ex.: "/FluxoPRO/") não tem extensão e antes caía no default sem
+  // respondWith → offline na raiz mostrava página de erro mesmo com
+  // index.html precacheado.
+  if (req.mode === 'navigate' && url.hostname === location.hostname) {
+    event.respondWith(
+      fetch(req).catch(() =>
+        caches.open(CACHE_NAME).then(cache =>
+          cache.match(self.registration.scope + 'index.html')
+            .then(r => r || cache.match(self.registration.scope))
+            .then(r => r || Response.error())
+        )
+      )
+    );
+    return;
+  }
+
   // Same-origin: only cache static file extensions — never cache API calls or financial data
   if (url.hostname === location.hostname && STATIC_EXT.test(url.pathname)) {
     event.respondWith(
@@ -89,11 +107,6 @@ self.addEventListener('fetch', event => {
           .catch(() =>
             cache.match(req).then(cached => {
               if (cached) return cached;
-              // Offline fallback for navigation requests
-              if (req.mode === 'navigate') {
-                return cache.match(self.registration.scope + 'index.html')
-                  .then(r => r || cache.match(self.registration.scope));
-              }
               return Response.error();
             })
           )
