@@ -217,7 +217,13 @@ function toNum(v) {
       s = s.replace(/,/g, '');                   // US:    1,234.56
     }
   } else if (s.includes(',')) {
-    s = s.replace(/,/g, '.'); // só vírgula → decimal BR
+    // Múltiplas vírgulas sem ponto → US thousands: "1,000,000" → 1000000
+    // Uma vírgula → BR decimal:                    "123,45"     → 123.45
+    if ((s.match(/,/g) || []).length > 1) {
+      s = s.replace(/,/g, '');
+    } else {
+      s = s.replace(',', '.');
+    }
   } else if ((s.match(/\./g)||[]).length > 1) {
     s = s.replace(/\./g, ''); // múltiplos pontos sem vírgula → separadores de milhar BR
   }
@@ -257,6 +263,11 @@ function toDate(v) {
     if (d.getFullYear() !== +brLoose[3] || d.getMonth() !== +brLoose[2]-1 || d.getDate() !== +brLoose[1]) return null;
     return d;
   }
+  // Último fallback: aceita apenas strings com prefixo ISO-like
+  // (YYYY/MM/DD ou YYYY-MM-DDTHH:MM com qualquer separador). Sem isso,
+  // `new Date("Mar 5")` e `new Date("2024")` virariam datas válidas
+  // silenciosamente e corrompiam aging/projeção.
+  if (!/^\d{4}[-/]\d{1,2}[-/]\d{1,2}/.test(s)) return null;
   const d = new Date(s);
   return isNaN(d) ? null : d;
 }
@@ -526,7 +537,11 @@ function construirDRE(dados, colCat, colValor) {
     { linha:'(-) IR/CSLL',                      valor:-ir,  tipo:'input' },
     { linha:'(=) Lucro Líquido',                valor:ll,   tipo:'total lucro' },
   ];
-  return { linhas: linhas.map(l => ({ ...l, av: rl ? (l.valor/rl*100) : 0 })), modo };
+  // av (Análise Vertical) = % sobre a Receita Líquida. Sem RL, AV não é
+  // matematicamente definida — retornamos NaN para o render mostrar '—'
+  // em vez de "0.0%" falso (que mascarava a estrutura da DRE quando o
+  // dataset tinha só despesas).
+  return { linhas: linhas.map(l => ({ ...l, av: rl ? (l.valor/rl*100) : NaN })), modo };
 }
 
 // ══════════════════════════════════════════════════════
